@@ -210,6 +210,24 @@ tr.rowlink:hover{background:var(--aqua-light);}
   .topbar{padding:14px 16px;}
   .search{min-width:0; flex:1;}
 }
+
+/* Giriş ekranı ve sunucu durumu */
+#sbOverlay{position:fixed;inset:0;z-index:200;background:var(--bg);display:none;align-items:center;justify-content:center;padding:16px;overflow-y:auto;}
+.sb-card{width:min(420px,100%);background:var(--card);border:1px solid var(--line);border-radius:14px;padding:26px 24px;box-shadow:0 10px 40px rgba(0,0,0,.08);}
+.sb-brand{display:flex;align-items:center;gap:10px;margin-bottom:18px;}
+.sb-brand .mark{width:38px;height:38px;border-radius:10px;background:linear-gradient(135deg,var(--aqua),#0C7C79);display:flex;align-items:center;justify-content:center;font-size:20px;}
+.sb-brand .name{font-family:'Manrope';font-weight:800;font-size:18px;line-height:1.1;}
+.sb-brand .sub{font-size:10.5px;color:var(--muted);letter-spacing:.04em;}
+.sb-h{font-size:19px;margin:0 0 6px;}
+.sb-p{font-size:13.5px;color:var(--muted);line-height:1.55;margin:0 0 14px;}
+.sb-msg{padding:9px 12px;border-radius:8px;font-size:13px;margin:0 0 12px;line-height:1.45;}
+.sb-msg.bad{background:var(--red-light);color:var(--red);}
+.sb-msg.good{background:var(--green-light);color:var(--green);}
+.sb-links{display:flex;flex-direction:column;gap:8px;margin-top:16px;font-size:13px;}
+.sb-links a{color:var(--teal-600);cursor:pointer;text-decoration:underline;}
+.sb-status{font-size:11px;}
+.sb-status.good{color:#7fe3b4;} .sb-status.bad{color:#ffb4a8;} .sb-status.busy{color:#f2d58a;}
+body.srv .role-pill:not(#userPill){display:none;}
 </style>
 </head>
 <body>
@@ -226,7 +244,7 @@ tr.rowlink:hover{background:var(--aqua-light);}
     </div>
     <div class="role-pill" id="userPill" style="display:none;"></div>
     <nav id="nav"></nav>
-    <div class="sidebar-foot">Prototip sürüm · v0.1<br>Demo verisi — tarayıcınızda saklanır</div>
+    <div class="sidebar-foot" id="sbFoot">Prototip sürüm · v0.1<br>Demo verisi — tarayıcınızda saklanır</div>
   </aside>
   <div class="main">
     <div class="topbar">
@@ -378,8 +396,8 @@ function load(){
     else { DB=seed(); save(); }
   }catch(e){ DB=seed(); }
 }
-function save(){ try{ localStorage.setItem(LS_KEY, JSON.stringify(DB)); }catch(e){ console.error('storage error',e); } }
-function resetDemo(){ if(role!=='admin') return; if(confirm('Tüm demo verisi sıfırlansın mı?')){ DB=seed(); save(); render(); } }
+function save(){ if(SERVER){ sbScheduleSync(); return; } try{ localStorage.setItem(LS_KEY, JSON.stringify(DB)); }catch(e){ console.error('storage error',e); } }
+function resetDemo(){ if(SERVER||role!=='admin') return; if(confirm('Tüm demo verisi sıfırlansın mı?')){ DB=seed(); save(); render(); } }
 
 /* ============ HELPERS ============ */
 const $=(sel,root=document)=>root.querySelector(sel);
@@ -471,6 +489,7 @@ function canCancelPL(p){
 
 function renderUserPill(){
   const el=$('#userPill');
+  if(SERVER){ el.style.display='flex'; el.innerHTML=sbPillHtml(); return; }
   let opts=null,key=null,label='';
   if(role==='coach'){opts=DB.coaches.map(c=>[c.id,c.name]);key='coachId';label='Antrenör:';}
   if(!opts){el.style.display='none';return;}
@@ -546,7 +565,7 @@ const TITLES={ai:'AI Asistan',dashboard:'Dashboard',athletes:'Sporcular',parents
   attendance:'Yoklama',development:'Gelişim Takibi',competitions:'Yarışma & Derece Takibi',crm:'CRM / Aday Sporcular',
   approvals:'Onaylar ve Talepler',rentals:'Havuz Kiralama',finance:'Finans ve Aylık Rapor',insights:'Analiz: Deneme ve Ayrılışlar',coaches:'Antrenörler',payments:'Ödemeler',announcements:'Duyurular',tickets:'Talep Yönetimi',reports:'Raporlar',settings:'Ayarlar'};
 
-function setRole(r){ role=r; if(!NAV[role].find(x=>x.id===route)) route=NAV[role].find(x=>x.id)?.id||'dashboard'; render(); }
+function setRole(r){ if(SERVER) return; role=r; if(!NAV[role].find(x=>x.id===route)) route=NAV[role].find(x=>x.id)?.id||'dashboard'; render(); }
 
 function renderNav(){
   const nav=$('#nav'); nav.innerHTML='';
@@ -1599,7 +1618,12 @@ function renderMeBadge(){
 }
 function renderSettings(c){
   renderSettingsBase(c);
+  if(SERVER){
+    c.innerHTML=c.innerHTML.replace('Veriler yalnızca bu tarayıcıda (localStorage) saklanır; gerçek bir sunucu, veritabanı veya kimlik doğrulama içermez.','Veriler Supabase veritabanında saklanır; giriş zorunludur ve erişim kuralları veritabanında uygulanır.');
+    const cards=c.querySelectorAll('.card'); const last=cards[cards.length-1]; if(last&&/Demo Verisi/.test(last.textContent)) last.remove();
+  }
   c.insertAdjacentHTML('afterbegin',photoCardHtml());
+  if(SERVER&&role==='admin'){ c.insertAdjacentHTML('afterbegin',acctHtml()); acctLoad(); }
 }
 
 /* ---------- GRUP SİLME ---------- */
@@ -3283,9 +3307,426 @@ function aiViewQueue(){
   <div class="note-banner" style="margin-top:14px;">Onaylanan işlemler bu prototipte yalnızca kayda alınır; gerçek mesaj gönderilmez, grup veya plan değiştirilmez.</div>`;
 }
 
+/* ============ SUNUCU BAĞLANTISI (Supabase): giriş, oturum, veri senkronu, hesaplar ============ */
+const SB_CFG={url:'https://btqpfudetvpldswafliw.supabase.co',key:'sb_publishable_Y8WJS6EzN-43ZXQS0CmZfA_ZlR49Poi'}; /*SBCFG*/
+const SERVER=!!(SB_CFG.url&&SB_CFG.key);
+const SB_STORE='lc_session_v1';
+const SB={session:null,profile:null,synced:{},base:{},timer:null,syncing:false,again:false,lastLoad:0,retry:null,booted:false};
+const SB_ROLE_TR={admin:'Yönetici',coach:'Antrenör',parent:'Veli',athlete:'Sporcu'};
+const SB_SPECS=[
+ {c:'coaches',t:'arr'},{c:'groups',t:'arr'},{c:'parents',t:'arr'},{c:'athletes',t:'arr'},{c:'payments',t:'arr'},{c:'leads',t:'arr'},
+ {c:'records',t:'arr'},{c:'competitions',t:'arr'},{c:'announcements',t:'arr'},{c:'tickets',t:'arr'},{c:'trainings',t:'arr'},
+ {c:'aiQueue',t:'arr'},{c:'privateLessons',t:'arr'},{c:'plPackages',t:'arr'},{c:'expenses',t:'arr'},{c:'extraSessions',t:'arr'},
+ {c:'rentals',t:'arr'},{c:'changeRequests',t:'arr'},{c:'pools',t:'arr',key:'name'},
+ {c:'attendanceLog',t:'map'},{c:'photos',t:'map',wrap:'url'},{c:'reasonNotes',t:'map',wrap:'text'},{c:'poolPrices',t:'map'},{c:'coachRates',t:'map'}];
+/* Yönetici dışı rollerin yazabildiği koleksiyonlar (asıl denetim veritabanındadır; bu liste yalnızca gereksiz istekleri önler) */
+const SB_WRITE={admin:null,coach:['attendanceLog','changeRequests','aiQueue','privateLessons','athletes','photos'],parent:['privateLessons','tickets','photos'],athlete:['privateLessons','photos']};
+function sbWritable(c){const w=SB_WRITE[role]; return !w||w.indexOf(c)>-1;}
+function sbEmptyDB(){return {coaches:[],groups:[],parents:[],athletes:[],payments:[],leads:[],records:[],competitions:[],announcements:[],tickets:[],attendanceLog:{},trainings:[],aiQueue:[],privateLessons:[],plPackages:[],expenses:[],extraSessions:[],rentals:[],changeRequests:[],pools:[],poolPrices:{},coachRates:{},photos:{},reasonNotes:{},currentUser:{parentId:null,coachId:null,athleteId:null}};}
+
+/* ---------- Oturum ve istekler ---------- */
+function sbStoreSession(s){SB.session=s; try{ if(s) localStorage.setItem(SB_STORE,JSON.stringify(s)); else localStorage.removeItem(SB_STORE);}catch(e){}}
+function sbReadSession(){try{const s=JSON.parse(localStorage.getItem(SB_STORE)||'null'); return s&&s.access_token&&s.refresh_token?s:null;}catch(e){return null;}}
+function sbFromTokenResponse(j){
+  const exp=j.expires_at||(Math.floor(Date.now()/1000)+(j.expires_in||3600));
+  return {access_token:j.access_token,refresh_token:j.refresh_token,expires_at:exp,user:{id:(j.user&&j.user.id)||'',email:(j.user&&j.user.email)||''}};
+}
+function sbHeaders(extra,anon){
+  const tok=(!anon&&SB.session)?SB.session.access_token:SB_CFG.key;
+  return Object.assign({apikey:SB_CFG.key,Authorization:'Bearer '+tok,'Content-Type':'application/json'},extra||{});
+}
+function sbErrText(j){
+  const code=(j&&(j.error_code||j.code))||''; const msg=String((j&&(j.msg||j.message||j.error_description||j.error))||'');
+  if(code==='invalid_credentials'||/Invalid login credentials/i.test(msg)) return 'E-posta veya şifre hatalı.';
+  if(code==='email_not_confirmed'||/not confirmed/i.test(msg)) return 'E-posta adresiniz henüz doğrulanmamış. Gelen kutunuzdaki doğrulama bağlantısına tıklayın.';
+  if(code==='user_already_exists'||/already registered/i.test(msg)) return 'Bu e-posta ile zaten bir hesap var. Giriş yapın veya “Şifremi unuttum” deyin.';
+  if(code==='weak_password'||/at least \d+ char/i.test(msg)) return 'Şifre en az 8 karakter olmalı.';
+  if(code==='same_password') return 'Yeni şifre eskisinden farklı olmalı.';
+  if(/rate.?limit/i.test(code)||/rate limit|seconds/i.test(msg)) return 'Çok fazla deneme yapıldı. Biraz bekleyip tekrar deneyin.';
+  if(code==='signup_disabled') return 'Yeni hesap oluşturma kapalı. Yöneticinizle görüşün.';
+  return 'İşlem tamamlanamadı'+(msg?': '+msg:'.');
+}
+async function sbAuth(path,body,method,useToken){
+  let res;
+  try{ res=await fetch(SB_CFG.url+'/auth/v1/'+path,{method:method||'POST',headers:sbHeaders({},!useToken),body:JSON.stringify(body||{})}); }
+  catch(e){ return {ok:false,error:'Sunucuya bağlanılamadı. İnternet bağlantınızı kontrol edin.'}; }
+  let j={}; try{ const t=await res.text(); j=t?JSON.parse(t):{}; }catch(e){}
+  if(!res.ok) return {ok:false,error:sbErrText(j),code:j.error_code||j.code};
+  return {ok:true,data:j};
+}
+async function sbRefresh(){
+  if(!SB.session) return false;
+  const r=await sbAuth('token?grant_type=refresh_token',{refresh_token:SB.session.refresh_token});
+  if(!r.ok||!r.data.access_token) return false;
+  sbStoreSession(sbFromTokenResponse(r.data)); return true;
+}
+async function sbEnsureToken(){ if(SB.session&&SB.session.expires_at-Math.floor(Date.now()/1000)<60) await sbRefresh(); }
+async function sbReq(method,path,body,extra,noRetry){
+  await sbEnsureToken();
+  let res;
+  try{ res=await fetch(SB_CFG.url+path,{method,headers:sbHeaders(extra),body:body===undefined?undefined:JSON.stringify(body)}); }
+  catch(e){ return {ok:false,status:0,network:true,data:null}; }
+  let data=null; try{ const t=await res.text(); data=t?JSON.parse(t):null; }catch(e){}
+  if(res.status===401&&!noRetry){ if(await sbRefresh()) return sbReq(method,path,body,extra,true); sbLostSession(); }
+  return {ok:res.ok,status:res.status,data};
+}
+function sbLostSession(){ if(!SB.session&&!SB.profile) return; sbStoreSession(null); SB.profile=null; sbShowLogin('Oturumunuzun süresi doldu. Lütfen tekrar giriş yapın.'); }
+
+/* ---------- Ekranlar ---------- */
+function sbOverlay(html){
+  let el=document.getElementById('sbOverlay');
+  if(!el){ el=document.createElement('div'); el.id='sbOverlay'; document.body.appendChild(el); }
+  el.innerHTML=html||''; el.style.display=html?'flex':'none';
+}
+function sbCard(inner){
+  return `<div class="sb-card"><div class="sb-brand"><div class="mark">🏊</div><div><div class="name">Let's Club</div><div class="sub">SPORTS MANAGEMENT</div></div></div>${inner}</div>`;
+}
+function sbMsg(t,good){return t?`<div class="sb-msg ${good?'good':'bad'}" role="alert">${escHtml(t)}</div>`:'';}
+let sbMode='login';
+function sbShowLogin(msg,good,mode){
+  sbMode=mode||sbMode||'login'; if(sbMode!=='signup'&&sbMode!=='forgot') sbMode='login';
+  const email=(document.getElementById('sb_email')||{}).value||'';
+  const titles={login:'Giriş yapın',signup:'Hesap oluşturun',forgot:'Şifre sıfırlama'};
+  const hint={login:'Yönetici tarafından tanımlanan e-posta adresinizle giriş yapın.',
+    signup:'Yönetici sizin e-posta adresinizi tanımladıysa şifrenizi belirleyin. E-postanıza bir doğrulama bağlantısı gelir.',
+    forgot:'E-posta adresinizi yazın, şifre sıfırlama bağlantısını gönderelim.'}[sbMode];
+  sbOverlay(sbCard(`<h2 class="sb-h">${titles[sbMode]}</h2><p class="sb-p">${hint}</p>
+   <form onsubmit="sbSubmit(event)" novalidate>
+    <div class="field"><label for="sb_email">E-posta</label><input id="sb_email" type="email" autocomplete="username" value="${escHtml(email)}"></div>
+    ${sbMode!=='forgot'?`<div class="field"><label for="sb_pass">Şifre</label><input id="sb_pass" type="password" autocomplete="${sbMode==='signup'?'new-password':'current-password'}"></div>`:''}
+    ${sbMode==='signup'?`<div class="field"><label for="sb_pass2">Şifre (tekrar)</label><input id="sb_pass2" type="password" autocomplete="new-password"></div>`:''}
+    <div id="sb_res">${sbMsg(msg,good)}</div>
+    <button class="btn primary" id="sb_go" type="submit" style="width:100%;padding:11px;">${{login:'Giriş yap',signup:'Hesap oluştur',forgot:'Bağlantıyı gönder'}[sbMode]}</button>
+   </form>
+   <div class="sb-links">
+    ${sbMode!=='login'?'<a onclick="sbShowLogin(\'\',false,\'login\')">Giriş ekranına dön</a>':''}
+    ${sbMode==='login'?'<a onclick="sbShowLogin(\'\',false,\'forgot\')">Şifremi unuttum</a><a onclick="sbShowLogin(\'\',false,\'signup\')">İlk kez mi giriyorsunuz? Hesap oluşturun</a>':''}
+   </div>`));
+}
+function sbBusy(on){const b=document.getElementById('sb_go'); if(b){b.disabled=!!on; b.style.opacity=on?'.6':'1';}}
+function sbShowRes(t,good){const el=document.getElementById('sb_res'); if(el) el.innerHTML=sbMsg(t,good);}
+const sbEmailOk=e=>/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(e)&&e.length<=120;
+async function sbSubmit(ev){
+  if(ev) ev.preventDefault();
+  const email=String(document.getElementById('sb_email').value||'').trim().toLowerCase();
+  const pw=(document.getElementById('sb_pass')||{}).value||'';
+  if(!sbEmailOk(email)){ sbShowRes('Geçerli bir e-posta adresi yazın.'); return; }
+  sbBusy(true);
+  try{
+    if(sbMode==='forgot'){
+      const r=await sbAuth('recover?redirect_to='+encodeURIComponent(location.origin+location.pathname),{email});
+      sbShowRes(r.ok?'Bu adres sistemde kayıtlıysa şifre sıfırlama bağlantısı gönderildi. Gelen kutunuzu kontrol edin.':r.error,r.ok); return;
+    }
+    if(pw.length<8){ sbShowRes('Şifre en az 8 karakter olmalı.'); return; }
+    if(sbMode==='signup'){
+      if(pw!==(document.getElementById('sb_pass2').value||'')){ sbShowRes('Şifreler aynı değil.'); return; }
+      const r=await sbAuth('signup',{email,password:pw});
+      if(!r.ok){ sbShowRes(r.error); return; }
+      if(r.data.access_token){ sbStoreSession(sbFromTokenResponse(r.data)); await sbStart(); return; }
+      sbShowRes('Hesabınız oluşturuldu. E-postanıza gelen doğrulama bağlantısına tıkladıktan sonra giriş yapabilirsiniz.',true); return;
+    }
+    const r=await sbAuth('token?grant_type=password',{email,password:pw});
+    if(!r.ok){ sbShowRes(r.error); return; }
+    sbStoreSession(sbFromTokenResponse(r.data)); await sbStart();
+  } finally { sbBusy(false); }
+}
+function sbShowRecovery(msg){
+  sbOverlay(sbCard(`<h2 class="sb-h">Yeni şifre belirleyin</h2><p class="sb-p">En az 8 karakter kullanın.</p>
+   <form onsubmit="sbNewPass(event)" novalidate>
+    <div class="field"><label for="sb_np">Yeni şifre</label><input id="sb_np" type="password" autocomplete="new-password"></div>
+    <div class="field"><label for="sb_np2">Yeni şifre (tekrar)</label><input id="sb_np2" type="password" autocomplete="new-password"></div>
+    <div id="sb_res">${sbMsg(msg)}</div><button class="btn primary" id="sb_go" type="submit" style="width:100%;padding:11px;">Şifreyi kaydet</button></form>`));
+}
+async function sbNewPass(ev){
+  if(ev) ev.preventDefault();
+  const a=document.getElementById('sb_np').value||'', b=document.getElementById('sb_np2').value||'';
+  if(a.length<8){ sbShowRes('Şifre en az 8 karakter olmalı.'); return; }
+  if(a!==b){ sbShowRes('Şifreler aynı değil.'); return; }
+  sbBusy(true);
+  const r=await sbAuth('user',{password:a},'PUT',true);
+  sbBusy(false);
+  if(!r.ok){ sbShowRes(r.error); return; }
+  await sbStart();
+}
+function sbShowNoProfile(){
+  sbOverlay(sbCard(`<h2 class="sb-h">Hesabınız henüz yetkilendirilmedi</h2>
+   <p class="sb-p"><b>${escHtml((SB.session&&SB.session.user.email)||'')}</b> adresi sistemde bir kişiye bağlı değil. Kulüp yöneticinize bu e-posta adresini bildirin; tanımlandıktan sonra tekrar giriş yapın.</p>
+   <button class="btn primary" style="width:100%;padding:11px;" onclick="sbStart()">Tekrar dene</button>
+   <div class="sb-links"><a onclick="sbSignOut()">Çıkış yap</a></div>`));
+}
+function sbShowLoading(t){ sbOverlay(sbCard(`<p class="sb-p" style="text-align:center;margin:18px 0;">${escHtml(t||'Yükleniyor…')}</p>`)); }
+function sbShowError(t){
+  sbOverlay(sbCard(`<h2 class="sb-h">Bağlantı sorunu</h2><p class="sb-p">${escHtml(t)}</p>
+   <button class="btn primary" style="width:100%;padding:11px;" onclick="sbStart()">Tekrar dene</button>
+   <div class="sb-links"><a onclick="sbSignOut()">Çıkış yap</a></div>`));
+}
+function sbShowSetup(){
+  sbOverlay(sbCard(`<h2 class="sb-h">Sistem henüz kurulmadı</h2>
+   <p class="sb-p">Veritabanı boş. Nasıl başlamak istersiniz?</p>
+   <button class="btn primary" style="width:100%;padding:11px;margin-bottom:10px;" onclick="sbSetup('demo')">Örnek verilerle başla</button>
+   <button class="btn" style="width:100%;padding:11px;" onclick="sbSetup('empty')">Boş başla</button>
+   <p class="sb-p" style="margin-top:12px;font-size:12px;">Örnek veri; gruplar, sporcular, veliler, ödemeler ve kiralamalardan oluşan uydurma bir kulüptür. Daha sonra silinebilir veya değiştirilebilir. “Boş başla” yalnızca bir havuz oluşturur.</p>
+   <div id="sb_res"></div><div class="sb-links"><a onclick="sbSignOut()">Çıkış yap</a></div>`));
+}
+function sbShowWaitEmpty(){
+  sbOverlay(sbCard(`<h2 class="sb-h">Sistem henüz kurulmadı</h2><p class="sb-p">Yönetici sistemi hazırladığında giriş yapabilirsiniz.</p><div class="sb-links"><a onclick="sbSignOut()">Çıkış yap</a></div>`));
+}
+
+/* ---------- Veri yükleme ---------- */
+const sbCmp=(a,b)=>String(a).localeCompare(String(b),'tr',{numeric:true});
+async function sbLoadAll(){
+  let rows=[];
+  for(let from=0;;from+=1000){
+    const r=await sbReq('GET','/rest/v1/documents?select=collection,id,data&order=collection.asc,id.asc',undefined,{Range:from+'-'+(from+999),'Range-Unit':'items'});
+    if(!r.ok) return {ok:false,network:r.network,status:r.status};
+    rows=rows.concat(r.data||[]); if((r.data||[]).length<1000) break;
+  }
+  const db=sbEmptyDB(); const slots=[];
+  const spec={}; SB_SPECS.forEach(s=>{spec[s.c]=s;});
+  rows.sort((a,b)=>sbCmp(a.collection,b.collection)||sbCmp(a.id,b.id));
+  rows.forEach(r=>{
+    if(r.collection==='slots'){ slots.push(r.data); return; }
+    if(r.collection==='plPackagesPub'){ if(role!=='admin') db.plPackages.push(r.data); return; }
+    const s=spec[r.collection]; if(!s) return;
+    if(s.t==='arr') db[s.c].push(r.data); else db[s.c][r.id]=s.wrap?r.data[s.wrap]:r.data;
+  });
+  if(role!=='admin'){
+    const have=new Set(db.privateLessons.map(p=>p.id));
+    slots.forEach(s=>{ if(!have.has(s.id)) db.privateLessons.push({id:s.id,pkg:null,athlete:'',coach:s.coach,date:s.date,hour:s.hour,status:s.status,note:'',_stub:true}); });
+  }
+  const p=SB.profile; db.currentUser={parentId:p.role==='parent'?p.link_id:null,coachId:p.role==='coach'?p.link_id:null,athleteId:p.role==='athlete'?p.link_id:null};
+  DB=db; sbBaseline(); SB.lastLoad=Date.now();
+  return {ok:true,count:rows.length};
+}
+function sbSnapshot(){
+  const out={};
+  SB_SPECS.forEach(s=>{
+    if(!sbWritable(s.c)) return;
+    if(s.t==='arr'){ (DB[s.c]||[]).forEach(x=>{ if(!x||x._stub) return; const id=String(x[s.key||'id']); out[s.c+'|'+id]={c:s.c,id,data:x}; }); }
+    else { const m=DB[s.c]||{}; Object.keys(m).forEach(k=>{ out[s.c+'|'+k]={c:s.c,id:k,data:s.wrap?{[s.wrap]:m[k]}:m[k]}; }); }
+  });
+  return out;
+}
+function sbBaseline(){
+  SB.synced={}; SB.base={};
+  const snap=sbSnapshot();
+  Object.keys(snap).forEach(k=>{ const j=JSON.stringify(snap[k].data); SB.synced[k]=j; SB.base[k]=j; });
+}
+function sbDiff(){
+  const snap=sbSnapshot(); const adds=[],upds=[],dels=[];
+  Object.keys(snap).forEach(k=>{
+    const j=JSON.stringify(snap[k].data);
+    if(!(k in SB.synced)) adds.push({k,c:snap[k].c,id:snap[k].id,data:snap[k].data,j});
+    else if(SB.synced[k]!==j) upds.push({k,c:snap[k].c,id:snap[k].id,data:snap[k].data,j});
+  });
+  Object.keys(SB.synced).forEach(k=>{ if(!(k in snap)){ const i=k.indexOf('|'); dels.push({k,c:k.slice(0,i),id:k.slice(i+1)}); } });
+  return {adds,upds,dels};
+}
+
+/* ---------- Kaydetme (fark gönderimi) ---------- */
+function sbStatus(t,cls){ const el=document.getElementById('sbStatus'); if(el){ el.textContent=t; el.className='sb-status '+(cls||''); } }
+function sbScheduleSync(){ sbStatus('Kaydediliyor…','busy'); if(SB.timer) clearTimeout(SB.timer); SB.timer=setTimeout(()=>{SB.timer=null; sbSyncNow();},300); }
+function sbIdle(){ return new Promise(res=>{ const t=()=>{ if(!SB.timer&&!SB.syncing&&!SB.retry) res(); else setTimeout(t,20); }; t(); }); }
+const sbEnc=encodeURIComponent;
+async function sbPush(d){
+  const admin=role==='admin';
+  const writeBatch=async(items)=>{
+    for(let i=0;i<items.length;i+=100){
+      const part=items.slice(i,i+100);
+      const r=await sbReq('POST',admin?'/rest/v1/documents?on_conflict=collection,id':'/rest/v1/documents',part.map(x=>({collection:x.c,id:x.id,data:x.data})),{Prefer:admin?'resolution=merge-duplicates,return=minimal':'return=minimal'});
+      if(!r.ok) return r;
+      part.forEach(x=>{SB.synced[x.k]=x.j; SB.base[x.k]=x.j;});
+    }
+    return {ok:true};
+  };
+  if(d.adds.length){ const r=await writeBatch(d.adds); if(!r.ok) return r; }
+  if(d.upds.length){
+    if(admin){ const r=await writeBatch(d.upds); if(!r.ok) return r; }
+    else for(const x of d.upds){
+      let payload=x.data;
+      if(x.c==='athletes'){ const b=JSON.parse(SB.base[x.k]); if(!x.data.leave) return {ok:false,status:403,rejected:true}; payload=Object.assign({},b,{leave:x.data.leave}); }
+      const r=await sbReq('PATCH','/rest/v1/documents?collection=eq.'+sbEnc(x.c)+'&id=eq.'+sbEnc(x.id),{data:payload},{Prefer:'return=representation'});
+      if(!r.ok) return r;
+      if(!Array.isArray(r.data)||!r.data.length) return {ok:false,status:403,rejected:true};
+      SB.synced[x.k]=x.j; SB.base[x.k]=JSON.stringify(payload);
+    }
+  }
+  for(const x of d.dels){
+    const r=await sbReq('DELETE','/rest/v1/documents?collection=eq.'+sbEnc(x.c)+'&id=eq.'+sbEnc(x.id),undefined,{Prefer:'return=representation'});
+    if(!r.ok) return r;
+    if(!admin&&(!Array.isArray(r.data)||!r.data.length)) return {ok:false,status:403,rejected:true};
+    delete SB.synced[x.k]; delete SB.base[x.k];
+  }
+  return {ok:true};
+}
+async function sbSyncNow(){
+  if(!SERVER||!SB.profile) return;
+  if(SB.syncing){ SB.again=true; return; }
+  SB.syncing=true;
+  try{
+    do{
+      SB.again=false;
+      const d=sbDiff(); if(!d.adds.length&&!d.upds.length&&!d.dels.length) break;
+      const r=await sbPush(d);
+      if(r.ok){ continue; }
+      if(r.network||r.status===0){ sbStatus('Bağlantı yok — değişiklikler bekliyor','bad'); if(!SB.retry) SB.retry=setTimeout(()=>{SB.retry=null; sbSyncNow();},8000); SB.syncing=false; return; }
+      if(r.status===401){ SB.syncing=false; return; }
+      /* Sunucu reddetti: yerel değişiklikleri at, sunucudaki gerçek veriyi göster */
+      SB.syncing=false;
+      sbStatus('Değişiklik reddedildi','bad');
+      await sbReload(true,'Son işlem sunucu tarafından kabul edilmedi (yetkiniz olmayabilir). Ekran sunucudaki güncel veriyle yenilendi.');
+      return;
+    }while(SB.again);
+    sbStatus('Kaydedildi ✓','good');
+  } finally { SB.syncing=false; }
+}
+async function sbReload(rerender,notice){
+  const r=await sbLoadAll();
+  if(!r.ok){ sbStatus('Veri yenilenemedi','bad'); return false; }
+  if(rerender){ render(); if(notice){ const c=document.getElementById('content'); if(c) c.insertAdjacentHTML('afterbegin',`<div class="note-banner" style="background:var(--red-light);color:var(--red);">${escHtml(notice)}</div>`); } }
+  return true;
+}
+
+/* ---------- Oturum başlatma ---------- */
+async function sbStart(){
+  sbShowLoading();
+  const uid=SB.session&&SB.session.user.id;
+  if(!uid){ sbShowLogin(); return; }
+  const pr=await sbReq('GET','/rest/v1/profiles?select=id,email,role,link_id&id=eq.'+sbEnc(uid));
+  if(!pr.ok){ if(pr.status===401) return; sbShowError('Sunucuya bağlanılamadı. İnternet bağlantınızı kontrol edip tekrar deneyin.'); return; }
+  if(!pr.data||!pr.data.length){ SB.profile=null; sbShowNoProfile(); return; }
+  SB.profile=pr.data[0]; role=SB.profile.role;
+  const r=await sbLoadAll();
+  if(!r.ok){ sbShowError('Veriler yüklenemedi. Lütfen tekrar deneyin.'); return; }
+  if(r.count===0){ if(role==='admin'){ sbShowSetup(); return; } sbShowWaitEmpty(); return; }
+  sbEnter();
+}
+function sbEnter(){
+  sbOverlay(''); document.body.classList.add('srv');
+  const ft=document.getElementById('sbFoot'); if(ft) ft.innerHTML='<span id="sbStatus" class="sb-status">Sunucuya bağlı</span><br>Veriler güvenli sunucuda saklanır';
+  route='dashboard'; render();
+}
+async function sbSetup(kind){
+  if(role!=='admin') return;
+  sbShowLoading('Kuruluyor…');
+  const s=kind==='demo'?seed():null;
+  const db=sbEmptyDB();
+  if(s){ SB_SPECS.forEach(x=>{ if(s[x.c]!==undefined) db[x.c]=s[x.c]; }); db.records.forEach((x,i)=>{x.id=x.id||'r'+(i+1);}); }
+  else db.pools=[{name:'Havuz 1',lanes:4,laneCapacity:1}];
+  db.currentUser={parentId:null,coachId:null,athleteId:null};
+  DB=db; SB.synced={}; SB.base={};
+  await sbSyncNow();
+  await sbIdle();
+  const left=sbDiff(); 
+  if(left.adds.length||left.upds.length){ sbShowError('Kurulum tamamlanamadı. Lütfen tekrar deneyin.'); return; }
+  await sbLoadAll(); sbEnter();
+}
+async function sbSignOut(){
+  if(SB.session){ try{ await sbAuth('logout',{},'POST',true); }catch(e){} }
+  sbStoreSession(null); SB.profile=null; SB.synced={}; SB.base={}; DB=sbEmptyDB();
+  document.body.classList.remove('srv'); const c=document.getElementById('content'); if(c) c.innerHTML='';
+  sbMode='login'; sbShowLogin();
+}
+function sbHandleHash(){
+  const h=String(location.hash||'').replace(/^#/,''); if(!h||h.indexOf('access_token')<0&&h.indexOf('error')<0) return null;
+  const p=new URLSearchParams(h);
+  try{ history.replaceState(null,'',location.pathname+location.search); }catch(e){ try{location.hash='';}catch(_){ } }
+  if(p.get('error_description')) return {error:p.get('error_description').replace(/\+/g,' ')};
+  if(p.get('access_token')&&p.get('refresh_token')){
+    const exp=Number(p.get('expires_at'))||(Math.floor(Date.now()/1000)+(Number(p.get('expires_in'))||3600));
+    let uid='',email=''; try{ const pl=JSON.parse(atob(p.get('access_token').split('.')[1].replace(/-/g,'+').replace(/_/g,'/'))); uid=pl.sub||''; email=pl.email||''; }catch(e){}
+    return {session:{access_token:p.get('access_token'),refresh_token:p.get('refresh_token'),expires_at:exp,user:{id:uid,email}},type:p.get('type')};
+  }
+  return null;
+}
+async function boot(){
+  if(!SERVER){ load(); render(); return; }
+  DB=sbEmptyDB(); document.body.classList.add('srv');
+  const h=sbHandleHash();
+  if(h&&h.session){ sbStoreSession(h.session); if(h.type==='recovery'){ sbShowRecovery(); return; } }
+  else SB.session=sbReadSession();
+  if(h&&h.error){ sbShowLogin('Bağlantı geçersiz veya süresi dolmuş: '+h.error); return; }
+  if(!SB.session){ sbShowLogin(); return; }
+  await sbStart();
+}
+
+/* ---------- Kenar çubuğu: hesap kutusu ---------- */
+function sbPillHtml(){
+  const p=SB.profile; if(!p) return '';
+  let who=''; if(p.role==='coach') who=coachName(p.link_id); else if(p.role==='parent') who=parentName(p.link_id); else if(p.role==='athlete') who=athleteName(p.link_id);
+  return `<div style="min-width:0;"><div style="font-weight:700;color:#fff;">${escHtml(SB_ROLE_TR[p.role]||p.role)}${who&&who!=='—'?' · '+escHtml(who):''}</div><div style="font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escHtml(p.email)}">${escHtml(p.email)}</div></div><div style="display:flex;gap:6px;"><button class="btn sm" style="padding:3px 8px;" title="Verileri yenile" onclick="sbManualRefresh()">↻</button><button class="btn sm" style="padding:3px 8px;" onclick="sbSignOut()">Çıkış</button></div>`;
+}
+async function sbManualRefresh(){ await sbIdle(); if(await sbReload(false)) render(); }
+document.addEventListener('visibilitychange',()=>{
+  if(!SERVER||document.hidden||!SB.profile||SB.timer||SB.syncing) return;
+  if(Date.now()-SB.lastLoad<45000) return;
+  if(document.querySelector('.drawer.open')) return;
+  const a=document.activeElement; if(a&&/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)) return;
+  sbReload(true);
+});
+window.addEventListener('beforeunload',e=>{ if(SERVER&&(SB.timer||SB.syncing)){ e.preventDefault(); e.returnValue=''; } });
+
+/* ---------- Yönetici: kullanıcı hesapları ---------- */
+let acctData={profiles:[],pending:[],loaded:false,msg:'',bad:false};
+function personOptions(r){
+  const list=r==='coach'?DB.coaches.map(x=>[x.id,x.name]):r==='parent'?DB.parents.map(x=>[x.id,x.name]):r==='athlete'?DB.athletes.filter(a=>a.status!=='trial').map(x=>[x.id,x.name]):[];
+  return list.map(o=>`<option value="${escHtml(o[0])}">${escHtml(o[1])}</option>`).join('');
+}
+function personLabel(r,id){return r==='coach'?coachName(id):r==='parent'?parentName(id):r==='athlete'?athleteName(id):'—';}
+async function acctLoad(){
+  const a=await sbReq('GET','/rest/v1/profiles?select=id,email,role,link_id,created_at&order=created_at.asc');
+  const b=await sbReq('GET','/rest/v1/pending_profiles?select=email,role,link_id,created_at&order=created_at.asc');
+  if(a.ok&&b.ok){ acctData.profiles=a.data||[]; acctData.pending=b.data||[]; acctData.loaded=true; }
+  else { acctData.msg='Hesap listesi yüklenemedi.'; acctData.bad=true; }
+  acctDraw();
+}
+function acctHtml(){
+  if(role!=='admin') return '';
+  const rows=acctData.profiles.map(p=>`<tr><td>${escHtml(p.email)}</td><td>${escHtml(SB_ROLE_TR[p.role]||p.role)}</td><td>${p.role==='admin'?'—':escHtml(personLabel(p.role,p.link_id))}</td><td>${p.id===(SB.session&&SB.session.user.id)?'<span class="badge aqua">Siz</span>':`<button class="btn sm danger" onclick="acctRemoveProfile('${escHtml(p.id)}')">Erişimi kaldır</button>`}</td></tr>`).join('');
+  const prow=acctData.pending.map(p=>`<tr><td>${escHtml(p.email)}</td><td>${escHtml(SB_ROLE_TR[p.role]||p.role)}</td><td>${p.role==='admin'?'—':escHtml(personLabel(p.role,p.link_id))}</td><td><span class="badge amber">Bekliyor</span> <button class="btn sm" onclick="acctRemovePending('${escHtml(p.email)}')">İptal</button></td></tr>`).join('');
+  return `<div class="card" style="margin-bottom:16px;" id="acctCard"><div class="section-title" style="margin-top:0;">Kullanıcı Hesapları</div>
+   <p style="font-size:13px;color:var(--muted);margin:0 0 10px;">Sisteme yalnızca burada tanımladığınız e-posta adresleri girebilir. Kişi, ilk girişte “Hesap oluşturun” bağlantısıyla kendi şifresini belirler ve e-postasını doğrular.</p>
+   ${acctData.msg?`<div class="${acctData.bad?'grp-result bad':'grp-result good'}">${escHtml(acctData.msg)}</div>`:''}
+   <div style="overflow-x:auto;"><table><thead><tr><th>E-posta</th><th>Rol</th><th>Bağlı kişi</th><th></th></tr></thead><tbody>${rows}${prow}${(!rows&&!prow)?'<tr><td colspan="4"><div class="empty">'+(acctData.loaded?'Hesap yok':'Yükleniyor…')+'</div></td></tr>':''}</tbody></table></div>
+   <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin-top:14px;align-items:end;">
+    <div class="field" style="margin:0;"><label for="ac_email">E-posta</label><input id="ac_email" type="email" autocomplete="off"></div>
+    <div class="field" style="margin:0;"><label for="ac_role">Rol</label><select id="ac_role" onchange="acctRoleChanged()"><option value="coach">Antrenör</option><option value="parent">Veli</option><option value="athlete">Sporcu (yetişkin)</option><option value="admin">Yönetici</option></select></div>
+    <div class="field" style="margin:0;" id="ac_pwrap"><label for="ac_person">Bağlı kişi</label><select id="ac_person">${personOptions('coach')}</select></div>
+    <button class="btn primary" onclick="acctAdd()">Hesap tanımla</button></div></div>`;
+}
+function acctDraw(){ const el=document.getElementById('acctCard'); if(el) el.outerHTML=acctHtml(); }
+function acctRoleChanged(){
+  const r=document.getElementById('ac_role').value, w=document.getElementById('ac_pwrap');
+  w.style.display=r==='admin'?'none':''; document.getElementById('ac_person').innerHTML=personOptions(r);
+}
+async function acctAdd(){
+  if(role!=='admin') return;
+  const email=String(document.getElementById('ac_email').value||'').trim().toLowerCase();
+  const r=document.getElementById('ac_role').value; const link=r==='admin'?null:(document.getElementById('ac_person').value||'');
+  const fail=t=>{acctData.msg=t; acctData.bad=true; acctDraw();};
+  if(!sbEmailOk(email)) return fail('Geçerli bir e-posta adresi yazın.');
+  if(['admin','coach','parent','athlete'].indexOf(r)<0) return fail('Rol seçin.');
+  if(r!=='admin'){ if(!link||personLabel(r,link)==='—') return fail('Bağlı kişiyi seçin.'); }
+  if(acctData.profiles.some(p=>String(p.email).toLowerCase()===email)||acctData.pending.some(p=>p.email===email)) return fail('Bu e-posta zaten tanımlı.');
+  const res=await sbReq('POST','/rest/v1/pending_profiles',{email,role:r,link_id:link},{Prefer:'return=minimal'});
+  if(!res.ok) return fail(res.status===409?'Bu e-posta zaten tanımlı.':'Hesap tanımlanamadı.');
+  acctData.msg='Tanımlandı. Kişi “Hesap oluşturun” bağlantısıyla şifresini belirleyip e-postasını doğruladığında giriş yapabilir.'; acctData.bad=false;
+  await acctLoad();
+}
+async function acctRemovePending(email){
+  if(role!=='admin') return;
+  const res=await sbReq('DELETE','/rest/v1/pending_profiles?email=eq.'+sbEnc(email),undefined,{Prefer:'return=minimal'});
+  acctData.msg=res.ok?'Tanım iptal edildi.':'İşlem yapılamadı.'; acctData.bad=!res.ok; await acctLoad();
+}
+async function acctRemoveProfile(id){
+  if(role!=='admin'||id===(SB.session&&SB.session.user.id)) return;
+  if(!confirm('Bu kullanıcının sisteme erişimi kaldırılsın mı?')) return;
+  const res=await sbReq('DELETE','/rest/v1/profiles?id=eq.'+sbEnc(id),undefined,{Prefer:'return=minimal'});
+  acctData.msg=res.ok?'Erişim kaldırıldı. Kişi artık giriş yapsa bile veri göremez.':'İşlem yapılamadı.'; acctData.bad=!res.ok; await acctLoad();
+}
+
 /* ============ INIT ============ */
-load();
-render();
+boot();
 </script>
 </body>
 </html>
