@@ -1171,7 +1171,9 @@ function showGroupMembers(gid){
 const DAYTOKEN={Paz:0,Pzt:1,Sal:2,'Salı':2,'Çar':3,'Perş':4,Cum:5,Cmt:6};
 const DAYNAMES=['Pazartesi','Salı','Çarşamba','Perşembe','Cuma','Cumartesi','Pazar'];
 const PL_FIRST=9, PL_LAST=20; // özel ders başlangıç saatleri: 09:00 - 20:00 (60 dk)
-let schedWeek=0;
+let schedWeek=0; let schedFilt={coach:'',pool:''};
+function schedSetFilt(k,v){ if(role!=='admin') return; schedFilt[k]=String(v||''); renderSchedule($('#content')); }
+function schedClearFilt(){ schedFilt={coach:'',pool:''}; renderSchedule($('#content')); }
 const plSel={coach:null,athlete:null,slots:[],note:''};
 let plMsg='';
 
@@ -1355,8 +1357,11 @@ function renderSchedule(c){
   const dates=Array.from({length:7},(_,i)=>{const d=new Date(ws);d.setDate(ws.getDate()+i);return d;});
   const hours=Array.from({length:13},(_,i)=>9+i); // 09:00-21:00
   const fam=(role==='parent'||role==='athlete');
-  const list=visibleGroups();
-  const priv=visiblePrivateLessons().filter(p=>p.status==='Onaylandı');
+  const isAdm=role==='admin';
+  if(isAdm){ if(schedFilt.coach&&!DB.coaches.some(x=>x.id===schedFilt.coach)) schedFilt.coach=''; if(schedFilt.pool&&!DB.pools.some(x=>x.name===schedFilt.pool)) schedFilt.pool=''; }
+  const fc=isAdm?schedFilt.coach:'', fp=isAdm?schedFilt.pool:'';
+  const list=visibleGroups().filter(g=>(!fc||g.coach===fc||g.assistant===fc)&&(!fp||g.pool===fp));
+  const priv=visiblePrivateLessons().filter(p=>p.status==='Onaylandı'&&(!fc||p.coach===fc)&&(!fp||lessonPool(p)===fp));
   const todayStr=ymd(new Date());
   const d2=d=>String(d.getDate()).padStart(2,'0')+'.'+String(d.getMonth()+1).padStart(2,'0');
   const lab=p=>role==='coach'?escHtml(athleteName(p.athlete))
@@ -1377,6 +1382,11 @@ function renderSchedule(c){
   const msg=plMsg; plMsg='';
   c.innerHTML=`${msg?`<div class="note-banner">${escHtml(msg)}</div>`:''}
   <div class="weeknav"><button class="btn sm" onclick="schedShift(-1)" aria-label="Önceki hafta">←</button><b>${d2(dates[0])} – ${d2(dates[6])} ${dates[6].getFullYear()}</b><button class="btn sm" onclick="schedShift(1)" aria-label="Sonraki hafta">→</button>${schedWeek!==0?'<button class="btn sm ghost" onclick="schedToday()">Bu hafta</button>':''}</div>
+  ${isAdm?`<div class="card" style="padding:12px 14px;margin:10px 0;display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end;">
+    <div class="field" style="margin:0;min-width:180px;"><label for="sf_coach">Antrenör</label><select id="sf_coach" onchange="schedSetFilt('coach',this.value)"><option value="">Tüm antrenörler</option>${DB.coaches.map(x=>`<option value="${escHtml(x.id)}"${fc===x.id?' selected':''}>${escHtml(x.name)}</option>`).join('')}</select></div>
+    <div class="field" style="margin:0;min-width:180px;"><label for="sf_pool">Havuz</label><select id="sf_pool" onchange="schedSetFilt('pool',this.value)"><option value="">Tüm havuzlar</option>${DB.pools.map(x=>`<option value="${escHtml(x.name)}"${fp===x.name?' selected':''}>${escHtml(x.name)}</option>`).join('')}</select></div>
+    ${(fc||fp)?'<button class="btn sm ghost" onclick="schedClearFilt()">Filtreyi temizle</button>':''}
+    <div style="font-size:12px;color:var(--muted);">${(fc||fp)?'Filtre açık: takvimde yalnızca seçilen antrenör/havuz dersleri görünür.':'Tüm dersler gösteriliyor.'}</div></div>`:''}
   <div style="overflow-x:auto;">${html}</div>
   ${fam?plFamHtml(dates):plStaffHtml()}
   <div class="note-banner" style="margin-top:18px;">${fam?'Bu takvimde yalnızca bağlı olduğunuz grupların gün, saat ve havuz bilgileri ile onaylanmış özel dersleriniz gösterilir.':'Gerçek sistemde grup dersleri sürükle-bırak ile taşınabilir; değişiklik olduğunda veli/sporcu/antrenöre otomatik bildirim gider. Bu prototipte grup programı salt-okunurdur. Özel dersler yalnızca öğretmen onayından sonra takvimde görünür ve o saate başka ders girilemez.'}</div>`;
