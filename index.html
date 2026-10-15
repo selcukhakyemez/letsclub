@@ -176,6 +176,10 @@ tr.rowlink:hover{background:var(--aqua-light);}
 .chart-wrap{overflow-x:auto;}
 .evt.private{background:var(--coral-light);border-left-color:var(--coral);color:var(--ink);}
 .cal .hcell.today{background:var(--aqua);color:#04211F;}
+.ps-head{font-size:18px;margin-bottom:12px;border-bottom:2px solid #000;padding-bottom:6px;}.ps-foot{margin-top:14px;font-size:11px;color:#555;}.ps-h{margin:14px 0 4px;font-size:14px;}
+.ps-t{width:100%;border-collapse:collapse;font-size:13px;margin-bottom:6px;}.ps-t th,.ps-t td{border:1px solid #444;padding:5px 8px;text-align:left;}.ps-t th{background:#eee;}
+#printSheet{display:none;}
+@media print{body.printing>*:not(#printSheet){display:none !important;}body.printing #printSheet{display:block !important;color:#000;background:#fff;padding:0;}body.printing{background:#fff !important;}}
 .tp-row select,.tp-row input{padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--card);font:inherit;font-size:13px;width:100%;box-sizing:border-box;}
 @media(max-width:640px){.tp-row{grid-template-columns:1fr 90px 36px !important;}.tp-row select{grid-column:1/-1;}}
 .dv{border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;background:var(--card);}
@@ -405,7 +409,7 @@ function seed(){
 function load(){
   try{
     const raw=localStorage.getItem(LS_KEY);
-    if(raw){ DB=JSON.parse(raw); DB.photos=DB.photos||{}; DB.trainings=DB.trainings||[]; DB.poolPrices=DB.poolPrices||{}; DB.reasonNotes=DB.reasonNotes||{}; DB.changeRequests=DB.changeRequests||[]; }
+    if(raw){ DB=JSON.parse(raw); DB.photos=DB.photos||{}; DB.trainings=DB.trainings||[]; DB.makeups=DB.makeups||[]; DB.levelCriteria=DB.levelCriteria||{}; DB.levelChecks=DB.levelChecks||{}; DB.poolPrices=DB.poolPrices||{}; DB.reasonNotes=DB.reasonNotes||{}; DB.changeRequests=DB.changeRequests||[]; }
     else { DB=seed(); save(); }
   }catch(e){ DB=seed(); }
 }
@@ -524,12 +528,16 @@ const NAV={
     {id:'schedule',label:'Ders Programı',ic:'📅'},
     {id:'attendance',label:'Yoklama',ic:'✅'},
     {id:'trainplan',label:'Antrenman Programı',ic:'📝'},
+    {id:'makeups',label:'Telafi Dersleri',ic:'🔁'},
+    {id:'times',label:'Süre & Rekor',ic:'⏱️'},
+    {id:'levels',label:'Seviye Geçişi',ic:'🎖️'},
     {id:'development',label:'Gelişim',ic:'📈'},
     {id:'competitions',label:'Yarışma & Derece',ic:'🏅'},
     {sect:'Operasyon'},
     {id:'rentals',label:'Havuz Kiralama',ic:'🏟️'},
     {id:'crm',label:'CRM / Adaylar',ic:'🎯'},
     {id:'coaches',label:'Antrenörler',ic:'🧑\u200d🏫'},
+    {id:'weekly',label:'Haftalık Özet',ic:'🗓️'},
     {id:'approvals',label:'Onaylar',ic:'🔔'},
     {id:'insights',label:'Analiz',ic:'🧭'},
     {id:'payments',label:'Ödemeler',ic:'💳'},
@@ -548,6 +556,10 @@ const NAV={
     {id:'schedule',label:'Ders Programı',ic:'📅'},
     {id:'attendance',label:'Yoklama',ic:'✅'},
     {id:'trainplan',label:'Antrenman Programı',ic:'📝'},
+    {id:'makeups',label:'Telafi Dersleri',ic:'🔁'},
+    {id:'times',label:'Süre & Rekor',ic:'⏱️'},
+    {id:'levels',label:'Seviye Geçişi',ic:'🎖️'},
+    {id:'weekly',label:'Haftalık Özet',ic:'🗓️'},
     {id:'athletes',label:'Sporcularım',ic:'🏊'},
     {id:'approvals',label:'Taleplerim',ic:'📨'},
     {id:'development',label:'Gelişim',ic:'📈'},
@@ -560,6 +572,9 @@ const NAV={
     {id:'ai',label:'Gelişim Özeti (AI)',ic:'✨'},
     {id:'schedule',label:'Ders Programı',ic:'📅'},
     {id:'trainplan',label:'Antrenman Programı',ic:'📝'},
+    {id:'makeups',label:'Telafi Dersleri',ic:'🔁'},
+    {id:'times',label:'Süre & Rekor',ic:'⏱️'},
+    {id:'levels',label:'Seviye Geçişi',ic:'🎖️'},
     {id:'payments',label:'Ödemelerim',ic:'💳'},
     {id:'announcements',label:'Duyurular',ic:'📣'},
     {id:'tickets',label:'Taleplerim',ic:'🗒️'},
@@ -572,13 +587,16 @@ NAV.athlete=[
   {id:'dashboard',label:'Benim Sayfam',ic:'🏠'},
   {id:'schedule',label:'Ders Programım',ic:'📅'},
   {id:'trainplan',label:'Antrenman Programı',ic:'📝'},
+  {id:'makeups',label:'Telafi Dersleri',ic:'🔁'},
+  {id:'times',label:'Süre & Rekor',ic:'⏱️'},
+  {id:'levels',label:'Seviye Geçişi',ic:'🎖️'},
   {id:'development',label:'Gelişimim',ic:'📈'},
   {id:'competitions',label:'Derecelerim',ic:'🏅'},
   {id:'announcements',label:'Duyurular',ic:'📣'},
   {sect:'Sistem'},
   {id:'settings',label:'Ayarlar',ic:'⚙️'},
 ];
-const TITLES={ai:'AI Asistan',dashboard:'Dashboard',athletes:'Sporcular',parents:'Veliler',groups:'Gruplar',schedule:'Ders Programı',trainplan:'Antrenman Programı',
+const TITLES={ai:'AI Asistan',dashboard:'Dashboard',athletes:'Sporcular',parents:'Veliler',groups:'Gruplar',schedule:'Ders Programı',trainplan:'Antrenman Programı',weekly:'Antrenör Haftalık Özet',makeups:'Telafi Dersleri',times:'Süre & Rekor',levels:'Seviye Geçişi',
   attendance:'Yoklama',development:'Gelişim Takibi',competitions:'Yarışma & Derece Takibi',crm:'CRM / Aday Sporcular',
   approvals:'Onaylar ve Talepler',rentals:'Havuz Kiralama',finance:'Finans ve Aylık Rapor',insights:'Analiz: Deneme ve Ayrılışlar',coaches:'Antrenörler',payments:'Ödemeler',announcements:'Duyurular',tickets:'Talep Yönetimi',reports:'Raporlar',settings:'Ayarlar'};
 
@@ -608,7 +626,7 @@ function render(){
   $('#pageTitle').textContent = route==='dashboard' ? ({parent:'Çocuğum',athlete:'Benim Sayfam',coach:'Antrenör Paneli'}[role]||'Dashboard') : (TITLES[route]||'Dashboard');
   const c=$('#content');
   const fns={dashboard:renderDashboard,athletes:renderAthletes,parents:renderParents,groups:renderGroups,
-    schedule:renderSchedule,trainplan:renderTrainPlan,attendance:renderAttendance,development:renderDevelopment,competitions:renderCompetitions,
+    schedule:renderSchedule,trainplan:renderTrainPlan,weekly:renderWeekly,makeups:renderMakeups,times:renderTimes,levels:renderLevels,attendance:renderAttendance,development:renderDevelopment,competitions:renderCompetitions,
     crm:renderCRM,coaches:renderCoaches,payments:renderPayments,announcements:renderAnnouncements,tickets:renderTickets,
     reports:renderReports,settings:renderSettings,ai:renderAI,approvals:renderApprovals,insights:renderInsights,rentals:renderRentals,finance:renderFinance};
   c.innerHTML='';
@@ -1420,7 +1438,7 @@ function renderSchedule(c){
     const total=list.filter(g=>groupOnDay(g,ds)).length+priv.filter(p=>p.date===ds).length;
     navHtml=`<button class="btn sm" onclick="schedDayShift(-1)" aria-label="Önceki gün">←</button><b>${DAYNAMES[dIdx]} ${d2(dayDate)}.${dayDate.getFullYear()}</b><button class="btn sm" onclick="schedDayShift(1)" aria-label="Sonraki gün">→</button>${schedDayOff!==0?'<button class="btn sm ghost" onclick="schedDayToday()">Bugün</button>':''}<input type="date" id="sd_pick" value="${ds}" onchange="schedDayPick(this.value)" aria-label="Tarih seç" style="padding:5px 8px;border:1px solid var(--line);border-radius:8px;"><span style="font-size:12px;color:var(--muted);">${total} ders</span>`;
   }
-  navHtml+=`<span class="vtog" style="margin-left:auto;"><button class="${dayMode?'':'on'}" onclick="schedSetView('week')">Hafta</button><button class="${dayMode?'on':''}" onclick="schedSetView('day')">Gün</button></span>`;
+  navHtml+=`<span style="margin-left:auto;display:inline-flex;gap:8px;align-items:center;"><button class="btn sm" onclick="schedPrint()">Yazdır / PDF</button><span class="vtog"><button class="${dayMode?'':'on'}" onclick="schedSetView('week')">Hafta</button><button class="${dayMode?'on':''}" onclick="schedSetView('day')">Gün</button></span></span>`;
   const msg=plMsg; plMsg='';
   c.innerHTML=`${msg?`<div class="note-banner">${escHtml(msg)}</div>`:''}
   <div class="weeknav">${navHtml}</div>
@@ -1547,6 +1565,7 @@ function renderTrainPlan(c){
     <div class="field"><label for="tp_note">Not (isteğe bağlı)</label><textarea id="tp_note" maxlength="300" rows="2">${escHtml(d.note)}</textarea></div>
     <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;">
       <button class="btn primary" onclick="tpSave()">Kaydet</button>
+      ${d.exists?'<button class="btn" onclick="tpPrint()">Yazdır / PDF</button>':''}
       ${d.exists?`<button class="btn" onclick="tpDelete()" style="${tpSel.confirmDel?'background:var(--red);color:#fff;':''}">${tpSel.confirmDel?'Silmek için tekrar basın':'Sil'}</button>
       <div class="field" style="margin:0 0 0 auto;"><label for="tp_copy_to">Başka güne kopyala</label><div style="display:flex;gap:6px;"><input type="date" id="tp_copy_to"><button class="btn" onclick="tpCopy()">Kopyala</button></div></div>`:''}
     </div></div>`;
@@ -3493,12 +3512,12 @@ const SB_SPECS=[
  {c:'coaches',t:'arr'},{c:'groups',t:'arr'},{c:'parents',t:'arr'},{c:'athletes',t:'arr'},{c:'payments',t:'arr'},{c:'leads',t:'arr'},
  {c:'records',t:'arr'},{c:'competitions',t:'arr'},{c:'announcements',t:'arr'},{c:'tickets',t:'arr'},{c:'trainings',t:'arr'},
  {c:'aiQueue',t:'arr'},{c:'privateLessons',t:'arr'},{c:'plPackages',t:'arr'},{c:'expenses',t:'arr'},{c:'extraSessions',t:'arr'},
- {c:'rentals',t:'arr'},{c:'changeRequests',t:'arr'},{c:'pools',t:'arr',key:'name'},
- {c:'attendanceLog',t:'map'},{c:'photos',t:'map',wrap:'url'},{c:'reasonNotes',t:'map',wrap:'text'},{c:'poolPrices',t:'map'},{c:'coachRates',t:'map'}];
+ {c:'rentals',t:'arr'},{c:'changeRequests',t:'arr'},{c:'makeups',t:'arr'},{c:'pools',t:'arr',key:'name'},
+ {c:'attendanceLog',t:'map'},{c:'photos',t:'map',wrap:'url'},{c:'reasonNotes',t:'map',wrap:'text'},{c:'poolPrices',t:'map'},{c:'coachRates',t:'map'},{c:'levelCriteria',t:'map'},{c:'levelChecks',t:'map'}];
 /* Yönetici dışı rollerin yazabildiği koleksiyonlar (asıl denetim veritabanındadır; bu liste yalnızca gereksiz istekleri önler) */
-const SB_WRITE={admin:null,coach:['attendanceLog','changeRequests','aiQueue','privateLessons','athletes','photos','trainings'],parent:['privateLessons','tickets','photos'],athlete:['privateLessons','photos']};
+const SB_WRITE={admin:null,coach:['attendanceLog','changeRequests','aiQueue','privateLessons','athletes','photos','trainings','makeups','records','levelChecks'],parent:['privateLessons','tickets','photos'],athlete:['privateLessons','photos']};
 function sbWritable(c){const w=SB_WRITE[role]; return !w||w.indexOf(c)>-1;}
-function sbEmptyDB(){return {coaches:[],groups:[],parents:[],athletes:[],payments:[],leads:[],records:[],competitions:[],announcements:[],tickets:[],attendanceLog:{},trainings:[],aiQueue:[],privateLessons:[],plPackages:[],expenses:[],extraSessions:[],rentals:[],changeRequests:[],pools:[],poolPrices:{},coachRates:{},photos:{},reasonNotes:{},currentUser:{parentId:null,coachId:null,athleteId:null}};}
+function sbEmptyDB(){return {coaches:[],groups:[],parents:[],athletes:[],payments:[],leads:[],records:[],competitions:[],announcements:[],tickets:[],attendanceLog:{},trainings:[],makeups:[],levelCriteria:{},levelChecks:{},aiQueue:[],privateLessons:[],plPackages:[],expenses:[],extraSessions:[],rentals:[],changeRequests:[],pools:[],poolPrices:{},coachRates:{},photos:{},reasonNotes:{},currentUser:{parentId:null,coachId:null,athleteId:null}};}
 
 /* ---------- Oturum ve istekler ---------- */
 function sbStoreSession(s){SB.session=s; try{ if(s) localStorage.setItem(SB_STORE,JSON.stringify(s)); else localStorage.removeItem(SB_STORE);}catch(e){}}
@@ -3900,6 +3919,463 @@ async function acctRemoveProfile(id){
   const res=await sbReq('DELETE','/rest/v1/profiles?id=eq.'+sbEnc(id),undefined,{Prefer:'return=minimal'});
   acctData.msg=res.ok?'Erişim kaldırıldı. Kişi artık giriş yapsa bile veri göremez.':'İşlem yapılamadı.'; acctData.bad=!res.ok; await acctLoad();
 }
+
+/* ============ YENİ ÖZELLİKLER (A): yedek, yazdır, haftalık özet, devamsızlık uyarısı, ödeme hatırlatma ============ */
+function fcCopy(text,btn){
+  const done=()=>{ if(btn){ const o=btn.dataset.o||btn.textContent; btn.dataset.o=o; btn.textContent='Kopyalandı ✓'; setTimeout(()=>{btn.textContent=o;},1500); } };
+  try{ if(navigator.clipboard&&navigator.clipboard.writeText){ navigator.clipboard.writeText(text).then(done,()=>fcCopyOld(text,done)); return; } }catch(e){}
+  fcCopyOld(text,done);
+}
+function fcCopyOld(text,done){ try{ const t=document.createElement('textarea'); t.value=text; t.style.position='fixed'; t.style.opacity='0'; document.body.appendChild(t); t.select(); document.execCommand('copy'); t.remove(); done(); }catch(e){} }
+function fcPhoneWa(p){ let d=String(p||'').replace(/\D/g,''); if(d.length===11&&d[0]==='0') d='9'+d; else if(d.length===10) d='90'+d; return /^90\d{10}$/.test(d)?d:''; }
+function fcWaLink(phone,text){ const n=fcPhoneWa(phone); return n?'https://wa.me/'+n+'?text='+encodeURIComponent(text):''; }
+function fcDownload(name,mime,text){ const b=new Blob([text],{type:mime}); const u=URL.createObjectURL(b); const a=document.createElement('a'); a.href=u; a.download=name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(u),2000); }
+
+/* ---------- 1) YEDEK ---------- */
+const BK_REQUIRED=['coaches','groups','parents','athletes','payments'];
+function backupBuild(){
+  const d={}; Object.keys(DB).forEach(k=>{ if(k!=='currentUser') d[k]=DB[k]; });
+  return JSON.stringify({_app:'letsclub',_v:1,_at:new Date().toISOString(),data:d});
+}
+function backupDownload(){
+  if(role!=='admin') return;
+  fcDownload('letsclub-yedek-'+ymd(new Date())+'.json','application/json',backupBuild());
+  bkMsg='Yedek indirildi. Dosyayı güvenli bir yerde saklayın: içinde sporcu ve veli bilgileri var.'; bkRender();
+}
+let bkMsg='', bkPending=null;
+function backupParse(text){
+  if(typeof text!=='string'||text.length>25*1024*1024) return {ok:false,error:'Dosya çok büyük veya okunamadı.'};
+  let o; try{ o=JSON.parse(text); }catch(e){ return {ok:false,error:'Bu dosya geçerli bir yedek dosyası değil.'}; }
+  if(!o||o._app!=='letsclub'||o._v!==1||!o.data||typeof o.data!=='object'||Array.isArray(o.data)) return {ok:false,error:'Bu dosya Let\'s Club yedeği değil.'};
+  const base=sbEmptyDB();
+  for(const k of BK_REQUIRED) if(!Array.isArray(o.data[k])) return {ok:false,error:'Yedekte "'+k+'" bölümü eksik veya bozuk.'};
+  const out={};
+  for(const k of Object.keys(o.data)){
+    if(k==='currentUser') continue;
+    if(!(k in base)) continue;
+    const want=Array.isArray(base[k])?'array':'object';
+    const v=o.data[k];
+    if(want==='array'&&!Array.isArray(v)) return {ok:false,error:'Yedekte "'+k+'" bölümü bozuk.'};
+    if(want==='object'&&(v===null||typeof v!=='object'||Array.isArray(v))) return {ok:false,error:'Yedekte "'+k+'" bölümü bozuk.'};
+    out[k]=v;
+  }
+  const sum={sporcu:out.athletes.length,veli:out.parents.length,grup:out.groups.length,antrenör:out.coaches.length,ödeme:out.payments.length};
+  return {ok:true,data:out,at:o._at||'',summary:sum};
+}
+function backupPick(inp){
+  if(role!=='admin') return;
+  const f=inp&&inp.files&&inp.files[0]; if(!f) return;
+  const rd=new FileReader(); rd.onload=()=>{ const r=backupParse(String(rd.result||'')); if(!r.ok){ bkPending=null; bkMsg=r.error; } else { bkPending=r; bkMsg=''; } bkRender(); };
+  rd.onerror=()=>{ bkMsg='Dosya okunamadı.'; bkRender(); }; rd.readAsText(f);
+}
+function backupRestore(){
+  if(role!=='admin'||!bkPending) return;
+  fcDownload('letsclub-geri-yukleme-oncesi-'+ymd(new Date())+'.json','application/json',backupBuild());
+  const keep=DB.currentUser; const base=sbEmptyDB();
+  DB=Object.assign(base,bkPending.data); DB.currentUser=keep||{parentId:null,coachId:null,athleteId:null};
+  bkPending=null; bkMsg='Yedek geri yüklendi. Önceki verinin kopyası da bilgisayarınıza indirildi.';
+  save(); render();
+}
+function backupCancel(){ bkPending=null; bkMsg=''; bkRender(); }
+function bkHtml(){
+  const p=bkPending;
+  return `<div class="card" id="bkCard" style="margin-top:16px;"><div class="section-title" style="margin-top:0;">Yedekleme</div>
+  <p style="font-size:13px;color:var(--muted);margin:0 0 10px;">Tüm sistem verisini tek dosya olarak indirin. Düzenli yedek almanız önerilir (ör. haftada bir). Dosyada kişisel veri bulunur, güvenli saklayın.</p>
+  ${bkMsg?`<div class="note-banner" role="status">${escHtml(bkMsg)}</div>`:''}
+  <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+    <button class="btn primary" onclick="backupDownload()">Yedeği indir</button>
+    <label class="btn" style="cursor:pointer;">Yedekten geri yükle<input type="file" accept=".json,application/json" style="display:none" onchange="backupPick(this)"></label></div>
+  ${p?`<div class="grp-result bad" style="margin-top:12px;"><b>Geri yüklensin mi?</b><div style="margin:6px 0;font-size:13px;">Mevcut tüm veri yedekteki verilerle <b>değiştirilecek</b>. Yedek: ${p.summary.sporcu} sporcu, ${p.summary.veli} veli, ${p.summary.grup} grup, ${p.summary.antrenör} antrenör, ${p.summary.ödeme} ödeme.${p.at?' ('+escHtml(String(p.at).slice(0,10))+')':''} Geri yüklemeden önce mevcut verinin yedeği otomatik indirilir.</div>
+    <button class="btn danger" onclick="backupRestore()">Evet, geri yükle</button> <button class="btn" onclick="backupCancel()">Vazgeç</button></div>`:''}</div>`;
+}
+function bkRender(){ const e=$('#bkCard'); if(e) e.outerHTML=bkHtml(); }
+
+/* ---------- 2) YAZDIR / PDF ---------- */
+function printSheet(title,body){
+  const old=document.getElementById('printSheet'); if(old) old.remove();
+  const d=document.createElement('div'); d.id='printSheet';
+  d.innerHTML=`<div class="ps-head"><b>Let's Club</b> · ${escHtml(title)}</div>${body}<div class="ps-foot">${escHtml(new Date().toLocaleDateString('tr-TR'))} tarihinde oluşturuldu</div>`;
+  document.body.appendChild(d); document.body.classList.add('printing');
+  const clean=()=>{ document.body.classList.remove('printing'); const x=document.getElementById('printSheet'); if(x) x.remove(); window.removeEventListener('afterprint',clean); };
+  window.addEventListener('afterprint',clean);
+  setTimeout(()=>{ try{ window.print(); }catch(e){ clean(); } },60);
+  return d;
+}
+function psTable(head,rows){ return `<table class="ps-t"><thead><tr>${head.map(h=>`<th>${escHtml(h)}</th>`).join('')}</tr></thead><tbody>${rows.length?rows.map(r=>`<tr>${r.map(c=>`<td>${c}</td>`).join('')}</tr>`).join(''):`<tr><td colspan="${head.length}">Kayıt yok</td></tr>`}</tbody></table>`; }
+function schedDayRows(ds){
+  const isAdm=role==='admin'; const fc=isAdm?schedFilt.coach:'', fp=isAdm?schedFilt.pool:'';
+  const gs=visibleGroups().filter(g=>(!fc||g.coach===fc||g.assistant===fc)&&(!fp||g.pool===fp)&&groupOnDay(g,ds));
+  const pl=visiblePrivateLessons().filter(p=>p.status==='Onaylandı'&&p.date===ds&&(!fc||p.coach===fc)&&(!fp||lessonPool(p)===fp));
+  const fam=(role==='parent'||role==='athlete');
+  const rows=[];
+  gs.forEach(g=>rows.push({s:groupMinutes(g)[0],r:[escHtml(g.time),escHtml(g.name),escHtml(g.pool+(g.lane&&g.lane!=='-'?' / '+g.lane+'. kulvar':'')),fam?'':escHtml(coachName(g.coach))]}));
+  pl.forEach(p=>rows.push({s:p.hour*60,r:[p.hour+':00-'+(p.hour+1)+':00','Özel ders · '+escHtml(athleteName(p.athlete)),escHtml(lessonPool(p)),escHtml(coachName(p.coach))]}));
+  return rows.sort((a,b)=>a.s-b.s).map(x=>x.r);
+}
+function schedPrintHtml(){
+  const fam=(role==='parent'||role==='athlete'); const head=['Saat','Ders','Havuz / Kulvar',fam?'':'Antrenör'].filter((h,i)=>!(fam&&i===3));
+  const fix=rows=>rows.map(r=>fam?r.slice(0,3):r);
+  if(schedView==='day'){
+    const t=new Date(); const D=new Date(t.getFullYear(),t.getMonth(),t.getDate()+schedDayOff); const ds=ymd(D);
+    return {title:'Günlük Ders Programı — '+DAYNAMES[(D.getDay()+6)%7]+' '+fmtDate(ds),body:psTable(head,fix(schedDayRows(ds)))};
+  }
+  const ws=weekStart(schedWeek); let body='';
+  for(let i=0;i<7;i++){ const d=new Date(ws); d.setDate(ws.getDate()+i); const ds=ymd(d); const rows=schedDayRows(ds); if(!rows.length) continue; body+=`<h3 class="ps-h">${DAYNAMES[i]} ${escHtml(fmtDate(ds))}</h3>`+psTable(head,fix(rows)); }
+  const e=new Date(ws); e.setDate(ws.getDate()+6);
+  return {title:'Haftalık Ders Programı — '+fmtDate(ymd(ws))+' / '+fmtDate(ymd(e)),body:body||'<p>Bu hafta ders yok.</p>'};
+}
+function schedPrint(){ const h=schedPrintHtml(); printSheet(h.title,h.body); }
+function attPrintHtml(gid,date){
+  const g=DB.groups.find(x=>x.id===gid); if(!g||!canViewGroup(gid)) return null;
+  const mem=DB.athletes.filter(a=>a.group===gid&&a.status==='active').sort((a,b)=>String(a.name).localeCompare(String(b.name),'tr'));
+  return {title:'Yoklama Listesi — '+g.name+' — '+fmtDate(date),body:`<p>${escHtml(g.day)} ${escHtml(g.time)} · ${escHtml(g.pool)} · Antrenör: ${escHtml(coachName(g.coach))}</p>`+psTable(['No','Sporcu','Geldi','Gelmedi','İzinli','Not'],mem.map((a,i)=>[String(i+1),escHtml(a.name),'☐','☐','☐','']))};
+}
+function attPrint(){ const gid=($('#attGroup')||{}).value, date=($('#attDate')||{}).value; const h=attPrintHtml(gid,date); if(h) printSheet(h.title,h.body); }
+function tpPrintHtml(gid,date){
+  if(!canViewGroup(gid)) return null; const t=tpFind(gid,date); if(!t) return null;
+  const sets=Array.isArray(t.sets)&&t.sets.length?t.sets:[{part:'Not',text:t.note||'',meters:t.meters}];
+  return {title:'Antrenman Programı — '+groupName(gid)+' — '+fmtDate(date),body:`<p>Odak: <b>${escHtml(t.focus||'')}</b> · Toplam: <b>${Number(t.meters||0).toLocaleString('tr-TR')} m</b></p>`+psTable(['Bölüm','Açıklama','Metre'],sets.map(s=>[escHtml(s.part),escHtml(s.text),s.meters?Number(s.meters).toLocaleString('tr-TR'):'']))+(t.note&&Array.isArray(t.sets)&&t.sets.length?`<p>Not: ${escHtml(t.note)}</p>`:'')};
+}
+function tpPrint(){ const h=tpPrintHtml(tpSel.group,tpSel.date); if(h) printSheet(h.title,h.body); else { tpSel.err='Yazdırmak için önce programı kaydedin.'; renderTrainPlan($('#content')); } }
+
+/* ---------- 3) ANTRENÖR HAFTALIK ÖZET ---------- */
+let wkOff=0;
+function wkShift(n){ wkOff=Math.max(-12,Math.min(12,wkOff+n)); renderWeekly($('#content')); }
+function weeklyData(off){
+  const ws=weekStart(off); const days=Array.from({length:7},(_,i)=>{const d=new Date(ws);d.setDate(ws.getDate()+i);return ymd(d);});
+  const cids=role==='admin'?DB.coaches.map(c=>c.id):(role==='coach'&&DB.currentUser.coachId?[DB.currentUser.coachId]:[]);
+  const rows=cids.map(cid=>{
+    const perDay=days.map(()=>0); let gCount=0,gMin=0,assistCount=0,pCount=0,xCount=0,earn=0,earnKnown=false;
+    DB.groups.forEach(g=>{
+      const mine=g.coach===cid, asst=g.assistant===cid; if(!mine&&!asst) return;
+      days.forEach((ds,i)=>{ if(!groupOnDay(g,ds)) return; const m=groupMinutes(g); const len=m[1]-m[0];
+        if(mine){ gCount++; gMin+=len; perDay[i]+=len; earn+=rateOf(cid,'group',g.pool); } else { assistCount++; gMin+=len; perDay[i]+=len; } });
+    });
+    (DB.privateLessons||[]).forEach(p=>{ if(p._stub||p.coach!==cid||p.status!=='Onaylandı') return; const i=days.indexOf(p.date); if(i<0) return; pCount++; perDay[i]+=60; earn+=rateOf(cid,'private',lessonPool(p)); });
+    (DB.extraSessions||[]).forEach(x=>{ if(x.coach!==cid) return; if(days.indexOf(x.date)<0) return; xCount+=Number(x.count)||0; earn+=(Number(x.count)||0)*rateOf(cid,'other',x.pool); });
+    earnKnown=role==='admin'&&!!((DB.coachRates||{})[cid]); if(role!=='admin') earn=0;
+    return {cid,name:coachName(cid),gCount,assistCount,pCount,xCount,hours:Math.round((gMin+pCount*60)/6)/10,perDay:perDay.map(m=>Math.round(m/6)/10),earn:r2(earn),earnKnown};
+  });
+  return {days,rows};
+}
+function renderWeekly(c){
+  if(!(role==='admin'||role==='coach')){ c.innerHTML='<div class="card"><div class="empty">Bu sayfaya erişim yetkiniz yok.</div></div>'; return; }
+  const w=weeklyData(wkOff); const ws=weekStart(wkOff); const we=new Date(ws); we.setDate(ws.getDate()+6);
+  const d2=d=>String(d.getDate()).padStart(2,'0')+'.'+String(d.getMonth()+1).padStart(2,'0');
+  const tot=w.rows.reduce((s,r)=>({g:s.g+r.gCount,p:s.p+r.pCount,x:s.x+r.xCount,h:s.h+r.hours,e:s.e+r.earn}),{g:0,p:0,x:0,h:0,e:0});
+  const showEarn=role==='admin';
+  c.innerHTML=`<div class="weeknav"><button class="btn sm" onclick="wkShift(-1)" aria-label="Önceki hafta">←</button><b>${d2(ws)} – ${d2(we)} ${we.getFullYear()}</b><button class="btn sm" onclick="wkShift(1)" aria-label="Sonraki hafta">→</button>${wkOff!==0?'<button class="btn sm ghost" onclick="wkOff=0;renderWeekly($(\'#content\'))">Bu hafta</button>':''}<button class="btn sm" style="margin-left:auto;" onclick="weeklyPrint()">Yazdır / PDF</button></div>
+  <div class="card" style="padding:0;overflow-x:auto;"><table><thead><tr><th>Antrenör</th><th>Grup dersi</th><th>Yardımcı</th><th>Özel ders</th><th>Diğer</th><th>Toplam saat</th>${w.days.map((d,i)=>`<th>${DAYNAMES[i].slice(0,3)}</th>`).join('')}${showEarn?'<th>Tahmini kazanç</th>':''}</tr></thead><tbody>
+  ${w.rows.map(r=>`<tr><td><b>${escHtml(r.name)}</b></td><td>${r.gCount}</td><td>${r.assistCount}</td><td>${r.pCount}</td><td>${r.xCount}</td><td><b>${r.hours.toLocaleString('tr-TR')} sa</b></td>${r.perDay.map(h=>`<td>${h?h.toLocaleString('tr-TR'):'—'}</td>`).join('')}${showEarn?`<td>${r.earnKnown?money(r.earn):'—'}</td>`:''}</tr>`).join('')||'<tr><td colspan="14"><div class="empty">Kayıt yok</div></td></tr>'}
+  ${role==='admin'&&w.rows.length>1?`<tr style="font-weight:700;"><td>Toplam</td><td>${tot.g}</td><td></td><td>${tot.p}</td><td>${tot.x}</td><td>${(Math.round(tot.h*10)/10).toLocaleString('tr-TR')} sa</td><td colspan="7"></td><td>${money(r2(tot.e))}</td></tr>`:''}
+  </tbody></table></div>
+  <div class="note-banner" style="margin-top:14px;">Saatler hafta içindeki grup dersleri (yardımcı olunanlar dahil) ve onaylı özel derslerden hesaplanır. Tahmini kazanç yalnızca yöneticiye görünür ve ana antrenör olunan grup dersleri, özel dersler ve ek antrenmanlar için antrenörün ders ücretleriyle hesaplanır; bordro yerine geçmez.</div>`;
+}
+function weeklyPrint(){
+  const w=weeklyData(wkOff); const ws=weekStart(wkOff); const we=new Date(ws); we.setDate(ws.getDate()+6);
+  printSheet('Antrenör Haftalık Özet — '+fmtDate(ymd(ws))+' / '+fmtDate(ymd(we)),psTable(['Antrenör','Grup','Yardımcı','Özel','Diğer','Saat'],w.rows.map(r=>[escHtml(r.name),String(r.gCount),String(r.assistCount),String(r.pCount),String(r.xCount),r.hours.toLocaleString('tr-TR')])));
+}
+
+/* ---------- 4) DEVAMSIZLIK UYARISI ---------- */
+const ABS_STREAK=3;
+function absenceAlerts(){
+  if(!(role==='admin'||role==='coach')) return [];
+  const out=[]; const log=DB.attendanceLog||{};
+  visibleGroups().forEach(g=>{
+    const dates=Object.keys(log).filter(k=>k.split('|')[0]===g.id).map(k=>k.split('|')[1]).sort().reverse();
+    DB.athletes.filter(a=>a.group===g.id&&a.status==='active').forEach(a=>{
+      let n=0,last='';
+      for(const d of dates){ const st=(log[g.id+'|'+d]||{})[a.id]; if(st===undefined) continue; if(st==='Gelmedi'){ n++; if(!last) last=d; } else break; }
+      if(n>=ABS_STREAK) out.push({athlete:a.id,name:a.name,group:g.id,groupName:g.name,streak:n,last});
+    });
+  });
+  return out.sort((x,y)=>y.streak-x.streak||x.name.localeCompare(y.name,'tr'));
+}
+function absMsg(a){ return `Merhaba, ${a.name} son ${a.streak} antrenmana katılmadı. Her şey yolunda mı? Destek olmak isteriz, bilgi verirseniz seviniriz. Let's Club`; }
+function absParent(a){ if(role!=='admin') return null; const ath=DB.athletes.find(x=>x.id===a.athlete); const p=ath&&(ath.parents||[]).map(id=>DB.parents.find(x=>x.id===id)).find(Boolean); return p||null; }
+function absAlertsHtml(){
+  const L=absenceAlerts(); if(!L.length) return '';
+  return `<div class="card" id="absCard" style="margin-bottom:16px;border-left:4px solid var(--red);"><b>Devamsızlık uyarısı</b> <span style="color:var(--muted);font-size:12.5px;">Son ${ABS_STREAK} veya daha fazla antrenmana üst üste gelmeyen sporcular</span>
+  ${L.map((a,i)=>{ const p=absParent(a); const msg=absMsg(a); const wa=p?fcWaLink(p.phone,msg):'';
+    return `<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:10px;padding-top:10px;border-top:1px solid var(--line);">
+      <div style="min-width:200px;"><b>${escHtml(a.name)}</b><div style="font-size:12px;color:var(--muted);">${escHtml(a.groupName)} · ${a.streak} ders · son ${escHtml(fmtDate(a.last))}</div></div>
+      <button class="btn sm" onclick="fcCopy(${escHtml(JSON.stringify(msg))},this)">Mesajı kopyala</button>${wa?`<a class="btn sm" href="${escHtml(wa)}" target="_blank" rel="noopener">WhatsApp'ta aç</a>`:''}
+      ${p?`<span style="font-size:12px;color:var(--muted);">${escHtml(p.name)} · ${escHtml(p.phone||'')}</span>`:''}</div>`; }).join('')}</div>`;
+}
+
+/* ---------- 5) ÖDEME HATIRLATMA MESAJI ---------- */
+function payRemindList(){
+  if(role!=='admin') return [];
+  return DB.payments.filter(p=>p.status==='overdue').sort((a,b)=>String(a.due).localeCompare(String(b.due))).map(p=>{
+    const ath=DB.athletes.find(x=>x.id===p.athlete); const par=ath&&(ath.parents||[]).map(id=>DB.parents.find(x=>x.id===id)).find(Boolean);
+    const days=Math.max(0,Math.round((new Date(ymd(new Date()))-new Date(p.due))/864e5));
+    return {id:p.id,athlete:ath?ath.name:'—',parent:par?par.name:'',phone:par?par.phone:'',amount:p.amount,due:p.due,days,msg:payRemindMsg(par?par.name:'',ath?ath.name:'',p.amount,p.due)};
+  });
+}
+function payRemindMsg(parent,athlete,amount,due){
+  return `Merhaba${parent?' '+parent:''}, ${athlete} için ${fmtDate(due)} vadeli ${Number(amount).toLocaleString('tr-TR')} TL aidat ödemesi henüz görünmüyor. Ödemeyi yaptıysanız bu mesajı dikkate almayın, yapmadıysanız en kısa sürede iletirseniz seviniriz. Teşekkürler, Let's Club`;
+}
+function payRemindHtml(){
+  const L=payRemindList(); if(!L.length) return '';
+  return `<div class="card" id="payRemindCard" style="margin-top:16px;"><div class="section-title" style="margin-top:0;">Gecikmiş ödeme hatırlatma mesajları</div>
+  <div style="font-size:12.5px;color:var(--muted);margin-bottom:8px;">Mesajı düzenleyebilir, kopyalayabilir veya WhatsApp'ta açabilirsiniz. Sistem kendisi mesaj göndermez.</div>
+  ${L.map((x,i)=>`<div style="padding:10px 0;border-top:1px solid var(--line);"><div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;"><b>${escHtml(x.athlete)}</b><span style="color:var(--red);font-size:12.5px;">${money(x.amount)} · ${x.days} gün gecikti</span></div>
+    <div style="font-size:12px;color:var(--muted);margin:2px 0 6px;">${x.parent?escHtml(x.parent)+' · '+escHtml(x.phone||'telefon yok'):'Veli bilgisi yok'}</div>
+    <textarea id="pr_msg_${i}" rows="3" style="width:100%;box-sizing:border-box;" maxlength="500">${escHtml(x.msg)}</textarea>
+    <div style="display:flex;gap:8px;margin-top:6px;"><button class="btn sm" onclick="fcCopy(document.getElementById('pr_msg_${i}').value,this)">Kopyala</button>${fcPhoneWa(x.phone)?`<button class="btn sm" onclick="payRemindWa(${i})">WhatsApp'ta aç</button>`:''}</div></div>`).join('')}</div>`;
+}
+function payRemindWa(i){ const L=payRemindList(); const x=L[i]; if(!x) return; const t=(document.getElementById('pr_msg_'+i)||{}).value||x.msg; const u=fcWaLink(x.phone,t.slice(0,500)); if(u) window.open(u,'_blank','noopener'); }
+
+/* ---------- Ekranlara bağlama (sarmalayıcılar) ---------- */
+(function(){
+  const _att=renderAttendance; renderAttendance=function(c){ _att(c); if(role==='admin'||role==='coach'){ c.insertAdjacentHTML('afterbegin',absAlertsHtml()); const b=[...c.querySelectorAll('button')].find(x=>/Yoklamayı Kaydet/.test(x.textContent)); if(b) b.insertAdjacentHTML('afterend',' <button class="btn" onclick="attPrint()">Listeyi yazdır</button>'); } };
+  const _pay=renderPayments; renderPayments=function(c){ _pay(c); if(role==='admin') c.insertAdjacentHTML('beforeend',payRemindHtml()); };
+  const _dash=renderDashboard; renderDashboard=function(c){ _dash(c); if(role==='admin'||role==='coach') c.insertAdjacentHTML('afterbegin',absAlertsHtml()); };
+  const _set=renderSettings; renderSettings=function(c){ _set(c); if(role==='admin') c.insertAdjacentHTML('beforeend',bkHtml()); };
+})();
+
+/* ============ YENİ ÖZELLİKLER (B): telafi dersleri, süre & rekor, seviye geçişi ============ */
+const fbTodayYmd=()=>ymd(new Date());
+const fbAddDays=(ds,n)=>{const d=parseYmd(ds); d.setDate(d.getDate()+n); return ymd(d);};
+const fbMsgState={mk:'',mkErr:'',tm:'',tmErr:'',lv:'',lvErr:''};
+const fbTake=k=>{const m=fbMsgState[k]; fbMsgState[k]=''; return m;};
+const fbBanner=(m,e)=>`${m?`<div class="note-banner" role="status">${escHtml(m)}</div>`:''}${e?`<div class="grp-result bad" role="alert">${escHtml(e)}</div>`:''}`;
+const fbCanAct=()=>role==='admin'||role==='coach';
+
+/* ---------- TELAFİ DERSLERİ ---------- */
+const MK_EXPIRE_DAYS=60, MK_REASONS=['İzinli','Hastalık','Diğer'];
+const mkId=(ath,gid,date)=>'mk_'+ath+'_'+gid+'_'+date;
+function mkStatusOf(m){ if(m.status==='Hak'&&m.expires&&m.expires<fbTodayYmd()) return 'Süresi doldu'; return m.status; }
+function visibleMakeups(){ return (DB.makeups||[]).filter(m=>canViewAthlete(m.athlete)); }
+function makeupSync(gid,date,rec){
+  if(!fbCanAct()||!canViewGroup(gid)||!rec) return;
+  DB.makeups=DB.makeups||[];
+  DB.athletes.filter(a=>a.group===gid&&a.status==='active').forEach(a=>{
+    const st=rec[a.id]; const id=mkId(a.id,gid,date); const i=DB.makeups.findIndex(m=>m.id===id);
+    if(st==='İzinli'||st==='Hastalık'){
+      if(i<0) DB.makeups.push({id,athlete:a.id,group:gid,absDate:date,reason:st,status:'Hak',planDate:'',planGroup:'',note:'',createdAt:fbTodayYmd(),expires:fbAddDays(date,MK_EXPIRE_DAYS),by:role==='coach'?(DB.currentUser.coachId||''):'admin'});
+      else if(DB.makeups[i].status==='Hak') DB.makeups[i].reason=st;
+    } else if(i>-1&&DB.makeups[i].status==='Hak'&&DB.makeups[i].reason!=='Diğer') DB.makeups.splice(i,1);
+  });
+}
+function makeupAddManual(f){
+  if(!fbCanAct()) return {ok:false,errors:['Bu işlem için yetkiniz yok.']};
+  const a=DB.athletes.find(x=>x.id===f.athlete); const e=[];
+  if(!a||!canViewAthlete(a.id)||a.status!=='active') e.push('Geçerli bir sporcu seçin.');
+  if(!tpDateOk(f.absDate)) e.push('Devamsızlık tarihini seçin.'); else if(f.absDate>fbTodayYmd()) e.push('Devamsızlık tarihi ileri bir tarih olamaz.');
+  if(MK_REASONS.indexOf(f.reason)<0) e.push('Sebep seçin.');
+  const note=String(f.note||'').trim(); if(note.length>120) e.push('Not en fazla 120 karakter olabilir.');
+  if(e.length) return {ok:false,errors:e};
+  const id='mk_'+a.id+'_m'+Date.now()+Math.floor(Math.random()*1000);
+  DB.makeups=DB.makeups||[];
+  DB.makeups.push({id,athlete:a.id,group:a.group||'',absDate:f.absDate,reason:f.reason,status:'Hak',planDate:'',planGroup:'',note,createdAt:fbTodayYmd(),expires:fbAddDays(f.absDate,MK_EXPIRE_DAYS),by:role==='coach'?(DB.currentUser.coachId||''):'admin'});
+  save(); return {ok:true,errors:[],id};
+}
+function makeupPlan(id,planDate,planGroup){
+  if(!fbCanAct()) return {ok:false,errors:['Bu işlem için yetkiniz yok.']};
+  const m=(DB.makeups||[]).find(x=>x.id===id); if(!m||!canViewAthlete(m.athlete)) return {ok:false,errors:['Kayıt bulunamadı.']};
+  if(m.status!=='Hak'&&m.status!=='Planlandı') return {ok:false,errors:['Bu hak için artık plan yapılamaz.']};
+  const g=DB.groups.find(x=>x.id===planGroup);
+  if(!g) return {ok:false,errors:['Telafinin yapılacağı grubu seçin.']};
+  if(!tpDateOk(planDate)) return {ok:false,errors:['Telafi tarihini seçin.']};
+  if(planDate<m.absDate) return {ok:false,errors:['Telafi tarihi devamsızlıktan önce olamaz.']};
+  if(m.expires&&planDate>m.expires) return {ok:false,errors:['Telafi tarihi hakkın son kullanma tarihini ('+fmtDate(m.expires)+') geçemiyor.']};
+  if(!groupOnDay(g,planDate)) return {ok:false,errors:['"'+g.name+'" grubu '+fmtDate(planDate)+' tarihinde ders yapmıyor.']};
+  const a=DB.athletes.find(x=>x.id===m.athlete);
+  if(a&&a.group===g.id) return {ok:false,errors:['Telafi, sporcunun kendi grubundan farklı bir grupta yapılmalı.']};
+  m.status='Planlandı'; m.planDate=planDate; m.planGroup=g.id; save(); return {ok:true,errors:[]};
+}
+function makeupSet(id,status){
+  if(!fbCanAct()) return {ok:false,errors:['Bu işlem için yetkiniz yok.']};
+  const m=(DB.makeups||[]).find(x=>x.id===id); if(!m||!canViewAthlete(m.athlete)) return {ok:false,errors:['Kayıt bulunamadı.']};
+  if(['Kullanıldı','İptal','Hak'].indexOf(status)<0) return {ok:false,errors:['Geçersiz durum.']};
+  if(status==='Kullanıldı'&&m.status!=='Planlandı') return {ok:false,errors:['Önce telafiyi planlayın.']};
+  if(status==='Hak'){ m.planDate=''; m.planGroup=''; }
+  m.status=status; save(); return {ok:true,errors:[]};
+}
+function mkAct(kind,id){
+  const f=()=>{ if(route==='makeups') renderMakeups($('#content')); };
+  if(kind==='plan'){ const d=($('#mkd_'+id)||{}).value, g=($('#mkg_'+id)||{}).value; const r=makeupPlan(id,d,g); fbMsgState.mk=r.ok?'Telafi planlandı.':''; fbMsgState.mkErr=r.ok?'':r.errors.join(' '); }
+  else { const r=makeupSet(id,kind); fbMsgState.mk=r.ok?'Güncellendi.':''; fbMsgState.mkErr=r.ok?'':r.errors.join(' '); }
+  f();
+}
+function mkAddForm(){
+  const r=makeupAddManual({athlete:($('#mka_ath')||{}).value,absDate:($('#mka_date')||{}).value,reason:($('#mka_reason')||{}).value,note:($('#mka_note')||{}).value});
+  fbMsgState.mk=r.ok?'Telafi hakkı eklendi.':''; fbMsgState.mkErr=r.ok?'':r.errors.join(' '); renderMakeups($('#content'));
+}
+function renderMakeups(c){
+  const L=visibleMakeups().slice().sort((a,b)=>String(b.absDate).localeCompare(String(a.absDate)));
+  const cnt={Hak:0,Planlandı:0,Kullanıldı:0,'Süresi doldu':0};
+  L.forEach(m=>{const s=mkStatusOf(m); if(cnt[s]!==undefined) cnt[s]++;});
+  const act=fbCanAct();
+  const badge=s=>`<span class="badge ${s==='Kullanıldı'?'green':s==='Planlandı'?'amber':s==='Hak'?'blue':'grey'}">${escHtml(s==='Hak'?'Açık hak':s)}</span>`;
+  const groupsAll=DB.groups;
+  c.innerHTML=`${fbBanner(fbTake('mk'),fbTake('mkErr'))}
+  <div class="grid kpi"><div class="card"><div class="label">Açık hak</div><div class="val">${cnt.Hak}</div></div><div class="card"><div class="label">Planlı telafi</div><div class="val">${cnt['Planlandı']}</div></div>
+   <div class="card"><div class="label">Kullanılan</div><div class="val">${cnt['Kullanıldı']}</div></div><div class="card"><div class="label">Süresi dolan</div><div class="val">${cnt['Süresi doldu']}</div></div></div>
+  <div class="note-banner" style="margin-top:12px;">Yoklamada <b>İzinli</b> veya <b>Hastalık</b> işaretlenen her devamsızlık için ${MK_EXPIRE_DAYS} gün geçerli bir telafi hakkı otomatik oluşur. Telafi, sporcunun kendi grubundan farklı ve o tarihte ders yapan bir grupta planlanır.</div>
+  ${act?`<div class="card" style="margin-top:12px;"><b>Manuel telafi hakkı ekle</b><div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-top:8px;">
+    <div class="field" style="margin:0;"><label for="mka_ath">Sporcu</label><select id="mka_ath">${visibleAthletes().filter(a=>a.status==='active').map(a=>`<option value="${escHtml(a.id)}">${escHtml(a.name)}</option>`).join('')}</select></div>
+    <div class="field" style="margin:0;"><label for="mka_date">Devamsızlık tarihi</label><input type="date" id="mka_date" value="${fbTodayYmd()}" max="${fbTodayYmd()}"></div>
+    <div class="field" style="margin:0;"><label for="mka_reason">Sebep</label><select id="mka_reason">${MK_REASONS.map(r=>`<option>${escHtml(r)}</option>`).join('')}</select></div>
+    <div class="field" style="margin:0;flex:1;min-width:160px;"><label for="mka_note">Not</label><input id="mka_note" maxlength="120"></div>
+    <button class="btn primary" onclick="mkAddForm()">Ekle</button></div></div>`:''}
+  <div class="card" style="padding:0;margin-top:14px;overflow-x:auto;"><table><thead><tr><th>Sporcu</th><th>Devamsızlık</th><th>Sebep</th><th>Durum</th><th>Son tarih</th><th>Telafi planı</th>${act?'<th>İşlem</th>':''}</tr></thead><tbody>
+  ${L.map(m=>{ const s=mkStatusOf(m); const g=DB.groups.find(x=>x.id===m.planGroup);
+    return `<tr><td>${escHtml(athleteName(m.athlete))}</td><td>${escHtml(fmtDate(m.absDate))}${m.group?'<div style="font-size:11.5px;color:var(--muted);">'+escHtml(groupName(m.group))+'</div>':''}</td><td>${escHtml(m.reason)}${m.note?'<div style="font-size:11.5px;color:var(--muted);">'+escHtml(m.note)+'</div>':''}</td><td>${badge(s)}</td><td>${escHtml(fmtDate(m.expires))}</td>
+    <td>${m.planDate?escHtml(fmtDate(m.planDate))+' · '+escHtml(g?g.name:'—'):'—'}</td>
+    ${act?`<td style="min-width:260px;">${s==='Hak'||s==='Planlandı'?`<div style="display:flex;gap:6px;flex-wrap:wrap;"><input type="date" id="mkd_${escHtml(m.id)}" value="${escHtml(m.planDate||'')}" style="max-width:140px;"><select id="mkg_${escHtml(m.id)}" style="max-width:150px;">${groupsAll.map(x=>`<option value="${escHtml(x.id)}"${x.id===m.planGroup?' selected':''}>${escHtml(x.name)}</option>`).join('')}</select><button class="btn sm" onclick="mkAct('plan','${escHtml(m.id)}')">Planla</button>${m.status==='Planlandı'?`<button class="btn sm primary" onclick="mkAct('Kullanıldı','${escHtml(m.id)}')">Kullanıldı</button>`:''}<button class="btn sm ghost" onclick="mkAct('İptal','${escHtml(m.id)}')">İptal</button></div>`:s==='İptal'?`<button class="btn sm" onclick="mkAct('Hak','${escHtml(m.id)}')">Yeniden aç</button>`:''}</td>`:''}</tr>`; }).join('')||`<tr><td colspan="${act?7:6}"><div class="empty">Telafi kaydı yok</div></td></tr>`}
+  </tbody></table></div>`;
+}
+
+/* ---------- SÜRE & REKOR (records koleksiyonu) ---------- */
+const TIME_EVENTS=['50 Serbest','100 Serbest','200 Serbest','400 Serbest','50 Sırt','100 Sırt','200 Sırt','50 Kurbağalama','100 Kurbağalama','200 Kurbağalama','50 Kelebek','100 Kelebek','200 Kelebek','200 IM','400 IM'];
+const TIME_TYPES=['Test','Yarışma'];
+function recEnsureIds(){ (DB.records||[]).forEach((r,i)=>{ if(!r.id) r.id='rec_leg'+i; }); }
+function parseSwimTime(v){
+  const s=String(v==null?'':v).trim().replace(',','.'); if(!s) return NaN;
+  let m=/^(\d{1,2}):([0-5]?\d)(?:\.(\d{1,2}))?$/.exec(s), sec;
+  if(m) sec=parseInt(m[1],10)*60+parseInt(m[2],10)+(m[3]?parseInt(m[3].padEnd(2,'0'),10)/100:0);
+  else { m=/^(\d{1,3})(?:\.(\d{1,2}))?$/.exec(s); if(!m) return NaN; sec=parseInt(m[1],10)+(m[2]?parseInt(m[2].padEnd(2,'0'),10)/100:0); }
+  sec=Math.round(sec*100)/100; return (sec>=10&&sec<=3600)?sec:NaN;
+}
+function recBest(athlete,event,exceptId){ const t=(DB.records||[]).filter(r=>r.athlete===athlete&&r.event===event&&r.id!==exceptId).map(r=>r.time); return t.length?Math.min(...t):null; }
+function recAdd(f){
+  if(!fbCanAct()) return {ok:false,errors:['Süreleri yalnızca yönetici ve antrenör girebilir.']};
+  const a=DB.athletes.find(x=>x.id===f.athlete); const e=[];
+  if(!a||!canViewAthlete(a.id)||a.status!=='active') e.push('Geçerli bir sporcu seçin.');
+  if(TIME_EVENTS.indexOf(f.event)<0&&!(DB.records||[]).some(r=>r.event===f.event)) e.push('Mesafe/stil seçin.');
+  const t=parseSwimTime(f.time); if(isNaN(t)) e.push('Süreyi 34.20 veya 1:19.40 biçiminde girin (10 sn – 60 dk).');
+  if(!tpDateOk(f.date)) e.push('Tarihi seçin.'); else if(f.date>fbTodayYmd()) e.push('Tarih ileri bir gün olamaz.');
+  if(TIME_TYPES.indexOf(f.type)<0) e.push('Türü seçin.');
+  const note=String(f.note||'').trim(); if(note.length>100) e.push('Not en fazla 100 karakter olabilir.');
+  if(e.length) return {ok:false,errors:e};
+  recEnsureIds();
+  const prev=recBest(a.id,f.event);
+  const rec={id:'rec'+Date.now()+Math.floor(Math.random()*1000),athlete:a.id,event:f.event,date:f.date,time:t,type:f.type,note,by:role==='coach'?(DB.currentUser.coachId||''):'admin'};
+  DB.records.push(rec); save();
+  return {ok:true,errors:[],id:rec.id,pb:prev===null||t<prev,prev};
+}
+function recRemove(id){
+  if(!fbCanAct()) return {ok:false,errors:['Bu işlem için yetkiniz yok.']};
+  const r=(DB.records||[]).find(x=>x.id===id); if(!r||!canViewAthlete(r.athlete)) return {ok:false,errors:['Kayıt bulunamadı.']};
+  DB.records=DB.records.filter(x=>x.id!==id); save(); return {ok:true,errors:[]};
+}
+let tmSel={athlete:'',event:''};
+function tmPick(k,v){ tmSel[k]=v; if(k==='athlete') tmSel.event=''; renderTimes($('#content')); }
+function tmAddForm(){
+  const r=recAdd({athlete:tmSel.athlete,event:($('#tm_event')||{}).value,time:($('#tm_time')||{}).value,date:($('#tm_date')||{}).value,type:($('#tm_type')||{}).value,note:($('#tm_note')||{}).value});
+  fbMsgState.tm=r.ok?(r.pb?(r.prev===null?'Süre kaydedildi. İlk kayıt, kişisel rekor olarak işlendi.':'Yeni kişisel rekor! Önceki en iyi: '+fmtTime(r.prev)):'Süre kaydedildi.'):''; fbMsgState.tmErr=r.ok?'':r.errors.join(' ');
+  if(r.ok) tmSel.event=($('#tm_event')||{}).value||tmSel.event; renderTimes($('#content'));
+}
+function tmDel(id){ const r=recRemove(id); fbMsgState.tm=r.ok?'Kayıt silindi.':''; fbMsgState.tmErr=r.ok?'':r.errors.join(' '); renderTimes($('#content')); }
+function tmChart(arr){
+  if(arr.length<2) return '';
+  const W=520,H=140,P=24; const ys=arr.map(r=>r.time); const mn=Math.min(...ys), mx=Math.max(...ys), rg=(mx-mn)||1;
+  const P2=arr.map((r,i)=>[P+i*(W-2*P)/(arr.length-1),P+(r.time-mn)/rg*(H-2*P)]);
+  return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Süre gelişimi grafiği" style="width:100%;max-width:560px;height:auto;"><polyline fill="none" stroke="var(--teal-700)" stroke-width="2" points="${P2.map(p=>p[0].toFixed(1)+','+p[1].toFixed(1)).join(' ')}"/>${P2.map((p,i)=>`<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="3.5" fill="var(--teal-700)"><title>${escHtml(fmtDate(arr[i].date))}: ${escHtml(fmtTime(arr[i].time))}</title></circle>`).join('')}<text x="${P}" y="12" font-size="10" fill="currentColor">${escHtml(fmtTime(mn))} (en iyi)</text><text x="${P}" y="${H-4}" font-size="10" fill="currentColor">${escHtml(fmtTime(mx))}</text></svg>`;
+}
+function renderTimes(c){
+  recEnsureIds();
+  const aths=visibleAthletes().filter(a=>a.status==='active'||(DB.records||[]).some(r=>r.athlete===a.id));
+  if(!aths.length){ c.innerHTML='<div class="card"><div class="empty">Görüntülenecek sporcu yok.</div></div>'; return; }
+  if(!aths.some(a=>a.id===tmSel.athlete)){ tmSel.athlete=aths[0].id; tmSel.event=''; }
+  const act=fbCanAct();
+  const recs=(DB.records||[]).filter(r=>r.athlete===tmSel.athlete).slice().sort((a,b)=>String(a.date).localeCompare(String(b.date)));
+  const evs=[...new Set(recs.map(r=>r.event))];
+  if(tmSel.event&&evs.indexOf(tmSel.event)<0) tmSel.event=''; if(!tmSel.event&&evs.length) tmSel.event=evs[0];
+  const summ=evs.map(ev=>{ const arr=recs.filter(r=>r.event===ev); const best=Math.min(...arr.map(r=>r.time)); const bestRec=arr.find(r=>r.time===best); const last=arr[arr.length-1]; const first=arr[0];
+    return {ev,best,bestDate:bestRec.date,last:last.time,lastDate:last.date,n:arr.length,pct:arr.length>1?(first.time-last.time)/first.time*100:0,isPb:last.time===best}; });
+  const sel=recs.filter(r=>r.event===tmSel.event);
+  const bestSel=sel.length?Math.min(...sel.map(r=>r.time)):null; const bestId=sel.length?sel.find(r=>r.time===bestSel).id:'';
+  c.innerHTML=`${fbBanner(fbTake('tm'),fbTake('tmErr'))}
+  <div class="card" style="display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end;margin-bottom:12px;">
+   ${aths.length>1?`<div class="field" style="margin:0;min-width:220px;"><label for="tm_ath">Sporcu</label><select id="tm_ath" onchange="tmPick('athlete',this.value)">${aths.map(a=>`<option value="${escHtml(a.id)}"${a.id===tmSel.athlete?' selected':''}>${escHtml(a.name)}</option>`).join('')}</select></div>`:`<div><b>${escHtml(athleteName(tmSel.athlete))}</b></div>`}</div>
+  ${act?`<div class="card" style="margin-bottom:12px;"><b>Yeni süre ekle</b><div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-top:8px;">
+    <div class="field" style="margin:0;"><label for="tm_event">Mesafe / stil</label><select id="tm_event">${TIME_EVENTS.map(e=>`<option${e===tmSel.event?' selected':''}>${escHtml(e)}</option>`).join('')}</select></div>
+    <div class="field" style="margin:0;"><label for="tm_time">Süre</label><input id="tm_time" placeholder="34.20 veya 1:19.40" maxlength="9" style="max-width:150px;"></div>
+    <div class="field" style="margin:0;"><label for="tm_date">Tarih</label><input type="date" id="tm_date" value="${fbTodayYmd()}" max="${fbTodayYmd()}"></div>
+    <div class="field" style="margin:0;"><label for="tm_type">Tür</label><select id="tm_type">${TIME_TYPES.map(t=>`<option>${escHtml(t)}</option>`).join('')}</select></div>
+    <div class="field" style="margin:0;flex:1;min-width:140px;"><label for="tm_note">Not</label><input id="tm_note" maxlength="100"></div>
+    <button class="btn primary" onclick="tmAddForm()">Kaydet</button></div></div>`:''}
+  <div class="card" style="padding:0;overflow-x:auto;"><table><thead><tr><th>Mesafe / stil</th><th>En iyi (KR)</th><th>Son süre</th><th>Gelişim</th><th>Kayıt</th></tr></thead><tbody>
+  ${summ.map(s=>`<tr class="rowlink" onclick="tmPick('event',${escHtml(JSON.stringify(s.ev))})"${s.ev===tmSel.event?' style="background:var(--aqua-light);"':''}><td><b>${escHtml(s.ev)}</b></td><td>🏅 ${escHtml(fmtTime(s.best))}<div style="font-size:11.5px;color:var(--muted);">${escHtml(fmtDate(s.bestDate))}</div></td><td>${escHtml(fmtTime(s.last))}${s.isPb&&s.n>1?' <span class="badge green">KR</span>':''}<div style="font-size:11.5px;color:var(--muted);">${escHtml(fmtDate(s.lastDate))}</div></td><td>${s.n>1?(s.pct>=0?'%'+s.pct.toFixed(1)+' ↓ hızlandı':'%'+(-s.pct).toFixed(1)+' yavaşladı'):'—'}</td><td>${s.n}</td></tr>`).join('')||'<tr><td colspan="5"><div class="empty">Henüz süre kaydı yok</div></td></tr>'}</tbody></table></div>
+  ${sel.length?`<div class="section-title">${escHtml(tmSel.event)} geçmişi</div><div class="card">${tmChart(sel)}
+   <table style="margin-top:8px;"><thead><tr><th>Tarih</th><th>Süre</th><th>Tür</th><th>Not</th>${act?'<th></th>':''}</tr></thead><tbody>${sel.slice().reverse().map(r=>`<tr><td>${escHtml(fmtDate(r.date))}</td><td><b>${escHtml(fmtTime(r.time))}</b>${r.id===bestId?' 🏅':''}</td><td>${escHtml(r.type||'—')}</td><td>${escHtml(r.note||'')}</td>${act?`<td><button class="btn sm ghost" onclick="tmDel('${escHtml(r.id)}')" aria-label="Kaydı sil">Sil</button></td>`:''}</tr>`).join('')}</tbody></table></div>`:''}`;
+}
+
+/* ---------- SEVİYE GEÇİŞİ ---------- */
+const LV_ORDER=['Başlangıç','Orta','İleri','Yarışmacı'];
+const LV_DEFAULT={
+  'Başlangıç':['25 m serbest durmadan yüzer','25 m sırtüstü yüzer','Suya baş altı girer, nefes verir','Süzülme yapar (5 m)'],
+  'Orta':['50 m serbest teknikli yüzer','50 m sırt yüzer','25 m kurbağalama yüzer','Dönüş yapar'],
+  'İleri':['100 m serbest durmadan yüzer','4 stilde 50 m teknik yüzer','Çıkış ve dönüşleri doğru yapar','Haftada en az 3 antrenmana devam eder']};
+const lvNext=l=>{const i=LV_ORDER.indexOf(l); return i>-1&&i<LV_ORDER.length-1?LV_ORDER[i+1]:null;};
+function lvItems(level){
+  const c=(DB.levelCriteria||{})[level];
+  const arr=c&&Array.isArray(c.items)?c.items:(LV_DEFAULT[level]||[]).map((t,i)=>({id:'k'+(i+1),text:t}));
+  return arr;
+}
+function lvChecks(athId){ const c=(DB.levelChecks||{})[athId]; const a=DB.athletes.find(x=>x.id===athId); if(!c||!a||c.level!==a.level) return {}; return c.checks||{}; }
+function lvProgress(athId){ const a=DB.athletes.find(x=>x.id===athId); if(!a) return null; const items=lvItems(a.level); const ch=lvChecks(athId); const done=items.filter(i=>ch[i.id]).length; return {items,checks:ch,done,total:items.length,complete:items.length>0&&done===items.length,next:lvNext(a.level)}; }
+function lvToggle(athId,critId){
+  if(!fbCanAct()) return {ok:false,errors:['Bu işlem için yetkiniz yok.']};
+  const a=DB.athletes.find(x=>x.id===athId); if(!a||!canViewAthlete(athId)||a.status!=='active') return {ok:false,errors:['Sporcu bulunamadı.']};
+  if(!lvNext(a.level)) return {ok:false,errors:['Bu seviye için geçiş kriteri yok.']};
+  if(!lvItems(a.level).some(i=>i.id===critId)) return {ok:false,errors:['Kriter bulunamadı.']};
+  DB.levelChecks=DB.levelChecks||{};
+  let c=DB.levelChecks[athId]; if(!c||c.level!==a.level){ c={athlete:athId,level:a.level,checks:{}}; DB.levelChecks[athId]=c; }
+  if(c.checks[critId]) delete c.checks[critId]; else c.checks[critId]={date:fbTodayYmd(),by:role==='coach'?(DB.currentUser.coachId||''):'admin'};
+  save(); return {ok:true,errors:[]};
+}
+function lvPromote(athId){
+  const a=DB.athletes.find(x=>x.id===athId); if(!a||!canViewAthlete(athId)) return {ok:false,errors:['Sporcu bulunamadı.']};
+  const p=lvProgress(athId); if(!p||!p.next) return {ok:false,errors:['Bu sporcunun sonraki seviyesi yok.']};
+  if(!p.complete) return {ok:false,errors:['Tüm kriterler tamamlanmadan seviye geçişi önerilemez.']};
+  if(role==='admin') return applyAthleteEdit(athId,{level:p.next},{role:'admin',id:''});
+  if(role!=='coach') return {ok:false,errors:['Bu işlem için yetkiniz yok.']};
+  DB.changeRequests=DB.changeRequests||[];
+  if(DB.changeRequests.some(r=>r.type==='athlete_edit'&&r.athlete===athId&&r.status==='Bekliyor')) return {ok:false,errors:['Bu sporcu için bekleyen bir talep zaten var.']};
+  DB.changeRequests.push({id:'cr'+Date.now()+Math.floor(Math.random()*1000),type:'athlete_edit',athlete:athId,payload:{level:p.next},extra:null,by:{role:'coach',id:DB.currentUser.coachId},status:'Bekliyor',createdAt:fbTodayYmd(),decidedAt:null,reason:''});
+  save(); return {ok:true,errors:[],requested:true};
+}
+function lvSaveCriteria(level,text){
+  if(role!=='admin') return {ok:false,errors:['Kriterleri yalnızca yönetici düzenler.']};
+  if(!lvNext(level)) return {ok:false,errors:['Geçersiz seviye.']};
+  const lines=String(text||'').split('\n').map(x=>x.trim()).filter(Boolean);
+  if(lines.length<1||lines.length>8) return {ok:false,errors:['1 ile 8 arasında kriter yazın (her satıra bir kriter).']};
+  if(lines.some(x=>x.length>80)) return {ok:false,errors:['Her kriter en fazla 80 karakter olabilir.']};
+  DB.levelCriteria=DB.levelCriteria||{};
+  const old=lvItems(level); const items=lines.map(t=>{ const o=old.find(x=>x.text===t); return {id:o?o.id:'k'+Date.now().toString(36)+Math.floor(Math.random()*100),text:t}; });
+  DB.levelCriteria[level]={level,items}; save(); return {ok:true,errors:[]};
+}
+let lvSel={level:'Başlangıç'};
+function lvPick(v){ lvSel.level=v; renderLevels($('#content')); }
+function lvClick(athId,critId){ const r=lvToggle(athId,critId); fbMsgState.lvErr=r.ok?'':r.errors.join(' '); renderLevels($('#content')); }
+function lvPromoteClick(athId){ const r=lvPromote(athId); fbMsgState.lv=r.ok?(r.requested?'Seviye geçişi talebi yöneticiye gönderildi.':'Sporcunun seviyesi yükseltildi.'):''; fbMsgState.lvErr=r.ok?'':r.errors.join(' '); renderLevels($('#content')); }
+function lvSaveForm(){ const r=lvSaveCriteria(lvSel.level,($('#lv_text')||{}).value); fbMsgState.lv=r.ok?'Kriterler kaydedildi.':''; fbMsgState.lvErr=r.ok?'':r.errors.join(' '); renderLevels($('#content')); }
+function renderLevels(c){
+  const act=fbCanAct();
+  const aths=visibleAthletes().filter(a=>a.status==='active'&&lvNext(a.level));
+  const mine=!act;
+  const pend=a=>(DB.changeRequests||[]).some(r=>r.type==='athlete_edit'&&r.athlete===a.id&&r.status==='Bekliyor'&&r.payload&&r.payload.level);
+  c.innerHTML=`${fbBanner(fbTake('lv'),fbTake('lvErr'))}
+  ${role==='admin'?`<div class="card" style="margin-bottom:14px;"><b>Seviye geçiş kriterleri</b>
+   <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-top:8px;"><div class="field" style="margin:0;"><label for="lv_level">Seviye</label><select id="lv_level" onchange="lvPick(this.value)">${LV_ORDER.slice(0,3).map(l=>`<option${l===lvSel.level?' selected':''} value="${escHtml(l)}">${escHtml(l)} → ${escHtml(lvNext(l))}</option>`).join('')}</select></div></div>
+   <div class="field" style="margin-top:8px;"><label for="lv_text">Kriterler (her satıra bir kriter, en fazla 8)</label><textarea id="lv_text" rows="5" style="width:100%;box-sizing:border-box;">${escHtml(lvItems(lvSel.level).map(i=>i.text).join('\n'))}</textarea></div>
+   <button class="btn primary" onclick="lvSaveForm()">Kriterleri kaydet</button></div>`:''}
+  ${aths.length?aths.map(a=>{ const p=lvProgress(a.id); const pc=p.total?Math.round(p.done/p.total*100):0;
+    return `<div class="card" style="margin-bottom:10px;"><div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center;"><div><b>${escHtml(a.name)}</b><div style="font-size:12.5px;color:var(--muted);">${escHtml(a.level)} → ${escHtml(p.next)} · ${p.done}/${p.total} kriter</div></div>
+      ${p.complete?`<span class="badge green">Hazır</span>`:`<span class="badge amber">%${pc}</span>`}</div>
+      <div class="progress" style="margin:8px 0;"><div style="width:${pc}%"></div></div>
+      ${p.items.map(i=>`<label style="display:flex;gap:8px;align-items:flex-start;padding:4px 0;${act?'cursor:pointer;':''}"><input type="checkbox"${p.checks[i.id]?' checked':''}${act?` onchange="lvClick('${escHtml(a.id)}','${escHtml(i.id)}')"`:' disabled'}><span>${escHtml(i.text)}${p.checks[i.id]?`<small style="color:var(--muted);"> · ${escHtml(fmtDate(p.checks[i.id].date))}</small>`:''}</span></label>`).join('')}
+      ${act&&p.complete?(pend(a)?'<div style="margin-top:8px;font-size:12.5px;color:var(--muted);">Seviye geçişi talebi yönetici onayında.</div>':`<button class="btn primary sm" style="margin-top:8px;" onclick="lvPromoteClick('${escHtml(a.id)}')">${role==='admin'?escHtml(p.next)+' seviyesine yükselt':'Seviye geçişi öner ('+escHtml(p.next)+')'}</button>`):''}</div>`; }).join(''):'<div class="card"><div class="empty">Seviye geçiş takibi yapılacak sporcu yok.</div></div>'}`;
+}
+
+/* ---------- Ekranlara bağlama ---------- */
+(function(){
+  const _sa=saveAttendance; saveAttendance=function(){ _sa(); try{ const gid=($('#attGroup')||{}).value, date=($('#attDate')||{}).value; if(gid&&date&&DB.attendanceLog[gid+'|'+date]){ makeupSync(gid,date,DB.attendanceLog[gid+'|'+date]); save(); } }catch(e){} };
+})();
 
 /* ============ INIT ============ */
 boot();
