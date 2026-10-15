@@ -176,6 +176,19 @@ tr.rowlink:hover{background:var(--aqua-light);}
 .chart-wrap{overflow-x:auto;}
 .evt.private{background:var(--coral-light);border-left-color:var(--coral);color:var(--ink);}
 .cal .hcell.today{background:var(--aqua);color:#04211F;}
+.tp-row select,.tp-row input{padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--card);font:inherit;font-size:13px;width:100%;box-sizing:border-box;}
+@media(max-width:640px){.tp-row{grid-template-columns:1fr 90px 36px !important;}.tp-row select{grid-column:1/-1;}}
+.dv{border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;background:var(--card);}
+.dv-row{display:grid;grid-template-columns:64px 1fr;border-bottom:1px solid var(--line);min-height:48px;}
+.dv-row:last-child{border-bottom:0;}
+.dv-row .tcell{border-bottom:0;padding:10px 8px 6px 4px;}
+.dv-cell{padding:5px 8px;display:flex;flex-wrap:wrap;gap:6px;align-content:flex-start;}
+.dv-cell .evt{font-size:12.5px;padding:6px 10px;margin:0;min-width:200px;flex:1 1 220px;max-width:420px;}
+.dv-cell .evt small{font-size:11.5px;margin-top:2px;}
+.dv-empty{color:var(--muted);font-size:12px;padding:6px 0;}
+.vtog{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;}
+.vtog button{border:0;background:var(--card);padding:6px 12px;font-size:12.5px;font-weight:600;cursor:pointer;color:var(--ink);}
+.vtog button.on{background:var(--teal-700);color:#fff;}
 .weeknav{display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap;}
 .pgrid{display:grid;grid-template-columns:54px repeat(7,minmax(62px,1fr));border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;background:var(--card);min-width:540px;}
 .pgrid .ph{padding:8px 4px;text-align:center;font-size:11.5px;font-weight:700;background:var(--aqua-light);color:var(--teal-700);border-bottom:1px solid var(--line);}
@@ -392,7 +405,7 @@ function seed(){
 function load(){
   try{
     const raw=localStorage.getItem(LS_KEY);
-    if(raw){ DB=JSON.parse(raw); DB.photos=DB.photos||{}; DB.poolPrices=DB.poolPrices||{}; DB.reasonNotes=DB.reasonNotes||{}; DB.changeRequests=DB.changeRequests||[]; }
+    if(raw){ DB=JSON.parse(raw); DB.photos=DB.photos||{}; DB.trainings=DB.trainings||[]; DB.poolPrices=DB.poolPrices||{}; DB.reasonNotes=DB.reasonNotes||{}; DB.changeRequests=DB.changeRequests||[]; }
     else { DB=seed(); save(); }
   }catch(e){ DB=seed(); }
 }
@@ -510,6 +523,7 @@ const NAV={
     {id:'groups',label:'Gruplar',ic:'🗂️'},
     {id:'schedule',label:'Ders Programı',ic:'📅'},
     {id:'attendance',label:'Yoklama',ic:'✅'},
+    {id:'trainplan',label:'Antrenman Programı',ic:'📝'},
     {id:'development',label:'Gelişim',ic:'📈'},
     {id:'competitions',label:'Yarışma & Derece',ic:'🏅'},
     {sect:'Operasyon'},
@@ -533,6 +547,7 @@ const NAV={
     {id:'groups',label:'Gruplarım',ic:'🗂️'},
     {id:'schedule',label:'Ders Programı',ic:'📅'},
     {id:'attendance',label:'Yoklama',ic:'✅'},
+    {id:'trainplan',label:'Antrenman Programı',ic:'📝'},
     {id:'athletes',label:'Sporcularım',ic:'🏊'},
     {id:'approvals',label:'Taleplerim',ic:'📨'},
     {id:'development',label:'Gelişim',ic:'📈'},
@@ -544,6 +559,7 @@ const NAV={
     {id:'dashboard',label:'Çocuğum',ic:'🏠'},
     {id:'ai',label:'Gelişim Özeti (AI)',ic:'✨'},
     {id:'schedule',label:'Ders Programı',ic:'📅'},
+    {id:'trainplan',label:'Antrenman Programı',ic:'📝'},
     {id:'payments',label:'Ödemelerim',ic:'💳'},
     {id:'announcements',label:'Duyurular',ic:'📣'},
     {id:'tickets',label:'Taleplerim',ic:'🗒️'},
@@ -555,13 +571,14 @@ NAV.athlete=[
   {sect:'Genel'},
   {id:'dashboard',label:'Benim Sayfam',ic:'🏠'},
   {id:'schedule',label:'Ders Programım',ic:'📅'},
+  {id:'trainplan',label:'Antrenman Programı',ic:'📝'},
   {id:'development',label:'Gelişimim',ic:'📈'},
   {id:'competitions',label:'Derecelerim',ic:'🏅'},
   {id:'announcements',label:'Duyurular',ic:'📣'},
   {sect:'Sistem'},
   {id:'settings',label:'Ayarlar',ic:'⚙️'},
 ];
-const TITLES={ai:'AI Asistan',dashboard:'Dashboard',athletes:'Sporcular',parents:'Veliler',groups:'Gruplar',schedule:'Ders Programı',
+const TITLES={ai:'AI Asistan',dashboard:'Dashboard',athletes:'Sporcular',parents:'Veliler',groups:'Gruplar',schedule:'Ders Programı',trainplan:'Antrenman Programı',
   attendance:'Yoklama',development:'Gelişim Takibi',competitions:'Yarışma & Derece Takibi',crm:'CRM / Aday Sporcular',
   approvals:'Onaylar ve Talepler',rentals:'Havuz Kiralama',finance:'Finans ve Aylık Rapor',insights:'Analiz: Deneme ve Ayrılışlar',coaches:'Antrenörler',payments:'Ödemeler',announcements:'Duyurular',tickets:'Talep Yönetimi',reports:'Raporlar',settings:'Ayarlar'};
 
@@ -591,7 +608,7 @@ function render(){
   $('#pageTitle').textContent = route==='dashboard' ? ({parent:'Çocuğum',athlete:'Benim Sayfam',coach:'Antrenör Paneli'}[role]||'Dashboard') : (TITLES[route]||'Dashboard');
   const c=$('#content');
   const fns={dashboard:renderDashboard,athletes:renderAthletes,parents:renderParents,groups:renderGroups,
-    schedule:renderSchedule,attendance:renderAttendance,development:renderDevelopment,competitions:renderCompetitions,
+    schedule:renderSchedule,trainplan:renderTrainPlan,attendance:renderAttendance,development:renderDevelopment,competitions:renderCompetitions,
     crm:renderCRM,coaches:renderCoaches,payments:renderPayments,announcements:renderAnnouncements,tickets:renderTickets,
     reports:renderReports,settings:renderSettings,ai:renderAI,approvals:renderApprovals,insights:renderInsights,rentals:renderRentals,finance:renderFinance};
   c.innerHTML='';
@@ -1171,7 +1188,14 @@ function showGroupMembers(gid){
 const DAYTOKEN={Paz:0,Pzt:1,Sal:2,'Salı':2,'Çar':3,'Perş':4,Cum:5,Cmt:6};
 const DAYNAMES=['Pazartesi','Salı','Çarşamba','Perşembe','Cuma','Cumartesi','Pazar'];
 const PL_FIRST=9, PL_LAST=20; // özel ders başlangıç saatleri: 09:00 - 20:00 (60 dk)
-let schedWeek=0; let schedFilt={coach:'',pool:''};
+let schedWeek=0; let schedFilt={coach:'',pool:''}; let schedView='week', schedDayOff=0;
+function schedSetView(v){
+  if(v==='day'&&schedView!=='day') schedDayOff=schedWeek===0?0:7*schedWeek;
+  schedView=v==='day'?'day':'week'; renderSchedule($('#content'));
+}
+function schedDayShift(n){ schedDayOff=Math.max(-28,Math.min(90,schedDayOff+n)); renderSchedule($('#content')); }
+function schedDayToday(){ schedDayOff=0; renderSchedule($('#content')); }
+function schedDayPick(v){ if(!/^\d{4}-\d{2}-\d{2}$/.test(v||'')) return; const t=new Date(); const base=new Date(t.getFullYear(),t.getMonth(),t.getDate()); const d=Math.round((parseYmd(v)-base)/864e5); schedDayOff=Math.max(-28,Math.min(90,d)); renderSchedule($('#content')); }
 function schedSetFilt(k,v){ if(role!=='admin') return; schedFilt[k]=String(v||''); renderSchedule($('#content')); }
 function schedClearFilt(){ schedFilt={coach:'',pool:''}; renderSchedule($('#content')); }
 const plSel={coach:null,athlete:null,slots:[],note:''};
@@ -1353,6 +1377,9 @@ function plStaffHtml(){
   </tbody></table></div>`;
 }
 function renderSchedule(c){
+  const dayMode=schedView==='day';
+  let dayDate=null;
+  if(dayMode){ const t=new Date(); dayDate=new Date(t.getFullYear(),t.getMonth(),t.getDate()+schedDayOff); const mon=new Date(dayDate); mon.setDate(mon.getDate()-((mon.getDay()+6)%7)); schedWeek=Math.round((mon-weekStart(0))/(7*864e5)); }
   const ws=weekStart(schedWeek);
   const dates=Array.from({length:7},(_,i)=>{const d=new Date(ws);d.setDate(ws.getDate()+i);return d;});
   const hours=Array.from({length:13},(_,i)=>9+i); // 09:00-21:00
@@ -1379,9 +1406,24 @@ function renderSchedule(c){
     });
   });
   html+='</div>';
+  let navHtml=`<button class="btn sm" onclick="schedShift(-1)" aria-label="Önceki hafta">←</button><b>${d2(dates[0])} – ${d2(dates[6])} ${dates[6].getFullYear()}</b><button class="btn sm" onclick="schedShift(1)" aria-label="Sonraki hafta">→</button>${schedWeek!==0?'<button class="btn sm ghost" onclick="schedToday()">Bu hafta</button>':''}`;
+  if(dayMode){
+    const ds=ymd(dayDate), dIdx=(dayDate.getDay()+6)%7;
+    const staffV=!fam;
+    html='<div class="dv">'+hours.map(h=>{
+      const ev=list.filter(g=>groupOnDay(g,ds)&&parseInt(g.time.split(':')[0],10)===h).sort((a,b)=>groupMinutes(a)[0]-groupMinutes(b)[0]);
+      const pl=priv.filter(p=>p.date===ds&&p.hour===h);
+      const cards=ev.map(g=>`<div class="evt" onclick="showGroupMembers('${g.id}')">${escHtml(g.name)}<small>${escHtml(g.time)} · ${escHtml(g.pool)}${g.lane&&g.lane!=='-'?' · '+escHtml(String(g.lane))+'. kulvar':''}${staffV?'<br>Antrenör: '+escHtml(coachName(g.coach))+(g.assistant?' (yrd: '+escHtml(coachName(g.assistant))+')':'')+' · '+(g.enrolled!=null?g.enrolled+'/'+g.capacity+' sporcu':''):'<br>'+visibleAthletes().filter(a=>a.group===g.id).map(a=>escHtml(a.name.split(' ')[0])).join(', ')}</small></div>`).join('')
+        +pl.map(p=>`<div class="evt private" onclick="plShow('${p.id}')">Özel ders<small>${h}:00-${h+1}:00 · ${lab(p)}${staffV&&isAdm?' · '+escHtml(lessonPool(p)):''}</small></div>`).join('');
+      return `<div class="dv-row"><div class="tcell">${h}:00</div><div class="dv-cell">${cards||'<span class="dv-empty">Ders yok</span>'}</div></div>`;
+    }).join('')+'</div>';
+    const total=list.filter(g=>groupOnDay(g,ds)).length+priv.filter(p=>p.date===ds).length;
+    navHtml=`<button class="btn sm" onclick="schedDayShift(-1)" aria-label="Önceki gün">←</button><b>${DAYNAMES[dIdx]} ${d2(dayDate)}.${dayDate.getFullYear()}</b><button class="btn sm" onclick="schedDayShift(1)" aria-label="Sonraki gün">→</button>${schedDayOff!==0?'<button class="btn sm ghost" onclick="schedDayToday()">Bugün</button>':''}<input type="date" id="sd_pick" value="${ds}" onchange="schedDayPick(this.value)" aria-label="Tarih seç" style="padding:5px 8px;border:1px solid var(--line);border-radius:8px;"><span style="font-size:12px;color:var(--muted);">${total} ders</span>`;
+  }
+  navHtml+=`<span class="vtog" style="margin-left:auto;"><button class="${dayMode?'':'on'}" onclick="schedSetView('week')">Hafta</button><button class="${dayMode?'on':''}" onclick="schedSetView('day')">Gün</button></span>`;
   const msg=plMsg; plMsg='';
   c.innerHTML=`${msg?`<div class="note-banner">${escHtml(msg)}</div>`:''}
-  <div class="weeknav"><button class="btn sm" onclick="schedShift(-1)" aria-label="Önceki hafta">←</button><b>${d2(dates[0])} – ${d2(dates[6])} ${dates[6].getFullYear()}</b><button class="btn sm" onclick="schedShift(1)" aria-label="Sonraki hafta">→</button>${schedWeek!==0?'<button class="btn sm ghost" onclick="schedToday()">Bu hafta</button>':''}</div>
+  <div class="weeknav">${navHtml}</div>
   ${isAdm?`<div class="card" style="padding:12px 14px;margin:10px 0;display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end;">
     <div class="field" style="margin:0;min-width:180px;"><label for="sf_coach">Antrenör</label><select id="sf_coach" onchange="schedSetFilt('coach',this.value)"><option value="">Tüm antrenörler</option>${DB.coaches.map(x=>`<option value="${escHtml(x.id)}"${fc===x.id?' selected':''}>${escHtml(x.name)}</option>`).join('')}</select></div>
     <div class="field" style="margin:0;min-width:180px;"><label for="sf_pool">Havuz</label><select id="sf_pool" onchange="schedSetFilt('pool',this.value)"><option value="">Tüm havuzlar</option>${DB.pools.map(x=>`<option value="${escHtml(x.name)}"${fp===x.name?' selected':''}>${escHtml(x.name)}</option>`).join('')}</select></div>
@@ -1390,6 +1432,130 @@ function renderSchedule(c){
   <div style="overflow-x:auto;">${html}</div>
   ${fam?plFamHtml(dates):plStaffHtml()}
   <div class="note-banner" style="margin-top:18px;">${fam?'Bu takvimde yalnızca bağlı olduğunuz grupların gün, saat ve havuz bilgileri ile onaylanmış özel dersleriniz gösterilir.':'Gerçek sistemde grup dersleri sürükle-bırak ile taşınabilir; değişiklik olduğunda veli/sporcu/antrenöre otomatik bildirim gider. Bu prototipte grup programı salt-okunurdur. Özel dersler yalnızca öğretmen onayından sonra takvimde görünür ve o saate başka ders girilemez.'}</div>`;
+}
+
+/* ============ ANTRENMAN PROGRAMI (antrenör günlük antrenman yazar; veli/sporcu kendi grubunu okur) ============ */
+const TP_PARTS=['Isınma','Teknik / drill','Ana set','Kondisyon','Soğuma','Diğer'];
+const TP_FOCUS=['Teknik','Dayanıklılık','Sprint','IM','Koordinasyon','Suya güven','Nefes','Ayak çalışması','Süzülme','Diğer'];
+let tpSel={group:'',date:'',draft:null,key:'',msg:'',err:'',confirmDel:false};
+const tpId=(g,d)=>'tr_'+g+'_'+d;
+const tpCanEdit=()=>role==='admin'||role==='coach';
+const tpNum=v=>{ const s=String(v==null?'':v).trim(); if(s==='') return 0; return /^\d{1,6}$/.test(s)?parseInt(s,10):NaN; };
+const tpBlankSets=()=>['Isınma','Teknik / drill','Ana set','Soğuma'].map(p=>({part:p,text:'',meters:''}));
+function tpFind(g,d){ return (DB.trainings||[]).find(t=>t.group===g&&t.date===d)||null; }
+function tpDateOk(d){ if(!/^\d{4}-\d{2}-\d{2}$/.test(String(d||''))) return false; const x=parseYmd(d); return ymd(x)===d&&x.getFullYear()>=2020&&x.getFullYear()<=2100; }
+function tpValidate(inp){
+  const errors=[];
+  if(!tpCanEdit()) return {errors:['Antrenman programını yalnızca yönetici ve antrenör yazabilir.']};
+  if(!inp||!canViewGroup(inp.group)) return {errors:['Bu grup için yetkiniz yok.']};
+  if(!tpDateOk(inp.date)) errors.push('Geçerli bir tarih seçin.');
+  if(TP_FOCUS.indexOf(inp.focus)<0) errors.push('Odak seçin.');
+  const sets=Array.isArray(inp.sets)?inp.sets:[];
+  if(sets.length<1||sets.length>12) errors.push('1 ile 12 arasında bölüm olmalı.');
+  const out=[]; let total=0;
+  sets.slice(0,12).forEach((s,i)=>{
+    const part=TP_PARTS.indexOf(s.part)>-1?s.part:null, text=String(s.text==null?'':s.text).trim(), m=tpNum(s.meters);
+    if(!part) errors.push((i+1)+'. bölüm türü geçersiz.');
+    else if(text.length>200) errors.push((i+1)+'. bölüm açıklaması en fazla 200 karakter olabilir.');
+    else if(isNaN(m)||m>20000) errors.push((i+1)+'. bölüm metresi 0 ile 20000 arasında bir sayı olmalı.');
+    else if(text||m>0){ out.push({part,text,meters:m}); total+=m; }
+  });
+  if(!errors.length&&!out.length) errors.push('En az bir bölüme açıklama veya metre yazın.');
+  if(total>30000) errors.push('Toplam metre 30000’i aşamaz.');
+  const note=String(inp.note==null?'':inp.note).trim(); if(note.length>300) errors.push('Not en fazla 300 karakter olabilir.');
+  if(errors.length) return {errors};
+  return {errors:[],rec:{id:tpId(inp.group,inp.date),group:inp.group,date:inp.date,meters:total,focus:inp.focus,note,sets:out,by:role==='coach'?(DB.currentUser.coachId||''):'admin',updated:ymd(new Date())}};
+}
+function tpReadDom(){
+  if(!tpCanEdit()||!tpSel.draft||!$('#tp_focus')) return;
+  const d=tpSel.draft; d.focus=$('#tp_focus').value; d.note=($('#tp_note')||{}).value||'';
+  d.sets=d.sets.map((s,i)=>({part:($('#tp_part_'+i)||{value:s.part}).value,text:($('#tp_text_'+i)||{value:s.text}).value,meters:($('#tp_m_'+i)||{value:s.meters}).value}));
+}
+function tpLoadDraft(){
+  const key=tpSel.group+'|'+tpSel.date; if(tpSel.key===key&&tpSel.draft) return;
+  const t=tpFind(tpSel.group,tpSel.date);
+  tpSel.key=key; tpSel.confirmDel=false;
+  if(t) tpSel.draft={focus:TP_FOCUS.indexOf(t.focus)>-1?t.focus:'Diğer',note:t.note||'',sets:(Array.isArray(t.sets)&&t.sets.length?t.sets.map(s=>({part:s.part,text:s.text,meters:String(s.meters||'')})):[{part:'Ana set',text:t.note||'',meters:String(t.meters||'')}]),exists:true};
+  else tpSel.draft={focus:'Teknik',note:'',sets:tpBlankSets(),exists:false};
+}
+function tpPickGroup(v){ tpReadDom(); tpSel.group=v; tpSel.key=''; tpSel.msg=tpSel.err=''; renderTrainPlan($('#content')); }
+function tpPickDate(v){ tpReadDom(); if(!tpDateOk(v)) return; tpSel.date=v; tpSel.key=''; tpSel.msg=tpSel.err=''; renderTrainPlan($('#content')); }
+function tpLoad(ds){ tpPickDate(ds); }
+function tpAddRow(){ tpReadDom(); if(!tpSel.draft||tpSel.draft.sets.length>=12) return; tpSel.draft.sets.push({part:'Diğer',text:'',meters:''}); renderTrainPlan($('#content')); }
+function tpDelRow(i){ tpReadDom(); if(!tpSel.draft||tpSel.draft.sets.length<=1) return; tpSel.draft.sets.splice(i,1); renderTrainPlan($('#content')); }
+function tpTotalLive(){ tpReadDom(); const t=(tpSel.draft?tpSel.draft.sets:[]).reduce((s,x)=>{const n=tpNum(x.meters);return s+(isNaN(n)?0:n);},0); const el=$('#tp_total'); if(el) el.textContent=t.toLocaleString('tr-TR')+' m'; }
+function tpSave(){
+  tpReadDom(); if(!tpSel.draft) return;
+  const r=tpValidate({group:tpSel.group,date:tpSel.date,focus:tpSel.draft.focus,note:tpSel.draft.note,sets:tpSel.draft.sets});
+  if(r.errors.length){ tpSel.err=r.errors.join(' '); tpSel.msg=''; renderTrainPlan($('#content')); return; }
+  DB.trainings=DB.trainings||[];
+  const i=DB.trainings.findIndex(t=>t.id===r.rec.id);
+  if(i>-1) DB.trainings[i]=r.rec; else DB.trainings.push(r.rec);
+  save(); tpSel.key=''; tpSel.err=''; tpSel.msg='Antrenman programı kaydedildi: '+groupName(r.rec.group)+' — '+fmtDate(r.rec.date)+'.'; renderTrainPlan($('#content'));
+}
+function tpDelete(){
+  if(!tpCanEdit()||!canViewGroup(tpSel.group)) return;
+  const t=tpFind(tpSel.group,tpSel.date); if(!t) return;
+  if(!tpSel.confirmDel){ tpReadDom(); tpSel.confirmDel=true; renderTrainPlan($('#content')); return; }
+  DB.trainings=DB.trainings.filter(x=>x.id!==t.id); save();
+  tpSel.key=''; tpSel.confirmDel=false; tpSel.err=''; tpSel.msg='Antrenman programı silindi.'; renderTrainPlan($('#content'));
+}
+function tpCopy(){
+  tpReadDom(); const to=($('#tp_copy_to')||{}).value||'';
+  const t=tpFind(tpSel.group,tpSel.date);
+  if(!t){ tpSel.err='Kopyalamak için önce programı kaydedin.'; tpSel.msg=''; renderTrainPlan($('#content')); return; }
+  if(!tpDateOk(to)){ tpSel.err='Kopyalanacak tarihi seçin.'; tpSel.msg=''; renderTrainPlan($('#content')); return; }
+  if(to===t.date){ tpSel.err='Aynı güne kopyalanamaz.'; tpSel.msg=''; renderTrainPlan($('#content')); return; }
+  if(tpFind(tpSel.group,to)){ tpSel.err=fmtDate(to)+' tarihinde zaten bir program var. Üzerine yazılmaz.'; tpSel.msg=''; renderTrainPlan($('#content')); return; }
+  const r=tpValidate({group:t.group,date:to,focus:t.focus,note:t.note,sets:t.sets||[{part:'Ana set',text:t.note||'',meters:t.meters}]});
+  if(r.errors.length){ tpSel.err=r.errors.join(' '); tpSel.msg=''; renderTrainPlan($('#content')); return; }
+  DB.trainings.push(r.rec); save();
+  tpSel.err=''; tpSel.msg='Program '+fmtDate(to)+' tarihine kopyalandı.'; renderTrainPlan($('#content'));
+}
+function tpSetsHtml(t){
+  const sets=Array.isArray(t.sets)&&t.sets.length?t.sets:(t.note?[{part:'Not',text:t.note,meters:t.meters}]:[]);
+  return sets.length?`<table style="margin-top:6px;"><tbody>${sets.map(s=>`<tr><td style="width:130px;"><b>${escHtml(s.part)}</b></td><td>${escHtml(s.text)}</td><td class="n" style="white-space:nowrap;">${s.meters?Number(s.meters).toLocaleString('tr-TR')+' m':''}</td></tr>`).join('')}</tbody></table>`:'';
+}
+function tpCardHtml(t,clickable){
+  return `<div class="card" style="margin-bottom:10px;${clickable?'cursor:pointer;':''}"${clickable?` onclick="tpLoad('${escHtml(t.date)}')"`:''}>
+    <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;"><b>${escHtml(fmtDate(t.date))} · ${escHtml(t.focus||'')}</b><span style="color:var(--muted);">${Number(t.meters||0).toLocaleString('tr-TR')} m</span></div>
+    ${tpSetsHtml(t)}${t.note&&Array.isArray(t.sets)&&t.sets.length?`<div style="font-size:12.5px;color:var(--muted);margin-top:6px;">Not: ${escHtml(t.note)}</div>`:''}</div>`;
+}
+function renderTrainPlan(c){
+  const groups=visibleGroups();
+  const edit=tpCanEdit();
+  if(!groups.length){ c.innerHTML='<div class="card"><div class="empty">Görüntülenecek grup yok.</div></div>'; return; }
+  if(!groups.some(g=>g.id===tpSel.group)){ tpSel.group=groups[0].id; tpSel.key=''; }
+  if(!tpDateOk(tpSel.date)){ tpSel.date=ymd(new Date()); tpSel.key=''; }
+  const msg=tpSel.msg, err=tpSel.err; tpSel.msg=''; tpSel.err='';
+  const hist=(DB.trainings||[]).filter(t=>t.group===tpSel.group).sort((a,b)=>String(b.date).localeCompare(String(a.date)));
+  let html=`${msg?`<div class="note-banner">${escHtml(msg)}</div>`:''}${err?`<div class="grp-result bad" role="alert">${escHtml(err)}</div>`:''}
+  <div class="card" style="display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end;margin-bottom:12px;">
+    ${groups.length>1||edit?`<div class="field" style="margin:0;min-width:220px;"><label for="tp_group">Grup</label><select id="tp_group" onchange="tpPickGroup(this.value)">${groups.map(g=>`<option value="${escHtml(g.id)}"${g.id===tpSel.group?' selected':''}>${escHtml(g.name)} · ${escHtml(g.day)} ${escHtml(g.time)}</option>`).join('')}</select></div>`:`<div><b>${escHtml(groupName(tpSel.group))}</b></div>`}
+    ${edit?`<div class="field" style="margin:0;"><label for="tp_date">Tarih</label><input type="date" id="tp_date" value="${escHtml(tpSel.date)}" onchange="tpPickDate(this.value)"></div>`:''}
+  </div>`;
+  if(edit){
+    tpLoadDraft(); const d=tpSel.draft; const total=d.sets.reduce((s,x)=>{const n=tpNum(x.meters);return s+(isNaN(n)?0:n);},0);
+    html+=`<div class="card"><b>${escHtml(fmtDate(tpSel.date))} antrenman programı${d.exists?'':' (yeni)'}</b>
+    <div class="field" style="margin-top:10px;max-width:260px;"><label for="tp_focus">Odak</label><select id="tp_focus">${TP_FOCUS.map(f=>`<option${d.focus===f?' selected':''}>${escHtml(f)}</option>`).join('')}</select></div>
+    <div style="display:grid;gap:8px;">${d.sets.map((s,i)=>`<div class="tp-row" style="display:grid;grid-template-columns:150px 1fr 110px 36px;gap:8px;align-items:center;">
+      <select id="tp_part_${i}" aria-label="Bölüm">${TP_PARTS.map(p=>`<option${s.part===p?' selected':''}>${escHtml(p)}</option>`).join('')}</select>
+      <input id="tp_text_${i}" maxlength="200" value="${escHtml(s.text)}" placeholder="Örn. 4x200 karışık, 20 sn dinlenme" aria-label="Açıklama">
+      <input id="tp_m_${i}" inputmode="numeric" maxlength="6" value="${escHtml(s.meters)}" placeholder="metre" oninput="tpTotalLive()" aria-label="Metre">
+      <button class="btn sm ghost" onclick="tpDelRow(${i})" aria-label="Bölümü sil"${d.sets.length<=1?' disabled':''}>✕</button></div>`).join('')}</div>
+    <div style="display:flex;gap:10px;align-items:center;margin:10px 0;flex-wrap:wrap;"><button class="btn sm" onclick="tpAddRow()"${d.sets.length>=12?' disabled':''}>+ Bölüm ekle</button><span style="color:var(--muted);">Toplam: <b id="tp_total">${total.toLocaleString('tr-TR')} m</b></span></div>
+    <div class="field"><label for="tp_note">Not (isteğe bağlı)</label><textarea id="tp_note" maxlength="300" rows="2">${escHtml(d.note)}</textarea></div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;">
+      <button class="btn primary" onclick="tpSave()">Kaydet</button>
+      ${d.exists?`<button class="btn" onclick="tpDelete()" style="${tpSel.confirmDel?'background:var(--red);color:#fff;':''}">${tpSel.confirmDel?'Silmek için tekrar basın':'Sil'}</button>
+      <div class="field" style="margin:0 0 0 auto;"><label for="tp_copy_to">Başka güne kopyala</label><div style="display:flex;gap:6px;"><input type="date" id="tp_copy_to"><button class="btn" onclick="tpCopy()">Kopyala</button></div></div>`:''}
+    </div></div>`;
+  } else {
+    html+=hist.length?'':'<div class="card"><div class="empty">Bu grup için henüz antrenman programı girilmemiş.</div></div>';
+  }
+  html+=`<div class="section-title">${edit?'Bu grubun geçmiş programları':'Antrenman programları'}</div>`;
+  html+=hist.length?hist.slice(0,edit?20:15).map(t=>tpCardHtml(t,edit)).join(''):(edit?'<div class="card"><div class="empty">Henüz kayıtlı program yok.</div></div>':'');
+  c.innerHTML=html;
 }
 
 /* ============ ATTENDANCE ============ */
@@ -3330,7 +3496,7 @@ const SB_SPECS=[
  {c:'rentals',t:'arr'},{c:'changeRequests',t:'arr'},{c:'pools',t:'arr',key:'name'},
  {c:'attendanceLog',t:'map'},{c:'photos',t:'map',wrap:'url'},{c:'reasonNotes',t:'map',wrap:'text'},{c:'poolPrices',t:'map'},{c:'coachRates',t:'map'}];
 /* Yönetici dışı rollerin yazabildiği koleksiyonlar (asıl denetim veritabanındadır; bu liste yalnızca gereksiz istekleri önler) */
-const SB_WRITE={admin:null,coach:['attendanceLog','changeRequests','aiQueue','privateLessons','athletes','photos'],parent:['privateLessons','tickets','photos'],athlete:['privateLessons','photos']};
+const SB_WRITE={admin:null,coach:['attendanceLog','changeRequests','aiQueue','privateLessons','athletes','photos','trainings'],parent:['privateLessons','tickets','photos'],athlete:['privateLessons','photos']};
 function sbWritable(c){const w=SB_WRITE[role]; return !w||w.indexOf(c)>-1;}
 function sbEmptyDB(){return {coaches:[],groups:[],parents:[],athletes:[],payments:[],leads:[],records:[],competitions:[],announcements:[],tickets:[],attendanceLog:{},trainings:[],aiQueue:[],privateLessons:[],plPackages:[],expenses:[],extraSessions:[],rentals:[],changeRequests:[],pools:[],poolPrices:{},coachRates:{},photos:{},reasonNotes:{},currentUser:{parentId:null,coachId:null,athleteId:null}};}
 
