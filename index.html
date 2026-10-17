@@ -1420,7 +1420,7 @@ function renderSchedule(c){
       const ds=ymd(d);
       const evts=list.filter(g=>groupOnDay(g,ds)&&parseInt(g.time.split(':')[0],10)===h);
       const pls=priv.filter(p=>p.date===ds&&p.hour===h);
-      html+=`<div class="slot">${evts.map(g=>`<div class="evt" onclick="showGroupMembers('${g.id}')">${g.name}<small>${g.time} · ${g.pool}${fam?'<br>'+visibleAthletes().filter(a=>a.group===g.id).map(a=>a.name.split(' ')[0]).join(', '):''}</small></div>`).join('')}${pls.map(p=>`<div class="evt private" onclick="plShow('${p.id}')">Özel ders<small>${h}:00-${h+1}:00 · ${lab(p)}</small></div>`).join('')}</div>`;
+      html+=`<div class="slot">${evts.map(g=>`<div class="evt" onclick="showGroupMembers('${g.id}')">${g.name}<small>${g.time} · ${g.pool}${fam?'<br>'+visibleAthletes().filter(a=>a.group===g.id).map(a=>a.name.split(' ')[0]).join(', '):''}</small></div>`).join('')}${pls.map(p=>`<div class="evt private" onclick="plShow('${p.id}')">Özel ders<small>${h}:00-${h+1}:00 · ${lab(p)}</small></div>`).join('')}${cRentEvts(ds,h)}</div>`;
     });
   });
   html+='</div>';
@@ -1432,7 +1432,7 @@ function renderSchedule(c){
       const ev=list.filter(g=>groupOnDay(g,ds)&&parseInt(g.time.split(':')[0],10)===h).sort((a,b)=>groupMinutes(a)[0]-groupMinutes(b)[0]);
       const pl=priv.filter(p=>p.date===ds&&p.hour===h);
       const cards=ev.map(g=>`<div class="evt" onclick="showGroupMembers('${g.id}')">${escHtml(g.name)}<small>${escHtml(g.time)} · ${escHtml(g.pool)}${g.lane&&g.lane!=='-'?' · '+escHtml(String(g.lane))+'. kulvar':''}${staffV?'<br>Antrenör: '+escHtml(cEffName(g,ds))+(g.assistant?' (yrd: '+escHtml(coachName(g.assistant))+')':'')+' · '+(g.enrolled!=null?g.enrolled+'/'+g.capacity+' sporcu':''):'<br>'+visibleAthletes().filter(a=>a.group===g.id).map(a=>escHtml(a.name.split(' ')[0])).join(', ')}</small></div>`).join('')
-        +pl.map(p=>`<div class="evt private" onclick="plShow('${p.id}')">Özel ders<small>${h}:00-${h+1}:00 · ${lab(p)}${staffV&&isAdm?' · '+escHtml(lessonPool(p)):''}</small></div>`).join('');
+        +pl.map(p=>`<div class="evt private" onclick="plShow('${p.id}')">Özel ders<small>${h}:00-${h+1}:00 · ${lab(p)}${staffV&&isAdm?' · '+escHtml(lessonPool(p)):''}</small></div>`).join('')+cRentEvts(ds,h);
       return `<div class="dv-row"><div class="tcell">${h}:00</div><div class="dv-cell">${cards||'<span class="dv-empty">Ders yok</span>'}</div></div>`;
     }).join('')+'</div>';
     const total=list.filter(g=>groupOnDay(g,ds)).length+priv.filter(p=>p.date===ds).length;
@@ -4011,6 +4011,7 @@ function schedDayRows(ds){
   const rows=[];
   gs.forEach(g=>rows.push({s:groupMinutes(g)[0],r:[escHtml(g.time),escHtml(g.name),escHtml(g.pool+(g.lane&&g.lane!=='-'?' / '+g.lane+'. kulvar':'')),fam?'':escHtml(cEffName(g,ds))]}));
   pl.forEach(p=>rows.push({s:p.hour*60,r:[p.hour+':00-'+(p.hour+1)+':00','Özel ders · '+escHtml(athleteName(p.athlete)),escHtml(lessonPool(p)),escHtml(coachName(p.coach))]}));
+  cRentList().filter(r=>cRentalOn(r,ds)).forEach(r=>rows.push({s:parseInt(r.start,10)*60,r:[escHtml(r.start+'-'+r.end),'Kiracı: '+escHtml(r.club),escHtml(r.pool+(r.lanes?' / '+r.lanes+' kulvar':'')),escHtml(r.coachName||'')]}));
   return rows.sort((a,b)=>a.s-b.s).map(x=>x.r);
 }
 function schedPrintHtml(){
@@ -5445,6 +5446,13 @@ function renderPayroll(c){
   const i=NAV.admin.findIndex(x=>x.id==='finance'); NAV.admin.splice(i<0?NAV.admin.length:i+1,0,{id:'payroll',label:'Antrenör Puantaj',ic:'🧮'});
   TITLES.payroll='Antrenör Puantaj / Bordro Özeti';
 })();
+
+/* ---------- Ders programında kiracı kulüpler (yalnızca yönetici) ---------- */
+function cRentalOn(r,ds){ return (!r.startDate||ds>=r.startDate)&&(!r.endDate||ds<=r.endDate)&&rentalDows(r).has(parseYmd(ds).getDay()); }
+function cRentList(){ return role==='admin'?(DB.rentals||[]).filter(r=>(!schedFilt.pool||r.pool===schedFilt.pool)&&!schedFilt.coach):[]; }
+function cRentEvts(ds,h){
+  return cRentList().filter(r=>cRentalOn(r,ds)&&parseInt(r.start,10)===h).map(r=>`<div class="evt" style="background:var(--amber-light);color:var(--amber);border-left:3px solid var(--amber);" onclick="route='rentals';render();">🏟️ ${escHtml(r.club)}<small>${escHtml(r.start)}-${escHtml(r.end)} · ${escHtml(r.pool)}${r.lanes?' · '+escHtml(String(r.lanes))+' kulvar':''} · kiracı</small></div>`).join('');
+}
 
 /* ============ INIT ============ */
 boot();
