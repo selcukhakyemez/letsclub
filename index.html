@@ -628,7 +628,7 @@ function render(){
   const fns={dashboard:renderDashboard,athletes:renderAthletes,parents:renderParents,groups:renderGroups,
     schedule:renderSchedule,trainplan:renderTrainPlan,weekly:renderWeekly,makeups:renderMakeups,times:renderTimes,levels:renderLevels,attendance:renderAttendance,development:renderDevelopment,competitions:renderCompetitions,
     crm:renderCRM,coaches:renderCoaches,payments:renderPayments,announcements:renderAnnouncements,tickets:renderTickets,
-    reports:renderReports,settings:renderSettings,ai:renderAI,approvals:renderApprovals,insights:renderInsights,rentals:renderRentals,finance:renderFinance,messages:renderMessages,surveys:renderSurveys,leaves:renderLeaves,discounts:renderDiscounts,devreport:renderDevReport,audit:renderAudit,payroll:renderPayroll};
+    reports:renderReports,settings:renderSettings,ai:renderAI,approvals:renderApprovals,insights:renderInsights,rentals:renderRentals,finance:renderFinance,messages:renderMessages,surveys:renderSurveys,leaves:renderLeaves,discounts:renderDiscounts,devreport:renderDevReport,audit:renderAudit,payroll:renderPayroll,atthist:renderAttHistory};
   c.innerHTML='';
   (fns[route]||renderDashboard)(c);
 }
@@ -5501,6 +5501,84 @@ plApproveProblem=function(p){
   return null;
 };
 { const _s=save; save=function(){ try{ cPlSync(); }catch(e){ console.error(e); } return _s.apply(this,arguments); }; }
+
+/* ---------- YOKLAMA GEÇMİŞİ (grup bazlı toplu görünüm) ---------- */
+const AH_ST={'Katıldı':['K','rgba(34,160,90,.22)'],'Geç geldi':['G','rgba(230,170,30,.28)'],'Telafi':['T','rgba(60,130,220,.25)'],'Gelmedi':['Ø','rgba(220,70,70,.28)'],'İzinli':['İ','rgba(130,130,150,.25)'],'Hastalık':['H','rgba(170,90,200,.25)']};
+const AH_PRESENT=new Set(['Katıldı','Geç geldi','Telafi']);
+const ahSel={gid:'',from:'',to:''};
+function ahRange(){
+  if(!ahSel.to) ahSel.to=todayStr();
+  if(!ahSel.from){ const d=parseYmd(ahSel.to); d.setDate(d.getDate()-30); ahSel.from=ymd(d); }
+}
+function ahGroupData(g){
+  const log=DB.attendanceLog||{}; const dates=[]; const recs={};
+  Object.keys(log).forEach(k=>{ const p=k.split('|'); if(p[0]!==g.id||p[1]<ahSel.from||p[1]>ahSel.to) return; dates.push(p[1]); recs[p[1]]=log[k]||{}; });
+  dates.sort();
+  const ids=new Set(DB.athletes.filter(a=>a.group===g.id).map(a=>a.id));
+  dates.forEach(d=>Object.keys(recs[d]).forEach(id=>{ if(DB.athletes.some(a=>a.id===id)) ids.add(id); }));
+  const rows=Array.from(ids).map(id=>{
+    const a=DB.athletes.find(x=>x.id===id); const cnt={}; let rec=0, pres=0;
+    dates.forEach(d=>{ const s=recs[d][id]; if(s===undefined) return; rec++; cnt[s]=(cnt[s]||0)+1; if(AH_PRESENT.has(s)) pres++; });
+    return {id,name:a?a.name:id,cnt,rec,pres,pct:rec?Math.round(pres*100/rec):null,cur:a&&a.group===g.id};
+  }).sort((x,y)=>x.name.localeCompare(y.name,'tr'));
+  const perDay=dates.map(d=>{ const v=Object.values(recs[d]); return {d,present:v.filter(s=>AH_PRESENT.has(s)).length,total:v.length}; });
+  const tp=rows.reduce((s,r)=>s+r.pres,0), tr=rows.reduce((s,r)=>s+r.rec,0);
+  return {g,dates,recs,rows,perDay,avg:tr?Math.round(tp*100/tr):null};
+}
+function ahAll(){ ahRange(); return visibleGroups().map(ahGroupData); }
+function ahCell(s){ if(s===undefined) return '<td style="text-align:center;color:var(--muted);">·</td>'; const t=AH_ST[s]||['?','transparent']; return `<td style="text-align:center;background:${t[1]};font-weight:700;" title="${escHtml(s)}">${t[0]}</td>`; }
+function ahLegend(){ return `<div style="font-size:12px;color:var(--muted);margin-top:8px;">${Object.keys(AH_ST).map(k=>`<span style="margin-right:12px;"><b>${AH_ST[k][0]}</b> = ${k}</span>`).join('')}<span><b>·</b> = kayıt yok</span></div>`; }
+function renderAttHistory(c){
+  if(!(role==='admin'||role==='coach')){ c.innerHTML='<div class="card"><div class="empty">Bu sayfaya erişim yetkiniz yok.</div></div>'; return; }
+  ahRange(); const groups=visibleGroups();
+  if(ahSel.gid&&!groups.some(g=>g.id===ahSel.gid)) ahSel.gid='';
+  const all=groups.map(ahGroupData);
+  const one=ahSel.gid?all.find(x=>x.g.id===ahSel.gid):null;
+  c.innerHTML=`<div class="card" style="margin-bottom:16px;display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end;">
+   <div class="field" style="margin:0;min-width:200px;"><label for="ah_g">Grup</label><select id="ah_g" onchange="ahSel.gid=this.value;renderAttHistory($('#content'))"><option value="">Tüm gruplar (özet)</option>${cOpt(groups.map(g=>[g.id,g.name]),ahSel.gid)}</select></div>
+   <div class="field" style="margin:0;"><label for="ah_f">Başlangıç</label><input type="date" id="ah_f" value="${ahSel.from}" onchange="ahSel.from=this.value||ahSel.from;renderAttHistory($('#content'))"></div>
+   <div class="field" style="margin:0;"><label for="ah_t">Bitiş</label><input type="date" id="ah_t" value="${ahSel.to}" onchange="ahSel.to=this.value||ahSel.to;renderAttHistory($('#content'))"></div>
+   <div style="display:flex;gap:6px;flex-wrap:wrap;"><button class="btn sm" onclick="ahPreset(30)">Son 30 gün</button><button class="btn sm" onclick="ahPreset(90)">Son 3 ay</button><button class="btn sm" onclick="ahPreset(0)">Tüm zamanlar</button></div>
+   <div style="display:flex;gap:6px;margin-left:auto;"><button class="btn primary" onclick="ahPrint()">Yazdır / PDF</button><button class="btn" onclick="ahCsv()">CSV indir</button></div></div>
+  ${one?ahGroupHtml(one):ahSummaryHtml(all)}
+  <div class="note-banner" style="margin-top:14px;">Katılım oranı = (Katıldı + Geç geldi + Telafi) ÷ yoklama alınan ders sayısı. Yoklama alınmamış günler hesaba katılmaz.</div>`;
+}
+function ahPreset(n){
+  ahSel.to=todayStr();
+  if(n===0) ahSel.from='2000-01-01'; else { const d=parseYmd(ahSel.to); d.setDate(d.getDate()-n); ahSel.from=ymd(d); }
+  renderAttHistory($('#content'));
+}
+function ahSummaryHtml(all){
+  return `<div class="card" style="padding:0;overflow-x:auto;"><table><thead><tr><th>Grup</th><th>Antrenör</th><th>Sporcu</th><th>Yoklama alınan ders</th><th>Ortalama katılım</th><th></th></tr></thead><tbody>
+  ${all.map(x=>`<tr><td><b>${escHtml(x.g.name)}</b></td><td>${escHtml(coachName(x.g.coach))}</td><td>${x.rows.length}</td><td>${x.dates.length}</td><td>${x.avg===null?'—':'<b>%'+x.avg+'</b>'}</td><td><button class="btn sm" onclick="ahSel.gid='${x.g.id}';renderAttHistory($('#content'))">Ayrıntı</button></td></tr>`).join('')||'<tr><td colspan="6"><div class="empty">Grup yok</div></td></tr>'}
+  </tbody></table></div>`;
+}
+function ahGroupHtml(x){
+  if(!x.dates.length) return `<div class="card"><b>${escHtml(x.g.name)}</b><div class="empty">Seçilen tarih aralığında bu grup için yoklama kaydı yok.</div></div>`;
+  return `<div class="card" style="padding:0;overflow-x:auto;"><div style="padding:12px 14px;"><b>${escHtml(x.g.name)}</b> · ${escHtml(coachName(x.g.coach))} · ${x.dates.length} ders · ortalama katılım <b>${x.avg===null?'—':'%'+x.avg}</b></div>
+  <table><thead><tr><th style="position:sticky;left:0;background:var(--card,#fff);">Sporcu</th>${x.dates.map(d=>`<th style="text-align:center;font-size:11px;">${d.slice(8)}.${d.slice(5,7)}<br>${d.slice(2,4)}</th>`).join('')}<th>Katılım</th><th>Gelmedi</th></tr></thead><tbody>
+  ${x.rows.map(r=>`<tr><td style="position:sticky;left:0;background:var(--card,#fff);white-space:nowrap;">${escHtml(r.name)}${r.cur?'':' <span style="font-size:11px;color:var(--muted);">(gruptan ayrıldı)</span>'}</td>${x.dates.map(d=>ahCell(x.recs[d][r.id])).join('')}<td><b>${r.pct===null?'—':'%'+r.pct}</b> <span style="font-size:11px;color:var(--muted);">${r.pres}/${r.rec}</span></td><td>${r.cnt['Gelmedi']||0}</td></tr>`).join('')}
+  <tr style="font-weight:700;"><td style="position:sticky;left:0;background:var(--card,#fff);">Gün toplamı</td>${x.perDay.map(p=>`<td style="text-align:center;font-size:12px;">${p.present}/${p.total}</td>`).join('')}<td colspan="2"></td></tr></tbody></table></div>${ahLegend()}`;
+}
+function ahTitle(){ return 'Yoklama Geçmişi — '+(ahSel.gid?((DB.groups.find(g=>g.id===ahSel.gid)||{}).name||''):'Tüm gruplar')+' — '+ahSel.from+' / '+ahSel.to; }
+function ahPrint(){
+  if(!(role==='admin'||role==='coach')) return;
+  const all=ahAll(); const list=ahSel.gid?all.filter(x=>x.g.id===ahSel.gid):all;
+  const body=ahSel.gid?list.map(x=>x.dates.length?psTable(['Sporcu'].concat(x.dates.map(d=>d.slice(8)+'.'+d.slice(5,7)),['Katılım']),x.rows.map(r=>[escHtml(r.name)].concat(x.dates.map(d=>{const s=x.recs[d][r.id]; return s===undefined?'·':escHtml((AH_ST[s]||['?'])[0]);}),[r.pct===null?'—':'%'+r.pct]))):'<p>Kayıt yok.</p>').join('')+'<p style="font-size:12px;">K=Katıldı G=Geç geldi T=Telafi Ø=Gelmedi İ=İzinli H=Hastalık</p>'
+   :psTable(['Grup','Antrenör','Sporcu','Ders','Ort. katılım'],list.map(x=>[escHtml(x.g.name),escHtml(coachName(x.g.coach)),String(x.rows.length),String(x.dates.length),x.avg===null?'—':'%'+x.avg]));
+  printSheet(ahTitle(),body);
+}
+function ahCsv(){
+  if(!(role==='admin'||role==='coach')) return;
+  const all=ahAll(); const list=ahSel.gid?all.filter(x=>x.g.id===ahSel.gid):all; const q=s=>'"'+String(s).replace(/"/g,'""')+'"';
+  const lines=['Grup;Sporcu;Tarih;Durum'];
+  list.forEach(x=>x.dates.forEach(d=>x.rows.forEach(r=>{ const s=x.recs[d][r.id]; if(s!==undefined) lines.push([x.g.name,r.name,d,s].map(q).join(';')); })));
+  fcDownload('yoklama-gecmisi.csv','text/csv;charset=utf-8','﻿'+lines.join('\n'));
+}
+(function(){
+  ['admin','coach'].forEach(r=>{ const i=NAV[r].findIndex(x=>x.id==='attendance'); NAV[r].splice(i<0?NAV[r].length:i+1,0,{id:'atthist',label:'Yoklama Geçmişi',ic:'🗓️'}); });
+  TITLES.atthist='Yoklama Geçmişi (Grup Bazlı)';
+})();
 
 /* ============ INIT ============ */
 boot();
