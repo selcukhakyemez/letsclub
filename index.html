@@ -1260,7 +1260,7 @@ function plRequest(athId,coachId,slots,note){
     if(bad){ skipped.push(fmtDate(ds)+' '+h+':00 ('+bad+')'); return; }
     const pk=pickPackage(athId);
     if(!pk){ skipped.push(fmtDate(ds)+' '+h+':00 (paket saati kalmadı)'); return; }
-    DB.privateLessons.push({id:'pl'+Date.now()+Math.floor(Math.random()*100000),pkg:pk.id,athlete:athId,coach:coachId,date:ds,hour:h,status:'Onay bekliyor',note:String(note||'').slice(0,200),createdAt:ymd(new Date()),requestedBy:role,decidedAt:null,decidedBy:null,reason:''});
+    DB.privateLessons.push({id:'pl'+Date.now()+Math.floor(Math.random()*100000),pkg:pk.id,pool:pk.pool||lessonPool({pkg:pk.id}),athlete:athId,coach:coachId,date:ds,hour:h,status:'Onay bekliyor',note:String(note||'').slice(0,200),createdAt:ymd(new Date()),requestedBy:role,decidedAt:null,decidedBy:null,reason:''});
     created++;
   });
   if(created) save();
@@ -1356,6 +1356,7 @@ function plFamHtml(dates){
           if(when<=now) grid+='<div class="pcell past"></div>';
           else if(coachBusyReason(coach.id,ds,h)) grid+='<div class="pcell busy">Dolu</div>';
           else if(athleteBusyReason(cur.id,ds,h)) grid+='<div class="pcell busy">Meşgul</div>';
+          else if(cPlCapInfo(cPlPoolOfAth(cur.id),ds,h,null).full) grid+='<div class="pcell busy" title="Havuz kontenjanı dolu">Kontenjan dolu</div>';
           else if((DB.privateLessons||[]).some(p=>p.athlete===cur.id&&p.coach===coach.id&&p.date===ds&&p.hour===h&&p.status==='Onay bekliyor')) grid+='<div class="pcell req">Bekliyor</div>';
           else if(plSel.slots.indexOf(k)>-1) grid+=`<button class="pcell sel" aria-pressed="true" onclick="plToggle('${ds}',${h})">Seçili</button>`;
           else grid+=`<button class="pcell free" aria-pressed="false" onclick="plToggle('${ds}',${h})">Boş</button>`;
@@ -2440,6 +2441,7 @@ function savePool(oldName,p){
     if(oldName!==name) renamePoolRefs(oldName,name);
     if(window.__grpSnap&&window.__grpSnap.cfg.pool===oldName) window.__grpSnap.cfg.pool=name;
   } else DB.pools.push({name,lanes,laneCapacity:1});
+  { const pp=DB.pools.find(x=>x.name===name); const pc=parseInt(p.plCap,10); if(p.plCap!==undefined){ if(pc>0) pp.plCap=pc; else delete pp.plCap; } }
   save(); return {ok:true,errors:[]};
 }
 function renamePoolRefs(a,b){
@@ -2473,6 +2475,7 @@ function poolOpen(msg,bad){
   ${DB.pools.map((p,i)=>`<div class="card" style="margin-top:10px;"><div style="display:grid;grid-template-columns:2fr 1fr;gap:10px;">
     <div class="field"><label for="pn_${i}">Havuz adı</label><input id="pn_${i}" maxlength="30" value="${escHtml(p.name)}"></div>
     <div class="field"><label for="pl_${i}">Kulvar</label><input id="pl_${i}" type="number" min="0" max="12" value="${p.lanes}"></div></div>
+    <div class="field" style="margin-top:8px;"><label for="pc_${i}">Özel ders kontenjanı (aynı saatte en fazla)</label><input id="pc_${i}" type="number" min="0" max="20" placeholder="Boş = sınırsız" value="${p.plCap||''}"><div style="font-size:11.5px;color:var(--muted);">Kiracı ve grupların kullandığı kulvarlar otomatik düşülür; öğretmen/veli kiracıyı görmez, yalnızca &quot;Kontenjan dolu&quot; görür.</div></div>
     <div style="font-size:12px;color:var(--muted);">${DB.groups.filter(g=>g.pool===p.name).length} grup kullanıyor</div>
     <div style="display:flex;gap:8px;margin-top:8px;"><button class="btn sm primary" onclick="poolSaveRow(${i})">Kaydet</button><button class="btn sm danger" onclick="poolDelete(${i})">Sil</button></div></div>`).join('')}
   <div class="card" style="margin-top:10px;"><b style="font-size:13px;">Yeni havuz</b><div style="display:grid;grid-template-columns:2fr 1fr;gap:10px;margin-top:8px;">
@@ -2482,7 +2485,7 @@ function poolOpen(msg,bad){
   <div id="pool_msg" class="grp-result ${bad?'bad':(msg?'good':'')}" style="${msg?'':'display:none;'}" aria-live="polite">${msg?escHtml(msg):''}</div>
   <div style="margin-top:14px;"><button class="btn primary" onclick="poolDone()">Bitti</button></div></div>`);
 }
-function poolSaveRow(i){const old=DB.pools[i]; if(!old) return; const r=savePool(old.name,{name:document.getElementById('pn_'+i).value,lanes:document.getElementById('pl_'+i).value}); poolOpen(r.ok?'Havuz güncellendi.':r.errors.join(' '),!r.ok);}
+function poolSaveRow(i){const old=DB.pools[i]; if(!old) return; const r=savePool(old.name,{name:document.getElementById('pn_'+i).value,lanes:document.getElementById('pl_'+i).value,plCap:document.getElementById('pc_'+i).value}); poolOpen(r.ok?'Havuz güncellendi.':r.errors.join(' '),!r.ok);}
 function poolDelete(i){const p=DB.pools[i]; if(!p) return; if(!confirm(`${p.name} havuzu silinsin mi?`)) return; const r=removePool(p.name); poolOpen(r.ok?'Havuz silindi.':r.errors.join(' '),!r.ok);}
 function poolAdd(){const r=savePool(null,{name:document.getElementById('pn_new').value,lanes:document.getElementById('pl_new').value}); poolOpen(r.ok?'Havuz eklendi.':r.errors.join(' '),!r.ok);}
 function poolDone(){
@@ -3687,7 +3690,7 @@ async function sbLoadAll(){
   });
   if(role!=='admin'){
     const have=new Set(db.privateLessons.map(p=>p.id));
-    slots.forEach(s=>{ if(!have.has(s.id)) db.privateLessons.push({id:s.id,pkg:null,athlete:'',coach:s.coach,date:s.date,hour:s.hour,status:s.status,note:'',_stub:true}); });
+    slots.forEach(s=>{ if(!have.has(s.id)) db.privateLessons.push({id:s.id,pkg:null,pool:s.pool||'',athlete:'',coach:s.coach,date:s.date,hour:s.hour,status:s.status,note:'',_stub:true}); });
   }
   const p=SB.profile; db.currentUser={parentId:p.role==='parent'?p.link_id:null,coachId:p.role==='coach'?p.link_id:null,athleteId:p.role==='athlete'?p.link_id:null};
   DB=db; sbBaseline(); SB.lastLoad=Date.now();
@@ -5453,6 +5456,51 @@ function cRentList(){ return role==='admin'?(DB.rentals||[]).filter(r=>(!schedFi
 function cRentEvts(ds,h){
   return cRentList().filter(r=>cRentalOn(r,ds)&&parseInt(r.start,10)===h).map(r=>`<div class="evt" style="background:var(--amber-light);color:var(--amber);border-left:3px solid var(--amber);" onclick="route='rentals';render();">🏟️ ${escHtml(r.club)}<small>${escHtml(r.start)}-${escHtml(r.end)} · ${escHtml(r.pool)}${r.lanes?' · '+escHtml(String(r.lanes))+' kulvar':''} · kiracı</small></div>`).join('');
 }
+
+/* ---------- ÖZEL DERS KONTENJANI (havuz başına, aynı saatte) ----------
+   Yönetici havuz başına "aynı anda en fazla N özel ders" belirler. Gruplar ve kiracılar da
+   kulvar işgal ettiği için boş kulvar sayısı kontenjanı düşürür. Kiracı bilgisi ANONİM
+   (yalnızca gün/saat/kulvar sayısı) olarak havuz kaydına yazılır; isim/iletişim asla yazılmaz. */
+function cPlPoolOfAth(athId){ const pk=(typeof pickPackage==='function')?pickPackage(athId):null; return (pk&&pk.pool)||((DB.pools[0]&&DB.pools[0].name)||''); }
+function cPlRentalsAnon(poolName){
+  return (DB.rentals||[]).filter(r=>r.pool===poolName).map(r=>({d:Array.from(rentalDows(r)).sort(),s:timeToMin(r.start),e:timeToMin(r.end),u:rentalUnits(r),a:r.startDate||'',b:r.endDate||''}))
+    .sort((x,y)=>JSON.stringify(x)<JSON.stringify(y)?-1:1);
+}
+function cPlSync(){
+  if(role!=='admin'||!Array.isArray(DB.pools)) return;
+  DB.pools.forEach(p=>{
+    const n=cPlRentalsAnon(p.name);
+    if(n.length||p.plRentals){ if(JSON.stringify(p.plRentals||[])!==JSON.stringify(n)) p.plRentals=n; }
+  });
+}
+function cPlCapInfo(poolName,ds,h,ignoreId){
+  const pool=DB.pools.find(p=>p.name===poolName);
+  if(!pool||!(pool.plCap>0)) return {limited:false,cap:Infinity,used:0,full:false};
+  const dow=parseYmd(ds).getDay(), s=h*60, e=h*60+60;
+  let free=Infinity, blocked=false;
+  const lanesUsed=new Set(); let anyGroup=0;
+  DB.groups.filter(g=>g.pool===poolName&&groupOnDay(g,ds)&&plOverlap(groupMinutes(g),[s,e])).forEach(g=>{ anyGroup++; laneList(g.lane).forEach(l=>lanesUsed.add(l)); });
+  let rent=0, anyRent=0;
+  (pool.plRentals||[]).forEach(r=>{ if(r.d.indexOf(dow)>-1&&(!r.a||ds>=r.a)&&(!r.b||ds<=r.b)&&plOverlap([r.s,r.e],[s,e])){ rent+=r.u; anyRent++; } });
+  if(pool.lanes>0){ free=pool.lanes-lanesUsed.size-rent; if(free<=0) blocked=true; }
+  else if(anyGroup||anyRent) blocked=true;
+  const used=(DB.privateLessons||[]).filter(p=>p.id!==ignoreId&&p.status==='Onaylandı'&&p.date===ds&&p.hour===h&&(p.pool||(p.pkg?lessonPool(p):poolName))===poolName).length;
+  const cap=blocked?0:Math.min(pool.plCap,free);
+  return {limited:true,cap,used,full:used>=cap};
+}
+const _cPlSlotProblem=plSlotProblem;
+plSlotProblem=function(athId,coachId,ds,h){
+  const bad=_cPlSlotProblem(athId,coachId,ds,h); if(bad) return bad;
+  const i=cPlCapInfo(cPlPoolOfAth(athId),ds,h,null); if(i.full) return 'havuz kontenjanı dolu';
+  return null;
+};
+const _cPlApproveProblem=plApproveProblem;
+plApproveProblem=function(p){
+  const bad=_cPlApproveProblem(p); if(bad) return bad;
+  const i=cPlCapInfo(p.pool||lessonPool(p),p.date,p.hour,p.id); if(i.full) return 'havuz kontenjanı dolu';
+  return null;
+};
+{ const _s=save; save=function(){ try{ cPlSync(); }catch(e){ console.error(e); } return _s.apply(this,arguments); }; }
 
 /* ============ INIT ============ */
 boot();
