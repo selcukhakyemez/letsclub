@@ -5595,6 +5595,8 @@ function clearAllData(){
 }
 /* ---------- Masaüstü kısayolu (PWA) ---------- */
 if('serviceWorker' in navigator&&/^https?:$/.test(location.protocol)){ window.addEventListener('load',()=>{ navigator.serviceWorker.register('sw.js').catch(()=>{}); }); }
+{ const _rs=renderSettings; renderSettings=function(c){ _rs(c);
+  if(role==='admin'&&!c.querySelector('[onclick="clearAllData()"]')) c.insertAdjacentHTML('beforeend',`<div class="card" style="margin-top:16px;border:1px solid var(--danger,#c0392b);"><div class="section-title" style="margin-top:0;">Sıfırdan Başla</div><div style="font-size:13px;color:var(--muted);margin-bottom:10px;">Örnek verileri ve tüm kayıtları (sporcu, veli, grup, ödeme vb.) siler; yalnızca bir boş havuz kalır. Kullanıcı hesapları silinmez. Silmeden önce yedek dosyası bilgisayarınıza otomatik indirilir.</div><button class="btn danger" onclick="clearAllData()">Tüm Verileri Sil — Sıfırdan Başla</button></div>`); }; }
 
 /* ============ INIT ============ */
 boot();
