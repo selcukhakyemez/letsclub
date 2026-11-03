@@ -3,7 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Let's Club — Sports Management Platform</title>
+<title>SH Swim Club Management</title>
+<link rel="manifest" href="manifest.json"><meta name="theme-color" content="#0f766e"><link rel="icon" href="icon-192.png"><link rel="apple-touch-icon" href="icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -250,7 +251,7 @@ body.srv .role-pill:not(#userPill){display:none;}
 <body>
 <div class="app">
   <aside class="sidebar" id="sidebar">
-    <div class="brand"><div class="mark">🏊</div><div><div class="name">Let's Club</div><div class="sub">SPORTS MANAGEMENT</div></div></div>
+    <div class="brand"><div class="mark">🏊</div><div><div class="name">SH Swim Club</div><div class="sub">MANAGEMENT</div></div></div>
     <div class="role-pill">Görünüm:
       <select id="roleSelect" onchange="setRole(this.value)">
         <option value="admin">Yönetici</option>
@@ -2895,7 +2896,7 @@ function reportBodyHtml(rep){
   const kp=rep.pool===null
    ?`<tr><td>Aktif sporcu</td><td class="n">${k.active}</td></tr><tr><td>Yeni kayıt</td><td class="n">${k.newMembers}</td></tr><tr><td>Deneme dersi alan</td><td class="n">${k.trials}</td></tr><tr><td>Denemeden kayıt olan</td><td class="n">${k.converted}</td></tr><tr><td>Ayrılan sporcu</td><td class="n">${k.left}</td></tr><tr><td>Gerçekleşen özel ders (saat)</td><td class="n">${k.privateLessons}</td></tr>`
    :`<tr><td>Havuzdaki gruplarda aktif sporcu</td><td class="n">${k.active}</td></tr><tr><td>Gerçekleşen özel ders (saat)</td><td class="n">${k.privateLessons}</td></tr>`;
-  return `<div class="rp"><h1>Let's Club — ${escHtml(rep.label)} Finansal Raporu</h1>
+  return `<div class="rp"><h1>SH Swim Club Management — ${escHtml(rep.label)} Finansal Raporu</h1>
   <div class="sub">Kapsam: <b>${escHtml(rep.scope)}</b> · Hazırlanma tarihi: ${escHtml(fmtDate(rep.generated))} · Yönetim bilgilendirme raporu${rep.filtered?' · Seçili kalemler':''}</div>
   <div class="kpis"><div><span class="sub">Toplam gelir</span><b>${m(c.income)}</b></div><div><span class="sub">Toplam gider</span><b>${m(c.expense)}</b></div><div><span class="sub">Net sonuç</span><b>${sgn(c.net)}</b></div></div>
   <h2>Yönetici özeti</h2><ul>${rep.lines.map(x=>`<li>${escHtml(x)}</li>`).join('')}</ul>
@@ -2916,7 +2917,7 @@ function reportBodyHtml(rep){
   <h2>Alacaklar</h2><table><tbody><tr><td>Tahsil edilmemiş aidat/paket alacağı</td><td class="n">${m(c.recv)}</td></tr><tr><td>Bunun gecikmiş kısmı</td><td class="n">${m(c.overdue)}</td></tr><tr><td>Havuz kiralama alacağı</td><td class="n">${m(c.rentRecv)}</td></tr></tbody></table>
   <h2>${rep.pool===null?'Kulüp hareketleri':'Havuz hareketleri'}</h2><table><tbody>${kp}</tbody></table></div>`;
 }
-function reportDoc(rep){return `<!doctype html><html lang="tr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Let's Club ${escHtml(rep.label)} Finansal Raporu — ${escHtml(rep.scope)}</title><style>body{margin:0;background:#f3f6f6}${REPORT_CSS}</style></head><body>${reportBodyHtml(rep)}</body></html>`;}
+function reportDoc(rep){return `<!doctype html><html lang="tr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>SH Swim Club Management ${escHtml(rep.label)} Finansal Raporu — ${escHtml(rep.scope)}</title><style>body{margin:0;background:#f3f6f6}${REPORT_CSS}</style></head><body>${reportBodyHtml(rep)}</body></html>`;}
 function reportText(rep){
   const c=rep.cur; const m=money;
   const L=[`LET'S CLUB — ${rep.label.toUpperCase()} FİNANSAL RAPORU`,'Kapsam: '+rep.scope,'Hazırlanma: '+fmtDate(rep.generated),'',...rep.lines,'',
@@ -3195,7 +3196,7 @@ function renderSettingsBase(c){
   <div class="card">
     <div class="section-title" style="margin-top:0;">Bu Prototip Hakkında</div>
     <p style="font-size:13.5px;color:var(--muted);line-height:1.6;">
-    Bu ekran, Let's Club için hazırlanan kapsamlı gereksinim dokümanının (85 madde) uygulanabilir bir <b>ön izlemesidir</b>.
+    Bu ekran, SH Swim Club Management için hazırlanan kapsamlı gereksinim dokümanının (85 madde) uygulanabilir bir <b>ön izlemesidir</b>.
     Amaç ekibinizin ve yazılımcınızın akışlar, veri modeli ve ekranlar üzerinde hızlıca hemfikir olmasıdır.
     Veriler yalnızca bu tarayıcıda (localStorage) saklanır; gerçek bir sunucu, veritabanı veya kimlik doğrulama içermez.
     </p>
@@ -3210,7 +3211,7 @@ function renderSettingsBase(c){
   </div>
   <div class="card" style="margin-top:16px;">
     <div class="section-title" style="margin-top:0;">Demo Verisi</div>
-    ${role==='admin'?'<button class="btn danger" onclick="resetDemo()">Demo Verisini Sıfırla</button>':'<span style="color:var(--muted);font-size:13px;">Yalnızca yönetici sıfırlayabilir.</span>'}
+    ${role==='admin'?'<button class="btn danger" onclick="resetDemo()">Demo Verisini Sıfırla</button> <button class="btn danger" onclick="clearAllData()">Tüm Verileri Sil — Sıfırdan Başla</button><div style="font-size:12px;color:var(--muted);margin-top:8px;">Örnek verileri temizler; yalnızca bir boş havuz kalır. Silmeden önce yedek dosyası otomatik indirilir.</div>':'<span style="color:var(--muted);font-size:13px;">Yalnızca yönetici sıfırlayabilir.</span>'}
   </div>`;
 }
 function toggleTheme(){
@@ -3577,7 +3578,7 @@ function sbOverlay(html){
   el.innerHTML=html||''; el.style.display=html?'flex':'none';
 }
 function sbCard(inner){
-  return `<div class="sb-card"><div class="sb-brand"><div class="mark">🏊</div><div><div class="name">Let's Club</div><div class="sub">SPORTS MANAGEMENT</div></div></div>${inner}</div>`;
+  return `<div class="sb-card"><div class="sb-brand"><div class="mark">🏊</div><div><div class="name">SH Swim Club</div><div class="sub">MANAGEMENT</div></div></div>${inner}</div>`;
 }
 function sbMsg(t,good){return t?`<div class="sb-msg ${good?'good':'bad'}" role="alert">${escHtml(t)}</div>`:'';}
 let sbMode='login';
@@ -3950,7 +3951,7 @@ let bkMsg='', bkPending=null;
 function backupParse(text){
   if(typeof text!=='string'||text.length>25*1024*1024) return {ok:false,error:'Dosya çok büyük veya okunamadı.'};
   let o; try{ o=JSON.parse(text); }catch(e){ return {ok:false,error:'Bu dosya geçerli bir yedek dosyası değil.'}; }
-  if(!o||o._app!=='letsclub'||o._v!==1||!o.data||typeof o.data!=='object'||Array.isArray(o.data)) return {ok:false,error:'Bu dosya Let\'s Club yedeği değil.'};
+  if(!o||o._app!=='letsclub'||o._v!==1||!o.data||typeof o.data!=='object'||Array.isArray(o.data)) return {ok:false,error:'Bu dosya SH Swim Club Management yedeği değil.'};
   const base=sbEmptyDB();
   for(const k of BK_REQUIRED) if(!Array.isArray(o.data[k])) return {ok:false,error:'Yedekte "'+k+'" bölümü eksik veya bozuk.'};
   const out={};
@@ -3998,7 +3999,7 @@ function bkRender(){ const e=$('#bkCard'); if(e) e.outerHTML=bkHtml(); }
 function printSheet(title,body){
   const old=document.getElementById('printSheet'); if(old) old.remove();
   const d=document.createElement('div'); d.id='printSheet';
-  d.innerHTML=`<div class="ps-head"><b>Let's Club</b> · ${escHtml(title)}</div>${body}<div class="ps-foot">${escHtml(new Date().toLocaleDateString('tr-TR'))} tarihinde oluşturuldu</div>`;
+  d.innerHTML=`<div class="ps-head"><b>SH Swim Club Management</b> · ${escHtml(title)}</div>${body}<div class="ps-foot">${escHtml(new Date().toLocaleDateString('tr-TR'))} tarihinde oluşturuldu</div>`;
   document.body.appendChild(d); document.body.classList.add('printing');
   const clean=()=>{ document.body.classList.remove('printing'); const x=document.getElementById('printSheet'); if(x) x.remove(); window.removeEventListener('afterprint',clean); };
   window.addEventListener('afterprint',clean);
@@ -4096,7 +4097,7 @@ function absenceAlerts(){
   });
   return out.sort((x,y)=>y.streak-x.streak||x.name.localeCompare(y.name,'tr'));
 }
-function absMsg(a){ return `Merhaba, ${a.name} son ${a.streak} antrenmana katılmadı. Her şey yolunda mı? Destek olmak isteriz, bilgi verirseniz seviniriz. Let's Club`; }
+function absMsg(a){ return `Merhaba, ${a.name} son ${a.streak} antrenmana katılmadı. Her şey yolunda mı? Destek olmak isteriz, bilgi verirseniz seviniriz. SH Swim Club Management`; }
 function absParent(a){ if(role!=='admin') return null; const ath=DB.athletes.find(x=>x.id===a.athlete); const p=ath&&(ath.parents||[]).map(id=>DB.parents.find(x=>x.id===id)).find(Boolean); return p||null; }
 function absAlertsHtml(){
   const L=absenceAlerts(); if(!L.length) return '';
@@ -4118,7 +4119,7 @@ function payRemindList(){
   });
 }
 function payRemindMsg(parent,athlete,amount,due){
-  return `Merhaba${parent?' '+parent:''}, ${athlete} için ${fmtDate(due)} vadeli ${Number(amount).toLocaleString('tr-TR')} TL aidat ödemesi henüz görünmüyor. Ödemeyi yaptıysanız bu mesajı dikkate almayın, yapmadıysanız en kısa sürede iletirseniz seviniriz. Teşekkürler, Let's Club`;
+  return `Merhaba${parent?' '+parent:''}, ${athlete} için ${fmtDate(due)} vadeli ${Number(amount).toLocaleString('tr-TR')} TL aidat ödemesi henüz görünmüyor. Ödemeyi yaptıysanız bu mesajı dikkate almayın, yapmadıysanız en kısa sürede iletirseniz seviniriz. Teşekkürler, SH Swim Club Management`;
 }
 function payRemindHtml(){
   const L=payRemindList(); if(!L.length) return '';
@@ -5393,7 +5394,7 @@ function renderAudit(c){
 })();
 function cSeed(d){
   const t=ymd(new Date()); C_COLLS.forEach(k=>{ d[k]=d[k]||[]; });
-  d.messages=[{id:'ms1',at:new Date().toISOString(),date:t,subject:'Hoş geldiniz',body:'Let\'s Club mesaj merkezine hoş geldiniz. Duyuru ve bilgilendirmeleri buradan alacaksınız.',to:{kind:'all',id:''},by:'Yönetim'}];
+  d.messages=[{id:'ms1',at:new Date().toISOString(),date:t,subject:'Hoş geldiniz',body:'SH Swim Club Management mesaj merkezine hoş geldiniz. Duyuru ve bilgilendirmeleri buradan alacaksınız.',to:{kind:'all',id:''},by:'Yönetim'}];
   d.surveys=[{id:'sv1',title:'Dönem Sonu Veli Memnuniyet Anketi',intro:'',questions:SV_DEFAULT_Q.map((x,i)=>({id:'q'+(i+1),text:x})),comment:true,open:true,created:t}];
   d.discounts=[{id:'ds_sibling',rule:'sibling',pct2:10,pct3:15}];
   d.compEntries=[{id:'ce_cmp1_a1',comp:'cmp1',athlete:'a1',events:['50 Serbest'],status:'Kayıtlı',applied:t},{id:'ce_cmp2_a5',comp:'cmp2',athlete:'a5',events:['200 IM'],status:'Başvuru',applied:t}];
@@ -5579,6 +5580,21 @@ function ahCsv(){
   ['admin','coach'].forEach(r=>{ const i=NAV[r].findIndex(x=>x.id==='attendance'); NAV[r].splice(i<0?NAV[r].length:i+1,0,{id:'atthist',label:'Yoklama Geçmişi',ic:'🗓️'}); });
   TITLES.atthist='Yoklama Geçmişi (Grup Bazlı)';
 })();
+
+/* ---------- SIFIRDAN BAŞLA: tüm örnek/kayıtlı veriyi sil (yönetici) ---------- */
+function clearAllData(){
+  if(role!=='admin') return;
+  const t=prompt('DİKKAT: Programdaki tüm kayıtlar (sporcu, veli, grup, ödeme vb.) silinecek ve sıfırdan başlanacak.\nİşlem öncesi bilgisayarınıza otomatik bir yedek indirilir.\n\nOnaylamak için SIFIRLA yazın:');
+  if(t===null) return;
+  if(String(t).trim().replace(/[İıi]/g,'I').toUpperCase()!=='SIFIRLA'){ alert('Onay kelimesi yanlış, hiçbir şey silinmedi.'); return; }
+  try{ fcDownload('letsclub-sifirlama-oncesi-'+ymd(new Date())+'.json','application/json',backupBuild()); }catch(e){ console.error(e); if(!confirm('Yedek indirilemedi. Yine de devam edilsin mi?')) return; }
+  const keep=DB.currentUser||{parentId:null,coachId:null,athleteId:null}; const keepAudit=DB.auditLog||[];
+  const base=sbEmptyDB(); base.pools=[{name:'Havuz 1',lanes:4,laneCapacity:1}];
+  DB=base; DB.auditLog=keepAudit; DB.currentUser=keep;
+  save(); route='dashboard'; render();
+}
+/* ---------- Masaüstü kısayolu (PWA) ---------- */
+if('serviceWorker' in navigator&&/^https?:$/.test(location.protocol)){ window.addEventListener('load',()=>{ navigator.serviceWorker.register('sw.js').catch(()=>{}); }); }
 
 /* ============ INIT ============ */
 boot();
