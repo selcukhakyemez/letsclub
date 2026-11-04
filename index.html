@@ -660,7 +660,7 @@ function renderDashboardBase(c){
     <div class="card">
       <div class="section-title" style="margin-top:0;">Bugünkü Program <a class="btn ghost sm" onclick="route='schedule';render();">Tümünü gör →</a></div>
       <table><thead><tr><th>Grup</th><th>Saat</th><th>Havuz</th><th>Antrenör</th><th>Doluluk</th></tr></thead><tbody>
-      ${todayGroups.map(g=>`<tr><td>${g.name}</td><td>${g.time}</td><td>${g.pool}</td><td>${coachName(g.coach)}</td>
+      ${todayGroups.map(g=>`<tr><td>${g.name}</td><td>${gTimeOn(g,todayStr())}</td><td>${g.pool}</td><td>${coachName(g.coach)}</td>
         <td>${g.enrolled}/${g.capacity} <div class="progress"><div style="width:${Math.min(100,g.enrolled/g.capacity*100)}%"></div></div></td></tr>`).join('')}
       </tbody></table>
     </div>
@@ -708,7 +708,7 @@ function renderCoachHome(c){
   <div class="two-col" style="margin-top:22px;">
     <div class="card"><div class="section-title" style="margin-top:0;">Derslerim</div>
       <table><thead><tr><th>Grup</th><th>Gün</th><th>Saat</th><th>Havuz</th></tr></thead><tbody>
-      ${gs.map(g=>`<tr class="rowlink" onclick="showGroupMembers('${g.id}')"><td>${g.name}</td><td>${g.day}</td><td>${g.time}</td><td>${g.pool}</td></tr>`).join('')||'<tr><td colspan="4"><div class="empty">Atanmış grup yok</div></td></tr>'}
+      ${gs.map(g=>`<tr class="rowlink" onclick="showGroupMembers('${g.id}')"><td>${g.name}</td><td>${gBlocks(g).map(b=>b.day).join(' · ')}</td><td>${gBlocks(g).map(b=>b.time).join(' · ')}</td><td>${g.pool}</td></tr>`).join('')||'<tr><td colspan="4"><div class="empty">Atanmış grup yok</div></td></tr>'}
       </tbody></table></div>
     <div class="card"><div class="section-title" style="margin-top:0;">Devamı Düşük Sporcular</div>
       ${low.length?low.map(a=>`<div class="attn-item" style="margin-bottom:8px;cursor:pointer;" onclick="openAthlete('${a.id}')">${a.name} <span class="badge red">%${Math.round(a.attendance*100)}</span></div>`).join(''):'<div class="empty">Uyarı yok</div>'}
@@ -732,7 +732,7 @@ function renderFamilyHome(c){
         <button class="btn sm" onclick="openAthlete('${k.id}')">Profili gör</button>
       </div>
       <div class="grid kpi" style="margin-top:14px;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));">
-        <div class="card"><div class="label">Bugünkü Ders</div><div class="val" style="font-size:16px;">${g?g.time:'-'}</div></div>
+        <div class="card"><div class="label">Bugünkü Ders</div><div class="val" style="font-size:16px;">${g?gTimeOn(g,todayStr()):'-'}</div></div>
         <div class="card"><div class="label">Devam Oranı</div><div class="val" style="font-size:16px;">%${Math.round(k.attendance*100)}</div></div>
         <div class="card"><div class="label">Seviye</div><div class="val" style="font-size:16px;">${k.level}</div></div>
         ${role==='parent'?`<div class="card"><div class="label">Ödeme Durumu</div><div class="val" style="font-size:16px;">${pay?statusBadge(pay.status):'-'}</div></div>`:''}
@@ -819,7 +819,7 @@ function openAthleteBase(id){
         </div>`).join('') : '<div class="empty">Bağlı veli kaydı yok</div>';
     } else if(tab==='grup'){
       body.innerHTML=`<div class="card" style="margin-top:16px;">
-        <b>${g?g.name:'-'}</b><div style="font-size:12.5px;color:var(--muted);margin-top:4px;">${g?`${g.day} · ${g.time} · ${g.pool}`:''}</div></div>
+        <b>${g?g.name:'-'}</b><div style="font-size:12.5px;color:var(--muted);margin-top:4px;">${g?`${gSchedText(g)} · ${g.pool}`:''}</div></div>
         <div class="section-title">Son Yoklamalar</div>
         <table><thead><tr><th>Tarih</th><th>Durum</th></tr></thead><tbody>
         ${['2026-09-15','2026-09-12','2026-09-10','2026-09-08'].map((dt,i)=>{
@@ -939,7 +939,7 @@ function groupOnDay(g,ds){
 }
 /* --- öğretmen meşguliyeti: grup dersi (ana veya yardımcı) ya da onaylı özel ders; dakika hassasiyetinde --- */
 function coachBusyInfo(coachId,ds,s,e,ignoreGroupId,ignoreLessonId){
-  const g=DB.groups.find(x=>x.id!==ignoreGroupId&&(effCoach(x,ds)===coachId||x.assistant===coachId)&&groupOnDay(x,ds)&&plOverlap(groupMinutes(x),[s,e]));
+  const g=DB.groups.find(x=>x.id!==ignoreGroupId&&(effCoach(x,ds)===coachId||x.assistant===coachId)&&groupOnDay(x,ds)&&plOverlap(groupMinutes(x,ds),[s,e]));
   if(g) return {type:'group',ref:g.id};
   const p=(DB.privateLessons||[]).find(x=>x.id!==ignoreLessonId&&x.coach===coachId&&x.status==='Onaylandı'&&x.date===ds&&plOverlap([x.hour*60,x.hour*60+60],[s,e]));
   if(p) return {type:'private',ref:p.id};
@@ -1008,13 +1008,13 @@ function validateGroup(c,ignoreId){
   }
   Object.keys(seen).forEach(k=>{
     const x=seen[k], who=coachName(x.pid);
-    if(x.info.type==='group'){ const og=DB.groups.find(g=>g.id===x.info.ref); conflicts.push(`${who} bu saatte "${og.name}" grubunda görevli (${og.day} ${og.time}).`); }
+    if(x.info.type==='group'){ const og=DB.groups.find(g=>g.id===x.info.ref); conflicts.push(`${who} bu saatte "${og.name}" grubunda görevli (${gSchedText(og).replace(' · ',' ')}).`); }
     else { const pl=DB.privateLessons.find(p=>p.id===x.info.ref); conflicts.push(`${who} ${fmtDate(pl.date)} ${pl.hour}:00-${pl.hour+1}:00 saatinde onaylı özel derste (${athleteName(pl.athlete)}).`); }
   });
   /* B) Havuz / kulvar kapasitesi */
   const laneCap=pool.laneCapacity||1;
   const cd=groupDows(cand);
-  const overl=DB.groups.filter(g=>g.id!==ignoreId&&g.pool===pool.name&&rangesOverlap(cand,g)&&Array.from(groupDows(g)).some(x=>cd.has(x))&&plOverlap(groupMinutes(g),[s,e]));
+  const overl=DB.groups.filter(g=>g.id!==ignoreId&&g.pool===pool.name&&rangesOverlap(cand,g)&&gBlocksOverlap(g,cd,[s,e]));
   if(pool.lanes>0){
     lanes.forEach(n=>{ const using=overl.filter(g=>laneList(g.lane).indexOf(n)>-1); if(using.length>=laneCap) conflicts.push(`${pool.name} ${n}. kulvar bu saatte "${using[0].name}" grubu tarafından kullanılıyor.`); });
   } else if(overl.length>=laneCap){
@@ -1065,7 +1065,7 @@ function renderGroups(c){
     return `<div class="card">
       <div style="display:flex;justify-content:space-between;gap:8px;"><b>${escHtml(g.name)}</b><span class="badge aqua">${escHtml(g.level)}</span></div>
       <div style="font-size:12.5px;color:var(--muted);margin-top:6px;">${g.age} yaş · ${g.pool} ${g.lane!=='-'?'· Kulvar '+g.lane:''}</div>
-      <div style="font-size:12.5px;color:var(--muted);margin-top:2px;">${g.day} · ${g.time}</div>
+      <div style="font-size:12.5px;color:var(--muted);margin-top:2px;">${gSchedText(g)}</div>
       <div style="font-size:12.5px;margin-top:8px;">Antrenör: <b>${escHtml(coachName(g.coach))}</b>${g.assistant?` · Yardımcı: ${escHtml(coachName(g.assistant))}`:''}</div>
       ${g.startDate?`<div style="font-size:12px;color:var(--muted);margin-top:4px;">${fmtDate(g.startDate)} – ${g.endDate?fmtDate(g.endDate):'süresiz'} ${ended?'<span class="badge grey">Sona erdi</span>':upcoming?'<span class="badge amber">Yakında başlıyor</span>':''}</div>`:''}
       <div style="margin-top:10px;">${g.enrolled}/${g.capacity} kontenjan
@@ -1177,8 +1177,7 @@ function openGroupInfo(gid){
   <div style="font-size:12.5px;color:var(--muted);">${mine.map(a=>a.name).join(', ')}</div></div>
   <button class="close-x" onclick="closeDrawer()">✕</button></div>
   <div class="drawer-body"><div class="card" style="margin-top:16px;"><table>
-  <tr><td style="color:var(--muted);">Gün</td><td>${g.day}</td></tr>
-  <tr><td style="color:var(--muted);">Saat</td><td>${g.time}</td></tr>
+  <tr><td style="color:var(--muted);">Gün / Saat</td><td>${gSchedText(g)}</td></tr>
   <tr><td style="color:var(--muted);">Havuz</td><td>${g.pool}${g.lane!=='-'?' · Kulvar '+g.lane:''}</td></tr>
   <tr><td style="color:var(--muted);">Antrenör</td><td>${coachName(g.coach)}</td></tr>
   </table></div></div>`;
@@ -1191,7 +1190,7 @@ function showGroupMembers(gid){
   const members=DB.athletes.filter(a=>a.group===gid);
   const d=$('#drawer');
   d.innerHTML=`<div class="drawer-head"><div><div style="font-weight:800;font-size:16px;">${g.name}</div>
-  <div style="font-size:12.5px;color:var(--muted);">${g.day} · ${g.time} · ${coachName(g.coach)}</div></div>
+  <div style="font-size:12.5px;color:var(--muted);">${gSchedText(g)} · ${coachName(g.coach)}</div></div>
   <button class="close-x" onclick="closeDrawer()">✕</button></div>
   <div class="drawer-body"><div class="section-title" style="margin-top:16px;">Sporcular (${members.length})</div>
   ${members.map(m=>`<div class="card rowlink" style="margin-bottom:8px;" onclick="closeDrawer();openAthlete('${m.id}')">
@@ -1230,7 +1229,7 @@ function athleteBusyReason(athId,ds,h,ignoreId){
   const a=DB.athletes.find(x=>x.id===athId); if(!a) return 'unknown';
   const r=[h*60,h*60+60];
   const g=DB.groups.find(x=>x.id===a.group);
-  if(g&&groupOnDay(g,ds)&&plOverlap(groupMinutes(g),r)) return 'group';
+  if(g&&groupOnDay(g,ds)&&plOverlap(groupMinutes(g,ds),r)) return 'group';
   if((DB.privateLessons||[]).some(p=>p.id!==ignoreId&&p.athlete===athId&&p.status==='Onaylandı'&&p.date===ds&&p.hour===h)) return 'private';
   return null;
 }
@@ -1418,9 +1417,9 @@ function renderSchedule(c){
     html+=`<div class="tcell">${h}:00</div>`;
     dates.forEach(d=>{
       const ds=ymd(d);
-      const evts=list.filter(g=>groupOnDay(g,ds)&&parseInt(g.time.split(':')[0],10)===h);
+      const evts=list.filter(g=>groupOnDay(g,ds)&&parseInt(gTimeOn(g,ds).split(':')[0],10)===h);
       const pls=priv.filter(p=>p.date===ds&&p.hour===h);
-      html+=`<div class="slot">${evts.map(g=>`<div class="evt" onclick="showGroupMembers('${g.id}')">${g.name}<small>${g.time} · ${g.pool}${fam?'<br>'+visibleAthletes().filter(a=>a.group===g.id).map(a=>a.name.split(' ')[0]).join(', '):''}</small></div>`).join('')}${pls.map(p=>`<div class="evt private" onclick="plShow('${p.id}')">Özel ders<small>${h}:00-${h+1}:00 · ${lab(p)}</small></div>`).join('')}${cRentEvts(ds,h)}</div>`;
+      html+=`<div class="slot">${evts.map(g=>`<div class="evt" onclick="showGroupMembers('${g.id}')">${g.name}<small>${gTimeOn(g,ds)} · ${g.pool}${fam?'<br>'+visibleAthletes().filter(a=>a.group===g.id).map(a=>a.name.split(' ')[0]).join(', '):''}</small></div>`).join('')}${pls.map(p=>`<div class="evt private" onclick="plShow('${p.id}')">Özel ders<small>${h}:00-${h+1}:00 · ${lab(p)}</small></div>`).join('')}${cRentEvts(ds,h)}</div>`;
     });
   });
   html+='</div>';
@@ -1429,9 +1428,9 @@ function renderSchedule(c){
     const ds=ymd(dayDate), dIdx=(dayDate.getDay()+6)%7;
     const staffV=!fam;
     html='<div class="dv">'+hours.map(h=>{
-      const ev=list.filter(g=>groupOnDay(g,ds)&&parseInt(g.time.split(':')[0],10)===h).sort((a,b)=>groupMinutes(a)[0]-groupMinutes(b)[0]);
+      const ev=list.filter(g=>groupOnDay(g,ds)&&parseInt(gTimeOn(g,ds).split(':')[0],10)===h).sort((a,b)=>groupMinutes(a,ds)[0]-groupMinutes(b,ds)[0]);
       const pl=priv.filter(p=>p.date===ds&&p.hour===h);
-      const cards=ev.map(g=>`<div class="evt" onclick="showGroupMembers('${g.id}')">${escHtml(g.name)}<small>${escHtml(g.time)} · ${escHtml(g.pool)}${g.lane&&g.lane!=='-'?' · '+escHtml(String(g.lane))+'. kulvar':''}${staffV?'<br>Antrenör: '+escHtml(cEffName(g,ds))+(g.assistant?' (yrd: '+escHtml(coachName(g.assistant))+')':'')+' · '+(g.enrolled!=null?g.enrolled+'/'+g.capacity+' sporcu':''):'<br>'+visibleAthletes().filter(a=>a.group===g.id).map(a=>escHtml(a.name.split(' ')[0])).join(', ')}</small></div>`).join('')
+      const cards=ev.map(g=>`<div class="evt" onclick="showGroupMembers('${g.id}')">${escHtml(g.name)}<small>${escHtml(gTimeOn(g,ds))} · ${escHtml(g.pool)}${g.lane&&g.lane!=='-'?' · '+escHtml(String(g.lane))+'. kulvar':''}${staffV?'<br>Antrenör: '+escHtml(cEffName(g,ds))+(g.assistant?' (yrd: '+escHtml(coachName(g.assistant))+')':'')+' · '+(g.enrolled!=null?g.enrolled+'/'+g.capacity+' sporcu':''):'<br>'+visibleAthletes().filter(a=>a.group===g.id).map(a=>escHtml(a.name.split(' ')[0])).join(', ')}</small></div>`).join('')
         +pl.map(p=>`<div class="evt private" onclick="plShow('${p.id}')">Özel ders<small>${h}:00-${h+1}:00 · ${lab(p)}${staffV&&isAdm?' · '+escHtml(lessonPool(p)):''}</small></div>`).join('')+cRentEvts(ds,h);
       return `<div class="dv-row"><div class="tcell">${h}:00</div><div class="dv-cell">${cards||'<span class="dv-empty">Ders yok</span>'}</div></div>`;
     }).join('')+'</div>';
@@ -1549,7 +1548,7 @@ function renderTrainPlan(c){
   const hist=(DB.trainings||[]).filter(t=>t.group===tpSel.group).sort((a,b)=>String(b.date).localeCompare(String(a.date)));
   let html=`${msg?`<div class="note-banner">${escHtml(msg)}</div>`:''}${err?`<div class="grp-result bad" role="alert">${escHtml(err)}</div>`:''}
   <div class="card" style="display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end;margin-bottom:12px;">
-    ${groups.length>1||edit?`<div class="field" style="margin:0;min-width:220px;"><label for="tp_group">Grup</label><select id="tp_group" onchange="tpPickGroup(this.value)">${groups.map(g=>`<option value="${escHtml(g.id)}"${g.id===tpSel.group?' selected':''}>${escHtml(g.name)} · ${escHtml(g.day)} ${escHtml(g.time)}</option>`).join('')}</select></div>`:`<div><b>${escHtml(groupName(tpSel.group))}</b></div>`}
+    ${groups.length>1||edit?`<div class="field" style="margin:0;min-width:220px;"><label for="tp_group">Grup</label><select id="tp_group" onchange="tpPickGroup(this.value)">${groups.map(g=>`<option value="${escHtml(g.id)}"${g.id===tpSel.group?' selected':''}>${escHtml(g.name)} · ${escHtml(gSchedText(g))}</option>`).join('')}</select></div>`:`<div><b>${escHtml(groupName(tpSel.group))}</b></div>`}
     ${edit?`<div class="field" style="margin:0;"><label for="tp_date">Tarih</label><input type="date" id="tp_date" value="${escHtml(tpSel.date)}" onchange="tpPickDate(this.value)"></div>`:''}
   </div>`;
   if(edit){
@@ -1963,7 +1962,7 @@ function assignOpen(id){
   <div style="font-size:12.5px;color:var(--muted);">İşaretli gruplar bu antrenöre bağlanır. Her değişiklik çakışma için denetlenir.</div></div><button class="close-x" onclick="closeDrawer()">✕</button></div>
   <div class="drawer-body" style="padding-top:16px;">
   <div id="as_groups">${DB.groups.map(g=>`<label class="chk" style="display:flex;margin-bottom:8px;"><input type="checkbox" value="${g.id}" ${g.coach===id?'checked':''} onchange="assignCheck()">
-    <span><b>${escHtml(g.name)}</b> · ${escHtml(g.day)} ${escHtml(g.time)}${g.coach!==id?` <span style="color:var(--muted);">(şu an: ${escHtml(coachName(g.coach))})</span>`:''}</span></label>`).join('')}</div>
+    <span><b>${escHtml(g.name)}</b> · ${escHtml(gSchedText(g))}${g.coach!==id?` <span style="color:var(--muted);">(şu an: ${escHtml(coachName(g.coach))})</span>`:''}</span></label>`).join('')}</div>
   <div class="field" id="as_replBox" style="display:none;"><label for="as_repl">Çıkarılan grupları devralacak antrenör</label>
     <select id="as_repl" onchange="assignCheck()"><option value="">Antrenör seçin</option>${DB.coaches.filter(x=>x.id!==id).map(x=>`<option value="${x.id}">${escHtml(x.name)}</option>`).join('')}</select></div>
   <div id="as_result" class="grp-result" aria-live="polite">Değişiklik yapmadınız.</div>
@@ -2729,7 +2728,7 @@ function rentalAmount(r,ym){
 /* Havuzda aynı anda kullanılan kulvar sayısının zirvesi (gruplar + kiralamalar + aday) */
 function poolPeak(pool,cand,ignoreId){
   const cd=cand.days;
-  const gs=DB.groups.filter(g=>g.pool===pool.name&&g.id!==ignoreId&&rangesOverlap(cand,g)&&anyShare(groupDows(g),cd)).map(g=>({iv:groupMinutes(g),lanes:laneList(g.lane)}));
+  const gs=DB.groups.filter(g=>g.pool===pool.name&&g.id!==ignoreId&&rangesOverlap(cand,g)&&anyShare(groupDows(g),cd)).flatMap(g=>gBlocks(g).filter(b=>anyShare(gBlockDows(b),cd)).map(b=>({iv:gBlockMin(b),lanes:laneList(g.lane)})));
   const rs=(DB.rentals||[]).filter(r=>r.pool===pool.name&&r.id!==ignoreId&&rangesOverlap(cand,r)&&anyShare(rentalDows(r),cd)).map(r=>({iv:[timeToMin(r.start),timeToMin(r.end)],n:rentalUnits(r),club:r.club}));
   const pts=new Set([cand.start]); gs.forEach(x=>pts.add(x.iv[0])); rs.forEach(x=>pts.add(x.iv[0]));
   let peak=0,at=null,clubs=[];
@@ -3480,7 +3479,7 @@ function aiViewTraining(){
   return `<div class="card">
     <div class="field" style="max-width:320px;"><label>Grup</label>
       <select onchange="aiSel.group=this.value;aiDraw()">${gs.map(g=>`<option value="${g.id}" ${g.id===aiSel.group?'selected':''}>${g.name}</option>`).join('')}</select></div>
-    <div style="font-size:13px;color:var(--muted);">${t.g.level} · ${t.g.day} · ${t.g.time} · ${t.g.pool}</div>
+    <div style="font-size:13px;color:var(--muted);">${t.g.level} · ${gSchedText(t.g)} · ${t.g.pool}</div>
     <div class="section-title">Son antrenmanların özeti</div>
     <ul class="ai-list">${t.obs.map(o=>`<li>${o}</li>`).join('')}</ul>
     ${t.hist.length?`<div class="section-title">Son seanslar</div>
@@ -4011,7 +4010,7 @@ function schedDayRows(ds){
   const pl=visiblePrivateLessons().filter(p=>p.status==='Onaylandı'&&p.date===ds&&(!fc||p.coach===fc)&&(!fp||lessonPool(p)===fp));
   const fam=(role==='parent'||role==='athlete');
   const rows=[];
-  gs.forEach(g=>rows.push({s:groupMinutes(g)[0],r:[escHtml(g.time),escHtml(g.name),escHtml(g.pool+(g.lane&&g.lane!=='-'?' / '+g.lane+'. kulvar':'')),fam?'':escHtml(cEffName(g,ds))]}));
+  gs.forEach(g=>rows.push({s:groupMinutes(g,ds)[0],r:[escHtml(gTimeOn(g,ds)),escHtml(g.name),escHtml(g.pool+(g.lane&&g.lane!=='-'?' / '+g.lane+'. kulvar':'')),fam?'':escHtml(cEffName(g,ds))]}));
   pl.forEach(p=>rows.push({s:p.hour*60,r:[p.hour+':00-'+(p.hour+1)+':00','Özel ders · '+escHtml(athleteName(p.athlete)),escHtml(lessonPool(p)),escHtml(coachName(p.coach))]}));
   cRentList().filter(r=>cRentalOn(r,ds)).forEach(r=>rows.push({s:parseInt(r.start,10)*60,r:[escHtml(r.start+'-'+r.end),'Kiracı: '+escHtml(r.club),escHtml(r.pool+(r.lanes?' / '+r.lanes+' kulvar':'')),escHtml(r.coachName||'')]}));
   return rows.sort((a,b)=>a.s-b.s).map(x=>x.r);
@@ -4032,7 +4031,7 @@ function schedPrint(){ const h=schedPrintHtml(); printSheet(h.title,h.body); }
 function attPrintHtml(gid,date){
   const g=DB.groups.find(x=>x.id===gid); if(!g||!canViewGroup(gid)) return null;
   const mem=DB.athletes.filter(a=>a.group===gid&&a.status==='active').sort((a,b)=>String(a.name).localeCompare(String(b.name),'tr'));
-  return {title:'Yoklama Listesi — '+g.name+' — '+fmtDate(date),body:`<p>${escHtml(g.day)} ${escHtml(g.time)} · ${escHtml(g.pool)} · Antrenör: ${escHtml(coachName(g.coach))}</p>`+psTable(['No','Sporcu','Geldi','Gelmedi','İzinli','Not'],mem.map((a,i)=>[String(i+1),escHtml(a.name),'☐','☐','☐','']))};
+  return {title:'Yoklama Listesi — '+g.name+' — '+fmtDate(date),body:`<p>${escHtml(gSchedText(g))} · ${escHtml(g.pool)} · Antrenör: ${escHtml(coachName(g.coach))}</p>`+psTable(['No','Sporcu','Geldi','Gelmedi','İzinli','Not'],mem.map((a,i)=>[String(i+1),escHtml(a.name),'☐','☐','☐','']))};
 }
 function attPrint(){ const gid=($('#attGroup')||{}).value, date=($('#attDate')||{}).value; const h=attPrintHtml(gid,date); if(h) printSheet(h.title,h.body); }
 function tpPrintHtml(gid,date){
@@ -4052,7 +4051,7 @@ function weeklyData(off){
     const perDay=days.map(()=>0); let gCount=0,gMin=0,assistCount=0,pCount=0,xCount=0,earn=0,earnKnown=false;
     DB.groups.forEach(g=>{
       const mine=g.coach===cid, asst=g.assistant===cid; if(!mine&&!asst&&!cIsSubOn(g,cid,days)) return;
-      days.forEach((ds,i)=>{ if(!groupOnDay(g,ds)) return; const m=groupMinutes(g); const len=m[1]-m[0];
+      days.forEach((ds,i)=>{ if(!groupOnDay(g,ds)) return; const m=groupMinutes(g,ds); const len=m[1]-m[0];
         if(effCoach(g,ds)===cid){ gCount++; gMin+=len; perDay[i]+=len; earn+=rateOf(cid,'group',g.pool); } else if(asst){ assistCount++; gMin+=len; perDay[i]+=len; } });
     });
     (DB.privateLessons||[]).forEach(p=>{ if(p._stub||p.coach!==cid||p.status!=='Onaylandı') return; const i=days.indexOf(p.date); if(i<0) return; pCount++; perDay[i]+=60; earn+=rateOf(cid,'private',lessonPool(p)); });
@@ -4912,7 +4911,7 @@ function dvHtml(d){
   const a=d.a, per=d.months?('Son '+d.months+' ay'):'Tüm zamanlar';
   const kv=(k,v)=>`<tr><td style="width:34%;color:#555;">${escHtml(k)}</td><td>${v}</td></tr>`;
   let h=`<h2 class="ps-h" style="font-size:17px;">${escHtml(a.name)} — Gelişim Raporu</h2><p style="font-size:12px;color:#555;margin:0 0 8px;">Dönem: ${escHtml(per)} (${escHtml(fmtDate(d.from||a.joined||d.to))} – ${escHtml(fmtDate(d.to))})</p>`;
-  h+=`<table class="ps-t">${kv('Yaş / Seviye',age(a.dob)+' yaş · '+escHtml(a.level))}${kv('Grup',d.g?escHtml(d.g.name+' · '+d.g.day+' '+d.g.time+' · '+d.g.pool):'—')}${kv('Antrenör',escHtml(coachName(a.coach||(d.g&&d.g.coach))))}${kv('Kulübe katılım',escHtml(fmtDate(a.joined)))}</table>`;
+  h+=`<table class="ps-t">${kv('Yaş / Seviye',age(a.dob)+' yaş · '+escHtml(a.level))}${kv('Grup',d.g?escHtml(d.g.name+' · '+gSchedText(d.g)+' · '+d.g.pool):'—')}${kv('Antrenör',escHtml(coachName(a.coach||(d.g&&d.g.coach))))}${kv('Kulübe katılım',escHtml(fmtDate(a.joined)))}</table>`;
   h+=`<h3 class="ps-h">Devam durumu</h3>`;
   if(d.att){ h+=d.att.tot?`<p style="margin:2px 0 6px;font-size:13px;">Yoklaması alınan <b>${d.att.tot}</b> dersin <b>${d.att.present}</b> tanesine katıldı: <b>%${Math.round(d.att.rate*100)}</b></p>`+psTable(['Durum','Ders sayısı'],Object.keys(d.att.cnt).map(k=>[escHtml(k),String(d.att.cnt[k])])):'<p style="font-size:13px;">Bu dönemde yoklama kaydı yok.</p>'; }
   else h+=`<p style="font-size:13px;">Genel devam oranı: <b>%${Math.round((a.attendance||0)*100)}</b></p>`;
@@ -5094,13 +5093,13 @@ function lcConflicts(l,subs){
   Object.keys(subs).forEach(gid=>{
     const cid=subs[gid]; if(!cid) return; const g=DB.groups.find(x=>x.id===gid); if(!g) return;
     if(cid===l.coach){ out.push('Antrenör kendi yerine atanamaz.'); return; }
-    const m=groupMinutes(g); let n=0;
+    let n=0;
     dates.filter(ds=>groupOnDay(g,ds)).forEach(ds=>{
-      if(n>=2) return;
+      if(n>=2) return; const m=groupMinutes(g,ds);
       const busy=coachBusyInfo(cid,ds,m[0],m[1],gid);
-      if(busy){ out.push(`${coachName(cid)}, ${fmtDate(ds)} günü ${g.time} saatinde başka bir derste (${g.name} için atanamaz).`); n++; return; }
+      if(busy){ out.push(`${coachName(cid)}, ${fmtDate(ds)} günü ${gTimeOn(g,ds)} saatinde başka bir derste (${g.name} için atanamaz).`); n++; return; }
       if((DB.coachLeaves||[]).some(x=>x.id!==l.id&&x.coach===cid&&lcCovers(x,ds))){ out.push(`${coachName(cid)}, ${fmtDate(ds)} günü izinli.`); n++; return; }
-      Object.keys(subs).forEach(g2id=>{ if(g2id===gid||subs[g2id]!==cid) return; const g2=DB.groups.find(x=>x.id===g2id); if(g2&&groupOnDay(g2,ds)&&plOverlap(groupMinutes(g2),m)&&g2id>gid){ out.push(`${coachName(cid)}, ${fmtDate(ds)} günü aynı saatte iki gruba atanamaz (${g.name} / ${g2.name}).`); n++; } });
+      Object.keys(subs).forEach(g2id=>{ if(g2id===gid||subs[g2id]!==cid) return; const g2=DB.groups.find(x=>x.id===g2id); if(g2&&groupOnDay(g2,ds)&&plOverlap(groupMinutes(g2,ds),m)&&g2id>gid){ out.push(`${coachName(cid)}, ${fmtDate(ds)} günü aynı saatte iki gruba atanamaz (${g.name} / ${g2.name}).`); n++; } });
     });
   });
   return [...new Set(out)];
@@ -5157,7 +5156,7 @@ function renderLeaves(c){
   ${list.map(l=>{ const gs=lcGroupsOf(l);
     return `<div class="card" style="margin-bottom:12px;"><div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;"><div><b>${adm?escHtml(coachName(l.coach))+' · ':''}${escHtml(fmtDate(l.from))} – ${escHtml(fmtDate(l.to))}</b> <span style="color:var(--muted);font-size:12.5px;">${escHtml(l.category)}</span></div>${lcBadge(l.status)}</div>
     ${l.status==='Onaylandı'?`<div style="font-size:12.5px;margin-top:6px;">${gs.map(g=>{ const s=(l.subs||[]).find(x=>x.group===g.id); return escHtml(g.name)+': '+(s?'<b>'+escHtml(coachName(s.coach))+'</b>':'<span style="color:var(--red);">ders yapılmaz</span>'); }).join(' · ')||'Bu tarihlerde grup dersi yok'}</div>`:''}
-    ${adm&&l.status==='Bekliyor'?`<div style="margin-top:10px;">${gs.length?gs.map(g=>`<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:6px;"><span style="min-width:170px;font-size:13px;">${escHtml(g.name)} <span style="color:var(--muted);font-size:11.5px;">${escHtml(g.day)} ${escHtml(g.time)}</span></span><select id="lcs_${l.id}_${g.id}" style="border:1px solid var(--line);border-radius:8px;padding:7px 9px;background:var(--bg);color:var(--ink);font:inherit;font-size:13px;"><option value="">Ders yapılmasın</option>${cOpt(DB.coaches.filter(x=>x.id!==l.coach).map(x=>[x.id,x.name+' ile değiştir']),'')}</select></div>`).join(''):'<div style="font-size:12.5px;color:var(--muted);">Bu tarihlerde bu antrenörün grup dersi yok.</div>'}
+    ${adm&&l.status==='Bekliyor'?`<div style="margin-top:10px;">${gs.length?gs.map(g=>`<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:6px;"><span style="min-width:170px;font-size:13px;">${escHtml(g.name)} <span style="color:var(--muted);font-size:11.5px;">${escHtml(gSchedText(g))}</span></span><select id="lcs_${l.id}_${g.id}" style="border:1px solid var(--line);border-radius:8px;padding:7px 9px;background:var(--bg);color:var(--ink);font:inherit;font-size:13px;"><option value="">Ders yapılmasın</option>${cOpt(DB.coaches.filter(x=>x.id!==l.coach).map(x=>[x.id,x.name+' ile değiştir']),'')}</select></div>`).join(''):'<div style="font-size:12.5px;color:var(--muted);">Bu tarihlerde bu antrenörün grup dersi yok.</div>'}
       <label class="chk" style="margin:6px 0;"><input type="checkbox" id="lcn_${l.id}" checked> Etkilenen grupların velilerine mesaj gönder</label>
       <div><button class="btn primary sm" onclick="lcDecideUi('${l.id}',true)">Onayla</button> <button class="btn sm danger" onclick="lcDecideUi('${l.id}',false)">Reddet</button></div></div>`:''}
     ${adm&&(l.status==='Onaylandı')&&l.to>=today?`<div style="margin-top:8px;"><button class="btn sm danger" onclick="lcCancelUi('${l.id}')">İzni iptal et</button></div>`:''}</div>`; }).join('')||'<div class="card"><div class="empty">İzin kaydı yok</div></div>'}
@@ -5478,7 +5477,7 @@ function cPlCapInfo(poolName,ds,h,ignoreId){
   const dow=parseYmd(ds).getDay(), s=h*60, e=h*60+60;
   let free=Infinity, blocked=false;
   const lanesUsed=new Set(); let anyGroup=0;
-  DB.groups.filter(g=>g.pool===poolName&&groupOnDay(g,ds)&&plOverlap(groupMinutes(g),[s,e])).forEach(g=>{ anyGroup++; laneList(g.lane).forEach(l=>lanesUsed.add(l)); });
+  DB.groups.filter(g=>g.pool===poolName&&groupOnDay(g,ds)&&plOverlap(groupMinutes(g,ds),[s,e])).forEach(g=>{ anyGroup++; laneList(g.lane).forEach(l=>lanesUsed.add(l)); });
   let rent=0, anyRent=0;
   (pool.plRentals||[]).forEach(r=>{ if(r.d.indexOf(dow)>-1&&(!r.a||ds>=r.a)&&(!r.b||ds<=r.b)&&plOverlap([r.s,r.e],[s,e])){ rent+=r.u; anyRent++; } });
   if(pool.lanes>0){ free=pool.lanes-lanesUsed.size-rent; if(free<=0) blocked=true; }
@@ -5715,6 +5714,84 @@ function lvRowsSave(){ lvRowsRead(); const r=lvSaveRows(lvSel.level,lvRows||[]);
   const b=c.querySelector('[onclick="lvSaveForm()"]'); if(b){ b.setAttribute('onclick','lvRowsSave()'); b.textContent='Becerileri kaydet'; }
   const t=c.querySelector('#lv_level'); if(t){ t.setAttribute('onchange','lvRows=null;lvPick(this.value)'); }
 }; }
+
+/* ---------- ÇOK PROGRAMLI GRUPLAR: hafta içi / hafta sonu farklı gün-saat ---------- */
+/* g.sched = [{day:'Pzt/Çar', time:'18:00-19:00'}, {day:'Cmt/Paz', time:'10:00-11:30'}]  (yoksa tek program: g.day + g.time) */
+function gBlocks(g){ return (Array.isArray(g.sched)&&g.sched.length)?g.sched:[{day:g.day,time:g.time}]; }
+function gBlockDows(b){ return new Set(String(b.day||'').split('/').map(k=>DAYTOKEN[k.trim()]).filter(x=>x!==undefined)); }
+function gBlockMin(b){ const f=t=>{const p=t.split(':').map(Number);return p[0]*60+p[1];}; const a=String(b.time).split('-'); return [f(a[0]),f(a[1])]; }
+function gBlockOn(g,ds){ const dow=parseYmd(ds).getDay(); return gBlocks(g).find(b=>gBlockDows(b).has(dow))||null; }
+function gTimeOn(g,ds){ const b=ds?gBlockOn(g,ds):null; return (b||gBlocks(g)[0]).time; }
+function gSchedText(g){ const bs=gBlocks(g); return bs.length>1?bs.map(b=>b.day+' '+b.time).join(' · '):(g.day+' · '+g.time); }
+function gBlocksOverlap(g,dows,iv){ return gBlocks(g).some(b=>anyShare(gBlockDows(b),dows)&&plOverlap(gBlockMin(b),iv)); }
+groupDows=function(g){ const s=new Set(); gBlocks(g).forEach(b=>gBlockDows(b).forEach(x=>s.add(x))); return s; };
+groupOnDay=function(g,ds){
+  if(g.startDate&&ds<g.startDate) return false;
+  if(g.endDate&&ds>g.endDate) return false;
+  return !!gBlockOn(g,ds);
+};
+groupMinutes=function(g,ds){ const b=ds?gBlockOn(g,ds):null; return gBlockMin(b||gBlocks(g)[0]); };
+
+/* form: toplanan veriye ek programlar */
+const _grpCollect=grpCollect;
+grpCollect=function(){
+  const c=_grpCollect();
+  const extra=Array.from(document.querySelectorAll('#gf_extra .gf-blk')).map(el=>({days:Array.from(el.querySelectorAll('.gf-bd input:checked')).map(i=>i.value),start:(el.querySelector('.gf-bs')||{}).value||'',end:(el.querySelector('.gf-be')||{}).value||''}));
+  c.blocks=[{days:c.days,start:c.start,end:c.end}].concat(extra);
+  return c;
+};
+function grpBlockHtml(b){
+  const dsel=b?b.days:[];
+  return `<div class="gf-blk card" style="margin:8px 0;padding:10px;"><div class="chkrow gf-bd">${GRP_DAYS.map(d=>`<label class="chk"><input type="checkbox" value="${d}" ${dsel.indexOf(d)>-1?'checked':''} onchange="grpCheck()"> ${d}</label>`).join('')}</div>
+   <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:10px;align-items:end;margin-top:8px;"><div class="field" style="margin:0;"><label>Başlangıç</label><input class="gf-bs" type="time" value="${b?b.start:''}" oninput="grpCheck()"></div><div class="field" style="margin:0;"><label>Bitiş</label><input class="gf-be" type="time" value="${b?b.end:''}" oninput="grpCheck()"></div><button type="button" class="btn sm danger" onclick="this.closest('.gf-blk').remove();grpCheck()">Kaldır</button></div></div>`;
+}
+function grpAddBlock(b){ const w=document.getElementById('gf_extra'); if(!w) return; w.insertAdjacentHTML('beforeend',grpBlockHtml(b||null)); grpCheck(); }
+const _grpFormHtml=grpFormHtml;
+grpFormHtml=function(g){
+  let h=_grpFormHtml(g);
+  const extra=(g&&Array.isArray(g.sched)&&g.sched.length>1)?g.sched.slice(1).map(b=>{ const tm=String(b.time).split('-'); return {days:GRP_DAYS.filter(d=>String(b.day).split('/').some(k=>DAYTOKEN[k.trim()]===DAYTOKEN[d])),start:tm[0],end:tm[1]}; }):[];
+  const box=`<div class="field"><label>Farklı gün ve saatte ek ders <span style="font-weight:400;color:var(--muted);">(isteğe bağlı)</span></label>
+   <div style="font-size:12px;color:var(--muted);margin-bottom:4px;">Bu grup bazı günler başka saatte ders yapıyorsa ekleyin. Örnek: yukarıda hafta içi günleri ve saati, burada hafta sonu günleri ve saati seçin.</div>
+   <div id="gf_extra">${extra.map(grpBlockHtml).join('')}</div>
+   <button type="button" class="btn sm" onclick="grpAddBlock()">+ Farklı gün/saat ekle</button></div>`;
+  const k='<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">\n    <div class="field"><label for="gf_coach">';
+  if(h.indexOf(k)<0) return h;
+  return h.replace(k,box+k);
+};
+grpOpen=(function(_o){ return function(editId,pre){ _o(editId,pre); try{ if(window.__grpEdit||pre) grpCheck(); }catch(e){} }; })(grpOpen);
+/* pre (taslak) ile açılırken ek programları da taşı */
+const _groupToCfg=groupToCfg;
+groupToCfg=function(g){ const c=_groupToCfg(g); const bs=gBlocks(g); if(bs.length>1) c.blocks=bs.map(b=>{const tm=String(b.time).split('-'); return {days:GRP_DAYS.filter(d=>String(b.day).split('/').some(k=>DAYTOKEN[k.trim()]===DAYTOKEN[d])),start:tm[0],end:tm[1]};}); return c; };
+
+/* doğrulama: her program için ayrı ayrı çalıştır */
+const _validateGroup=validateGroup;
+validateGroup=function(c,ignoreId){
+  const base=_validateGroup(c,ignoreId);
+  const blocks=Array.isArray(c.blocks)?c.blocks:[];
+  if(blocks.length<2) return base;
+  const errors=base.errors.slice(), conflicts=base.conflicts.slice();
+  const seenDay={}; (blocks[0].days||[]).forEach(d=>{ seenDay[d]=1; });
+  blocks.slice(1).forEach((b,i)=>{
+    const tag=`${i+2}. program (${(b.days||[]).join('/')||'gün yok'} ${b.start||'?'}-${b.end||'?'}): `;
+    (b.days||[]).forEach(d=>{ if(seenDay[d]) errors.push(`${d} günü birden fazla programda seçilmiş; bir gün tek saatte olabilir.`); seenDay[d]=1; });
+    const r=_validateGroup(Object.assign({},c,{days:b.days,start:b.start,end:b.end}),ignoreId);
+    r.errors.forEach(e=>{ if(base.errors.indexOf(e)<0) errors.push(tag+e); });
+    r.conflicts.forEach(e=>{ if(base.conflicts.indexOf(e)<0) conflicts.push(tag+e); });
+  });
+  return {errors:Array.from(new Set(errors)),conflicts:Array.from(new Set(conflicts))};
+};
+/* kaydet: ek programları grup kaydına yaz */
+const _saveGroup=saveGroup;
+saveGroup=function(c,editId){
+  const before=DB.groups.length;
+  const r=_saveGroup(c,editId); if(!r||!r.ok) return r;
+  const g=DB.groups.find(x=>x.id===r.id); if(!g) return r;
+  const blocks=Array.isArray(c.blocks)?c.blocks:[];
+  if(blocks.length>1){
+    g.sched=blocks.map(b=>{ const days=GRP_DAYS.filter(d=>(b.days||[]).indexOf(d)>-1); return {day:days.join('/'),time:minToTime(timeToMin(b.start))+'-'+minToTime(timeToMin(b.end))}; });
+  } else delete g.sched;
+  save(); return r;
+};
 
 /* ============ INIT ============ */
 boot();
