@@ -3879,8 +3879,8 @@ async function acctLoad(){
 }
 function acctHtml(){
   if(role!=='admin') return '';
-  const rows=acctData.profiles.map(p=>`<tr><td>${escHtml(p.email)}</td><td>${escHtml(SB_ROLE_TR[p.role]||p.role)}</td><td>${p.role==='admin'?'—':escHtml(personLabel(p.role,p.link_id))}</td><td>${p.id===(SB.session&&SB.session.user.id)?'<span class="badge aqua">Siz</span>':`<button class="btn sm danger" onclick="acctRemoveProfile('${escHtml(p.id)}')">Erişimi kaldır</button>`}</td></tr>`).join('');
-  const prow=acctData.pending.map(p=>`<tr><td>${escHtml(p.email)}</td><td>${escHtml(SB_ROLE_TR[p.role]||p.role)}</td><td>${p.role==='admin'?'—':escHtml(personLabel(p.role,p.link_id))}</td><td><span class="badge amber">Bekliyor</span> <button class="btn sm" onclick="acctRemovePending('${escHtml(p.email)}')">İptal</button></td></tr>`).join('');
+  const rows=acctData.profiles.map(p=>`<tr><td>${escHtml(p.email)}</td><td>${escHtml(SB_ROLE_TR[p.role]||p.role)}</td><td>${p.role==='admin'?'—':escHtml(personLabel(p.role,p.link_id))+acctExtra(p)}</td><td>${p.id===(SB.session&&SB.session.user.id)?'<span class="badge aqua">Siz</span>':`<button class="btn sm danger" onclick="acctRemoveProfile('${escHtml(p.id)}')">Erişimi kaldır</button>`}</td></tr>`).join('');
+  const prow=acctData.pending.map(p=>`<tr><td>${escHtml(p.email)}</td><td>${escHtml(SB_ROLE_TR[p.role]||p.role)}</td><td>${p.role==='admin'?'—':escHtml(personLabel(p.role,p.link_id))+acctExtra(p)}</td><td><span class="badge amber">Bekliyor</span> <button class="btn sm" onclick="acctRemovePending('${escHtml(p.email)}')">İptal</button></td></tr>`).join('');
   return `<div class="card" style="margin-bottom:16px;" id="acctCard"><div class="section-title" style="margin-top:0;">Kullanıcı Hesapları</div>
    <p style="font-size:13px;color:var(--muted);margin:0 0 10px;">Sisteme yalnızca burada tanımladığınız e-posta adresleri girebilir. Kişi, ilk girişte “Hesap oluşturun” bağlantısıyla kendi şifresini belirler ve e-postasını doğrular.</p>
    ${acctData.msg?`<div class="${acctData.bad?'grp-result bad':'grp-result good'}">${escHtml(acctData.msg)}</div>`:''}
@@ -5792,6 +5792,15 @@ saveGroup=function(c,editId){
   } else delete g.sched;
   save(); return r;
 };
+
+/* Hesap listesinde antrenörün kaç grubu olduğunu göster (bağlantı hatalarını kolay yakalamak için) */
+function acctExtra(p){
+  if(p.role!=='coach') return '';
+  const n=DB.groups.filter(g=>g.coach===p.link_id||g.assistant===p.link_id).length;
+  const exists=DB.coaches.some(c=>c.id===p.link_id);
+  if(!exists) return ' <span class="badge red">⚠ bağlı antrenör kaydı bulunamadı</span>';
+  return n?` <span style="font-size:12px;color:var(--muted);">· ${n} grup</span>`:' <span class="badge amber">0 grup atanmış</span>';
+}
 
 /* ============ INIT ============ */
 boot();
