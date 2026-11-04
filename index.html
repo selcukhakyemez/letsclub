@@ -5683,6 +5683,39 @@ function lvCfgHtml(){
   AU_COLL.levelCfg='Seviye listesi';
 })();
 
+/* ---------- SEVİYE KRİTERLERİ: satır satır düzenleme (ekle / çıkar / yeniden adlandır / sırala) ---------- */
+let lvRows=null;
+function lvRowsInit(){ lvRows=lvItems(lvSel.level).map(i=>({id:i.id,text:i.text})); lvRows.lvl=lvSel.level; }
+function lvRowsRead(){ if(!lvRows) return; lvRows.forEach((r,i)=>{ const e=document.getElementById('lvr_'+i); if(e) r.text=e.value; }); }
+function lvRowsDraw(){ const w=document.getElementById('lvRowsWrap'); if(w) w.innerHTML=lvRowsHtml(); }
+function lvRowsHtml(){
+  if(!lvRows||lvRows.lvl!==lvSel.level) lvRowsInit();
+  return `<div style="font-size:12.5px;color:var(--muted);margin:8px 0;">Bu seviyedeki sporcunun <b>${escHtml(lvNext(lvSel.level)||'')}</b> seviyesine geçebilmesi için tamamlaması gereken beceriler. Becerinin adını değiştirdiğinizde sporcuların işaretleri korunur.</div>`
+   +lvRows.map((r,i)=>`<div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;"><span style="width:20px;color:var(--muted);">${i+1}.</span><input id="lvr_${i}" value="${escHtml(r.text)}" maxlength="80" style="flex:1;min-width:140px;" aria-label="Beceri">
+     <button class="btn sm" onclick="lvRowMove(${i},-1)" ${i===0?'disabled':''} aria-label="Yukarı">▲</button><button class="btn sm" onclick="lvRowMove(${i},1)" ${i===lvRows.length-1?'disabled':''} aria-label="Aşağı">▼</button><button class="btn sm danger" onclick="lvRowDel(${i})">Çıkar</button></div>`).join('')
+   +`<div style="display:flex;gap:6px;margin-top:8px;"><input id="lvr_new" maxlength="80" placeholder="Yeni beceri (ör. Doğru nefes alıp verme)" style="flex:1;min-width:140px;"><button class="btn" onclick="lvRowAdd()">Ekle</button></div>`;
+}
+function lvRowAdd(){ lvRowsRead(); const t=cV('lvr_new').trim(); if(!t) return; if(lvRows.length>=12){ fbMsgState.lvErr='En fazla 12 beceri olabilir.'; renderLevels($('#content')); return; } lvRows.push({id:'k'+Date.now().toString(36)+Math.floor(Math.random()*100),text:t}); lvRowsDraw(); }
+function lvRowDel(i){ lvRowsRead(); lvRows.splice(i,1); lvRowsDraw(); }
+function lvRowMove(i,d){ lvRowsRead(); const j=i+d; if(j<0||j>=lvRows.length) return; const t=lvRows[i]; lvRows[i]=lvRows[j]; lvRows[j]=t; lvRowsDraw(); }
+function lvSaveRows(level,rows){
+  if(role!=='admin') return {ok:false,errors:['Kriterleri yalnızca yönetici düzenler.']};
+  if(!lvNext(level)) return {ok:false,errors:['Geçersiz seviye.']};
+  const clean=rows.map(r=>({id:r.id,text:String(r.text||'').trim()})).filter(r=>r.text);
+  if(clean.length<1||clean.length>12) return {ok:false,errors:['1 ile 12 arasında beceri olmalı.']};
+  if(clean.some(r=>r.text.length>80)) return {ok:false,errors:['Her beceri en fazla 80 karakter olabilir.']};
+  const ids=new Set(); clean.forEach(r=>{ if(!r.id||ids.has(r.id)) r.id='k'+Date.now().toString(36)+Math.floor(Math.random()*1000); ids.add(r.id); });
+  DB.levelCriteria=DB.levelCriteria||{}; DB.levelCriteria[level]={level,items:clean}; save(); return {ok:true,errors:[]};
+}
+function lvRowsSave(){ lvRowsRead(); const r=lvSaveRows(lvSel.level,lvRows||[]); fbMsgState.lv=r.ok?'Beceriler kaydedildi.':''; fbMsgState.lvErr=r.ok?'':r.errors.join(' '); lvRows=null; renderLevels($('#content')); }
+{ const _rl2=renderLevels; renderLevels=function(c){ _rl2(c);
+  if(role!=='admin') return; const ta=c.querySelector('#lv_text'); if(!ta) return;
+  if(!lvRows||lvRows.lvl!==lvSel.level) lvRowsInit();
+  const f=ta.closest('.field'); f.outerHTML='<div id="lvRowsWrap">'+lvRowsHtml()+'</div>';
+  const b=c.querySelector('[onclick="lvSaveForm()"]'); if(b){ b.setAttribute('onclick','lvRowsSave()'); b.textContent='Becerileri kaydet'; }
+  const t=c.querySelector('#lv_level'); if(t){ t.setAttribute('onchange','lvRows=null;lvPick(this.value)'); }
+}; }
+
 /* ============ INIT ============ */
 boot();
 </script>
