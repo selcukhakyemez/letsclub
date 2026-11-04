@@ -410,7 +410,7 @@ function seed(){
 function load(){
   try{
     const raw=localStorage.getItem(LS_KEY);
-    if(raw){ DB=JSON.parse(raw); DB.photos=DB.photos||{}; DB.trainings=DB.trainings||[]; DB.makeups=DB.makeups||[]; DB.levelCriteria=DB.levelCriteria||{}; DB.levelChecks=DB.levelChecks||{}; DB.poolPrices=DB.poolPrices||{}; DB.reasonNotes=DB.reasonNotes||{}; DB.changeRequests=DB.changeRequests||[]; }
+    if(raw){ DB=JSON.parse(raw); DB.photos=DB.photos||{}; DB.trainings=DB.trainings||[]; DB.makeups=DB.makeups||[]; DB.levelCriteria=DB.levelCriteria||{}; DB.levelChecks=DB.levelChecks||{}; DB.levelCfg=DB.levelCfg||{}; DB.poolPrices=DB.poolPrices||{}; DB.reasonNotes=DB.reasonNotes||{}; DB.changeRequests=DB.changeRequests||[]; }
     else { DB=seed(); save(); }
   }catch(e){ DB=seed(); }
 }
@@ -903,9 +903,7 @@ let grpMsg='';
 window.__grpEdit=null;
 
 function GRP_LEVELS(){
-  const base=['Başlangıç','Orta','İleri','Yarışmacı','Yetişkin'];
-  DB.groups.forEach(g=>{ if(base.indexOf(g.level)===-1) base.push(g.level); });
-  return base;
+  return levelAll();
 }
 function timeToMin(t){const m=/^(\d{1,2}):(\d{2})$/.exec(String(t||'').trim()); if(!m) return null; const h=+m[1],mi=+m[2]; if(h>23||mi>59) return null; return h*60+mi;}
 function minToTime(m){return String(Math.floor(m/60)).padStart(2,'0')+':'+String(m%60).padStart(2,'0');}
@@ -1996,7 +1994,7 @@ function assignSubmit(){
 }
 
 /* ---------- SPORCU KAYDI / DEĞİŞİKLİĞİ (yönetici doğrudan, antrenör onaya) ---------- */
-const ATH_LEVELS=['Başlangıç','Orta','İleri','Yarışmacı','Yetişkin'];
+const ATH_LEVELS_UNUSED=1;
 const LICENSES=['Yok','Başvuru','Aktif','Vizesiz','Süresi dolmuş'];
 const TRIAL_SOURCES=['Instagram','Facebook / Sosyal medya','Google / Web sitesi','Arkadaş / Çevre tavsiyesi','Okul / Etkinlik','Tabela / Çevreden geçerken','Mevcut üyenin yakını','Diğer'];
 const LEAVE_CATS=['Ücret','Verimsizlik / Gelişim','Fiziki şartlar','Antrenör','Program / Zaman','Sağlık','Taşınma','Başka kulüp','Diğer'];
@@ -2029,7 +2027,7 @@ function validateAthlete(c,editId){
   if(!okDateStr(c.dob)) e.push('Doğum tarihini girin.');
   else { const a=age(c.dob); if(parseYmd(c.dob)>new Date()||a<3||a>80) e.push('Doğum tarihi 3-80 yaş aralığında olmalı.'); }
   if(c.gender!=='E'&&c.gender!=='K') e.push('Cinsiyet seçin.');
-  if(ATH_LEVELS.indexOf(c.level)<0) e.push('Seviye seçin.');
+  if(levelAll().indexOf(c.level)<0) e.push('Seviye seçin.');
   const old=editId?DB.athletes.find(a=>a.id===editId):null;
   if(c.group==='trial'){
     if(old&&old.status!=='trial') e.push('Mevcut üyeler denemeye çevrilemez.');
@@ -2236,7 +2234,7 @@ function athFormHtml(a,pre){
     <div class="field"><label for="af_last">Soyad</label><input id="af_last" maxlength="30" value="${escHtml(V('last',a?a.last:''))}"></div>
     <div class="field"><label for="af_dob">Doğum tarihi</label><input id="af_dob" type="date" max="${todayStr()}" value="${escHtml(V('dob',a?a.dob:''))}"></div>
     <div class="field"><label for="af_gender">Cinsiyet</label><select id="af_gender"><option value="">Seçin</option>${opt([['E','Erkek'],['K','Kız']],V('gender',a?a.gender:''))}</select></div>
-    <div class="field"><label for="af_level">Seviye</label><select id="af_level"><option value="">Seçin</option>${opt(ATH_LEVELS.map(x=>[x,x]),V('level',a?a.level:''))}</select></div>
+    <div class="field"><label for="af_level">Seviye</label><select id="af_level"><option value="">Seçin</option>${opt(levelAll().map(x=>[x,x]),V('level',a?a.level:''))}</select></div>
     <div class="field"><label for="af_group">Grup</label><select id="af_group" onchange="afToggle()"><option value="">Seçin</option>
       ${canTrial?`<option value="trial" ${curGroup==='trial'?'selected':''}>Deneme (henüz kayıt olmadı)</option>`:''}
       ${groups.map(g=>`<option value="${g.id}" ${curGroup===g.id?'selected':''}>${escHtml(g.name)} (${g.enrolled}/${g.capacity})</option>`).join('')}</select>
@@ -3337,7 +3335,7 @@ function aiTraining(gid){
   const g=DB.groups.find(x=>x.id===gid); if(!g) return null;
   const hist=(DB.trainings||[]).filter(t=>t.group===gid).sort((x,y)=>new Date(y.date)-new Date(x.date)).slice(0,10);
   const pools={'Başlangıç':['Suya güven','Nefes','Ayak çalışması','Süzülme'],'Orta':['Teknik','Dayanıklılık','Koordinasyon','Nefes'],'İleri':['Teknik','Dayanıklılık','Sprint','IM'],'Yarışmacı':['Teknik','Dayanıklılık','Sprint','IM'],'Yetişkin':['Teknik','Dayanıklılık','Nefes']};
-  const pool=pools[g.level]||pools['Orta'];
+  const pool=pools[lvKind(g.level)]||pools['Orta'];
   const counts={}; pool.forEach(f=>counts[f]=0);
   hist.forEach(h=>{counts[h.focus]=(counts[h.focus]||0)+1;});
   const next=pool.slice().sort((x,y)=>counts[x]-counts[y])[0];
@@ -3345,7 +3343,7 @@ function aiTraining(gid){
   const avg=hist.length?Math.round(sum/hist.length):0;
   const recent=hist.slice(0,5);
   const recentAvg=recent.length?recent.reduce((s,h)=>s+h.meters,0)/recent.length:0;
-  const step=g.level==='Başlangıç'?50:100;
+  const step=lvKind(g.level)==='Başlangıç'?50:100;
   const T=hist.length?Math.max(step,Math.round(recentAvg*1.05/step)*step):0;
   const warm=Math.round(T*0.2/25)*25, drill=Math.round(T*0.2/25)*25, cool=Math.round(T*0.1/25)*25, main=T-warm-drill-cool;
   const desc={'Teknik':'teknik drilller ve kulaç düzeltme','Dayanıklılık':'aerobik tempo serileri','Sprint':'kısa mesafe maksimum sürat serileri','IM':'karışık stil geçişleri','Koordinasyon':'kol-bacak koordinasyon çalışmaları','Nefes':'nefes kontrolü ve ritim çalışmaları','Suya güven':'su içi oyunlar ve yüz batırma','Ayak çalışması':'şamandıra ile ayak çalışması','Süzülme':'itiş sonrası süzülme çalışmaları'};
@@ -4311,15 +4309,15 @@ function renderTimes(c){
 }
 
 /* ---------- SEVİYE GEÇİŞİ ---------- */
-const LV_ORDER=['Başlangıç','Orta','İleri','Yarışmacı'];
+
 const LV_DEFAULT={
   'Başlangıç':['25 m serbest durmadan yüzer','25 m sırtüstü yüzer','Suya baş altı girer, nefes verir','Süzülme yapar (5 m)'],
   'Orta':['50 m serbest teknikli yüzer','50 m sırt yüzer','25 m kurbağalama yüzer','Dönüş yapar'],
   'İleri':['100 m serbest durmadan yüzer','4 stilde 50 m teknik yüzer','Çıkış ve dönüşleri doğru yapar','Haftada en az 3 antrenmana devam eder']};
-const lvNext=l=>{const i=LV_ORDER.indexOf(l); return i>-1&&i<LV_ORDER.length-1?LV_ORDER[i+1]:null;};
+const lvNext=l=>{const o=levelOrder(); const i=o.indexOf(l); return i>-1&&i<o.length-1?o[i+1]:null;};
 function lvItems(level){
   const c=(DB.levelCriteria||{})[level];
-  const arr=c&&Array.isArray(c.items)?c.items:(LV_DEFAULT[level]||[]).map((t,i)=>({id:'k'+(i+1),text:t}));
+  const arr=c&&Array.isArray(c.items)?c.items:(LV_DEFAULT[lvKind(level)]||[]).map((t,i)=>({id:'k'+(i+1),text:t}));
   return arr;
 }
 function lvChecks(athId){ const c=(DB.levelChecks||{})[athId]; const a=DB.athletes.find(x=>x.id===athId); if(!c||!a||c.level!==a.level) return {}; return c.checks||{}; }
@@ -4367,7 +4365,7 @@ function renderLevels(c){
   const pend=a=>(DB.changeRequests||[]).some(r=>r.type==='athlete_edit'&&r.athlete===a.id&&r.status==='Bekliyor'&&r.payload&&r.payload.level);
   c.innerHTML=`${fbBanner(fbTake('lv'),fbTake('lvErr'))}
   ${role==='admin'?`<div class="card" style="margin-bottom:14px;"><b>Seviye geçiş kriterleri</b>
-   <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-top:8px;"><div class="field" style="margin:0;"><label for="lv_level">Seviye</label><select id="lv_level" onchange="lvPick(this.value)">${LV_ORDER.slice(0,3).map(l=>`<option${l===lvSel.level?' selected':''} value="${escHtml(l)}">${escHtml(l)} → ${escHtml(lvNext(l))}</option>`).join('')}</select></div></div>
+   <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-top:8px;"><div class="field" style="margin:0;"><label for="lv_level">Seviye</label><select id="lv_level" onchange="lvPick(this.value)">${levelOrder().slice(0,-1).map(l=>`<option${l===lvSel.level?' selected':''} value="${escHtml(l)}">${escHtml(l)} → ${escHtml(lvNext(l))}</option>`).join('')}</select></div></div>
    <div class="field" style="margin-top:8px;"><label for="lv_text">Kriterler (her satıra bir kriter, en fazla 8)</label><textarea id="lv_text" rows="5" style="width:100%;box-sizing:border-box;">${escHtml(lvItems(lvSel.level).map(i=>i.text).join('\n'))}</textarea></div>
    <button class="btn primary" onclick="lvSaveForm()">Kriterleri kaydet</button></div>`:''}
   ${aths.length?aths.map(a=>{ const p=lvProgress(a.id); const pc=p.total?Math.round(p.done/p.total*100):0;
@@ -5597,6 +5595,93 @@ function clearAllData(){
 if('serviceWorker' in navigator&&/^https?:$/.test(location.protocol)){ window.addEventListener('load',()=>{ navigator.serviceWorker.register('sw.js').catch(()=>{}); }); }
 { const _rs=renderSettings; renderSettings=function(c){ _rs(c);
   if(role==='admin'&&!c.querySelector('[onclick="clearAllData()"]')) c.insertAdjacentHTML('beforeend',`<div class="card" style="margin-top:16px;border:1px solid var(--danger,#c0392b);"><div class="section-title" style="margin-top:0;">Sıfırdan Başla</div><div style="font-size:13px;color:var(--muted);margin-bottom:10px;">Örnek verileri ve tüm kayıtları (sporcu, veli, grup, ödeme vb.) siler; yalnızca bir boş havuz kalır. Kullanıcı hesapları silinmez. Silmeden önce yedek dosyası bilgisayarınıza otomatik indirilir.</div><button class="btn danger" onclick="clearAllData()">Tüm Verileri Sil — Sıfırdan Başla</button></div>`); }; }
+
+/* ---------- DÜZENLENEBİLİR SEVİYE LİSTESİ ---------- */
+const LV_NEW=['Başlangıç','Yarım Havuz','Orta','Hazırlık','Takım'];
+const LV_LEGACY=['Başlangıç','Orta','İleri','Yarışmacı','Yetişkin'];
+function lvUsed(){ const s=new Set(); (DB.groups||[]).forEach(g=>{ if(g.level) s.add(g.level); }); (DB.athletes||[]).forEach(a=>{ if(a.level) s.add(a.level); }); return s; }
+function levelOrder(){
+  const cfg=DB&&DB.levelCfg&&Array.isArray(DB.levelCfg.order)?DB.levelCfg.order:null;
+  if(cfg&&cfg.length) return cfg.slice();
+  const u=lvUsed(); const legacy=['İleri','Yarışmacı','Yetişkin'].some(x=>u.has(x));
+  return (legacy?LV_LEGACY:LV_NEW).slice();
+}
+function levelAll(){ const o=levelOrder(); lvUsed().forEach(l=>{ if(o.indexOf(l)<0) o.push(l); }); return o; }
+function lvKind(name){
+  if(LV_LEGACY.indexOf(name)>-1) return name;
+  const o=levelAll(); const i=o.indexOf(name); const n=o.length;
+  if(i<0) return 'Orta'; if(i===0) return 'Başlangıç'; if(i===n-1) return 'Yarışmacı'; return i<=(n-1)/2?'Orta':'İleri';
+}
+function lvMaterialize(){ DB.levelCfg=DB.levelCfg||{}; DB.levelCfg.order=levelAll(); }
+function lvNameErr(name,except){
+  const t=String(name||'').trim();
+  if(!/^[\p{L}\p{N} .\-\/()]{2,24}$/u.test(t)) return 'Seviye adı 2-24 karakter olmalı (harf, rakam, boşluk).';
+  if(levelAll().some(x=>x!==except&&x.toLocaleLowerCase('tr')===t.toLocaleLowerCase('tr'))) return 'Bu adda bir seviye zaten var.';
+  return '';
+}
+function lvAdd(name){
+  if(role!=='admin') return {ok:false,errors:['Bu işlem için yetkiniz yok.']};
+  const t=String(name||'').trim(); const e=lvNameErr(t,null); if(e) return {ok:false,errors:[e]};
+  lvMaterialize(); if(DB.levelCfg.order.length>=12) return {ok:false,errors:['En fazla 12 seviye olabilir.']};
+  DB.levelCfg.order.push(t); save(); return {ok:true,errors:[]};
+}
+function lvRename(old,name){
+  if(role!=='admin') return {ok:false,errors:['Bu işlem için yetkiniz yok.']};
+  const t=String(name||'').trim(); lvMaterialize();
+  if(DB.levelCfg.order.indexOf(old)<0) return {ok:false,errors:['Seviye bulunamadı.']};
+  if(t===old) return {ok:true,errors:[]};
+  const e=lvNameErr(t,old); if(e) return {ok:false,errors:[e]};
+  DB.levelCfg.order=DB.levelCfg.order.map(x=>x===old?t:x);
+  DB.groups.forEach(g=>{ if(g.level===old) g.level=t; });
+  DB.athletes.forEach(a=>{ if(a.level===old) a.level=t; });
+  (DB.leads||[]).forEach(x=>{ if(x.level===old) x.level=t; });
+  (DB.changeRequests||[]).forEach(r=>{ if(r.payload&&r.payload.level===old) r.payload.level=t; });
+  DB.levelCriteria=DB.levelCriteria||{};
+  if(DB.levelCriteria[old]){ const c=DB.levelCriteria[old]; delete DB.levelCriteria[old]; c.level=t; DB.levelCriteria[t]=c; }
+  Object.keys(DB.levelChecks||{}).forEach(k=>{ const c=DB.levelChecks[k]; if(c&&c.level===old) c.level=t; });
+  if(typeof lvSel!=='undefined'&&lvSel.level===old) lvSel.level=t;
+  save(); return {ok:true,errors:[]};
+}
+function lvMove(name,dir){
+  if(role!=='admin') return {ok:false,errors:['Bu işlem için yetkiniz yok.']};
+  lvMaterialize(); const o=DB.levelCfg.order; const i=o.indexOf(name), j=i+dir;
+  if(i<0||j<0||j>=o.length) return {ok:false,errors:[]};
+  const t=o[i]; o[i]=o[j]; o[j]=t; save(); return {ok:true,errors:[]};
+}
+function lvDelete(name){
+  if(role!=='admin') return {ok:false,errors:['Bu işlem için yetkiniz yok.']};
+  lvMaterialize(); const o=DB.levelCfg.order;
+  if(o.indexOf(name)<0) return {ok:false,errors:['Seviye bulunamadı.']};
+  const g=DB.groups.filter(x=>x.level===name).length, a=DB.athletes.filter(x=>x.level===name).length;
+  if(g||a) return {ok:false,errors:[`"${name}" seviyesi ${g} grupta ve ${a} sporcuda kullanılıyor. Önce onları başka seviyeye taşıyın.`]};
+  if(o.length<=2) return {ok:false,errors:['En az 2 seviye kalmalı.']};
+  DB.levelCfg.order=o.filter(x=>x!==name);
+  if(DB.levelCriteria) delete DB.levelCriteria[name];
+  save(); return {ok:true,errors:[]};
+}
+function lvCfgDone(r,okMsg){ cSet('lvcfg',r.ok?okMsg:'',r.ok?'':r.errors.join(' ')); render(); }
+function lvCfgSave(i){ const o=levelAll()[i]; lvCfgDone(lvRename(o,cV('lvn_'+i)),'Seviye adı güncellendi; ilgili grup ve sporcular da yeni adla güncellendi.'); }
+function lvCfgMove(i,d){ const o=levelAll()[i]; const r=lvMove(o,d); lvCfgDone(r,'Sıra güncellendi.'); }
+function lvCfgDel(i){ const o=levelAll()[i]; if(!confirm(`"${o}" seviyesi silinsin mi?`)) return; lvCfgDone(lvDelete(o),'Seviye silindi.'); }
+function lvCfgAdd(){ lvCfgDone(lvAdd(cV('lvn_new')),'Seviye eklendi.'); }
+function lvCfgHtml(){
+  const o=levelAll();
+  return `<div class="card" style="margin-top:16px;" id="lvCfgCard"><div class="section-title" style="margin-top:0;">Seviyeler</div>
+  ${cTake('lvcfg')}
+  <div style="font-size:13px;color:var(--muted);margin-bottom:10px;">Grup ve sporcu seviyeleri bu listeden seçilir. Sıra, seviye geçişinde "sonraki seviye"yi belirler (en üstten alta doğru). Bir seviyenin adını değiştirirseniz o seviyedeki tüm grup ve sporcular otomatik güncellenir.</div>
+  ${o.map((l,i)=>`<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:8px;"><span style="width:22px;color:var(--muted);">${i+1}.</span><input id="lvn_${i}" value="${escHtml(l)}" maxlength="24" style="flex:1;min-width:150px;" aria-label="Seviye adı">
+    <button class="btn sm" onclick="lvCfgSave(${i})">Kaydet</button><button class="btn sm" onclick="lvCfgMove(${i},-1)" ${i===0?'disabled':''} aria-label="Yukarı">▲</button><button class="btn sm" onclick="lvCfgMove(${i},1)" ${i===o.length-1?'disabled':''} aria-label="Aşağı">▼</button><button class="btn sm danger" onclick="lvCfgDel(${i})">Sil</button></div>`).join('')}
+  <div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap;"><input id="lvn_new" maxlength="24" placeholder="Yeni seviye adı" style="flex:1;min-width:150px;"><button class="btn primary" onclick="lvCfgAdd()">Seviye ekle</button></div></div>`;
+}
+{ const _rs9=renderSettings; renderSettings=function(c){ _rs9(c); if(role==='admin') c.insertAdjacentHTML('beforeend',lvCfgHtml()); }; }
+{ const _rl=renderLevels; renderLevels=function(c){ const o=levelOrder(); if(o.indexOf(lvSel.level)<0||o.indexOf(lvSel.level)===o.length-1) lvSel.level=o[0]; _rl(c); }; }
+(function(){
+  SB_SPECS.push({c:'levelCfg',t:'map',wrap:'v'});
+  const _se=sbEmptyDB; sbEmptyDB=function(){ const d=_se(); d.levelCfg={}; return d; };
+  const _ld=load; load=function(){ _ld(); DB.levelCfg=DB.levelCfg||{}; };
+  const _sd=seed; seed=function(){ const d=_sd(); d.levelCfg={order:LV_LEGACY.slice()}; return d; };
+  AU_COLL.levelCfg='Seviye listesi';
+})();
 
 /* ============ INIT ============ */
 boot();
