@@ -1248,7 +1248,7 @@ function plRefresh(){ if(route==='schedule') renderSchedule($('#content')); }
 function plRequest(athId,coachId,slots,note){
   if(!canRequestFor(athId)) return {created:0,msg:'Bu sporcu için talep oluşturamazsınız.'};
   if(!DB.coaches.some(c=>c.id===coachId)) return {created:0,msg:'Önce bir öğretmen seçin.'};
-  if(!athletePackages(athId).length) return {created:0,msg:'Bu öğrenci için özel ders paketi tanımlı değil. 6, 8, 10 veya 20 saatlik paket için yönetici ile görüşün.'};
+  if(!athletePackages(athId).length) return {created:0,msg:'Bu öğrenci için özel ders paketi tanımlı değil. özel ders paketi için yönetici ile görüşün.'};
   if(!slots.length) return {created:0,msg:'En az bir gün ve saat işaretleyin.'};
   DB.privateLessons=DB.privateLessons||[];
   const skipped=[]; let created=0;
@@ -2610,17 +2610,17 @@ function pickPackage(id){return athletePackages(id).find(p=>pkgRemaining(p)>0)||
 function athleteRemaining(id){return athletePackages(id).reduce((s,p)=>s+pkgRemaining(p),0);}
 function pkgBanner(athId){
   const pk=athletePackages(athId);
-  if(!pk.length) return '<div class="note-banner">Bu öğrenci için özel ders paketi tanımlı değil. 6, 8, 10 veya 20 saatlik paket için yönetici ile görüşün.</div>';
+  if(!pk.length) return '<div class="note-banner">Bu öğrenci için özel ders paketi tanımlı değil. özel ders paketi için yönetici ile görüşün.</div>';
   const rem=athleteRemaining(athId), tot=pk.reduce((s,p)=>s+p.hours,0);
   return `<div class="note-banner" style="${rem?'':'background:var(--red-light);color:var(--red);'}">Özel ders paketi: <b>${rem}</b> saat kaldı (toplam ${tot} saat).${rem?'':' Yeni paket için yönetici ile görüşün.'}</div>`;
 }
 function sellPackage(athId,hours,withPayment,pool){
   if(role!=='admin') return {ok:false,errors:['Paketi yalnızca yönetici tanımlayabilir.']};
   hours=Number(hours);
-  if(PKG_SIZES.indexOf(hours)<0) return {ok:false,errors:['Paket 6, 8, 10 veya 20 saat olmalıdır.']};
+  if(!(Number.isInteger(hours)&&hours>=1&&hours<=200)) return {ok:false,errors:['Paket saat sayısı 1 ile 200 arasında tam sayı olmalıdır.']};
   const a=DB.athletes.find(x=>x.id===athId); if(!a||a.status!=='active') return {ok:false,errors:['Paket yalnızca aktif sporcuya tanımlanır.']};
   if(!poolExists(pool)) return {ok:false,errors:['Paketin geçerli olacağı havuzu seçin.']};
-  const price=pkgPriceFor(pool,hours); if(!okAmt(price)) return {ok:false,errors:[pool+' havuzu için önce özel ders saat ücretini girin.']};
+  const price=pkgPriceFor(pool,hours); if(!okAmt(price)) return {ok:false,errors:[pool+' havuzu için '+hours+' saatlik paket tanımlı değil. Finans > Fiyatlar bölümünden paketi ekleyin.']};
   DB.plPackages=DB.plPackages||[];
   const pk={id:'pk'+Date.now()+Math.floor(Math.random()*1000),athlete:athId,hours,price,pool,createdAt:todayStr()};
   DB.plPackages.push(pk);
@@ -2642,9 +2642,9 @@ function savePoolPrices(pool,p){
   if(!poolExists(pool)) return {ok:false,errors:['Havuz bulunamadı.']};
   const g=Number(String(p.group).replace(',','.')), v=Number(String(p.private).replace(',','.')); const e=[];
   if(!okAmt(g,1000000)) e.push('Grup dersi aylık aidatı 0’dan büyük ve en çok 1.000.000 ₺ olmalı.');
-  if(!okAmt(v,1000000)) e.push('Özel ders saat ücreti 0’dan büyük ve en çok 1.000.000 ₺ olmalı.');
+  if(!(v===0||okAmt(v,1000000))) e.push('Özel ders saat ücreti boş bırakılabilir; girilirse en çok 1.000.000 ₺ olmalı.');
   if(e.length) return {ok:false,errors:e};
-  DB.poolPrices=DB.poolPrices||{}; DB.poolPrices[pool]={group:r2(g),private:r2(v)}; save(); return {ok:true,errors:[]};
+  DB.poolPrices=DB.poolPrices||{}; DB.poolPrices[pool]=Object.assign({},DB.poolPrices[pool]||{},{group:r2(g),private:r2(v)}); save(); return {ok:true,errors:[]};
 }
 
 /* ---------- ANTRENÖR DERS ÜCRETLERİ (havuza göre ayrı) ---------- */
@@ -3018,9 +3018,9 @@ function renderFinance(c){
       <div class="card" style="padding:0;overflow-x:auto;"><table><thead><tr><th>Tarih</th><th>Havuz</th><th>Kategori</th><th>Açıklama</th><th>Tutar</th><th></th></tr></thead><tbody>
       ${list.map(x=>`<tr><td>${fmtDate(x.date)}</td><td>${escHtml(x.pool||'Ortak')}</td><td>${escHtml(x.category)}</td><td>${escHtml(x.desc)}</td><td>${money(x.amount)}</td><td><button class="btn sm danger" onclick="expDel('${x.id}')">Sil</button></td></tr>`).join('')||'<tr><td colspan="6"><div class="empty">Bu ay gider girilmedi</div></td></tr>'}</tbody></table></div>`;
   } else if(finTab==='prices'){
-    body=`<div class="card"><b>Havuz bazlı ders fiyatları (₺)</b><div style="font-size:12.5px;color:var(--muted);margin:4px 0 10px;">Her havuz için grup dersi ve özel ders fiyatı ayrı girilir. Grup dersi: sporcunun aylık aidatı. Özel ders: bir saatlik ders ücreti; 6/8/10/20 saatlik paket fiyatı bu ücretin saat sayısıyla çarpımıdır.</div>
+    body=`<div class="card"><b>Havuz bazlı ders fiyatları (₺)</b><div style="font-size:12.5px;color:var(--muted);margin:4px 0 10px;">Her havuz için grup dersi ve özel ders fiyatı ayrı girilir. Grup dersi: sporcunun aylık aidatı. Özel ders saat ücreti isteğe bağlıdır; sayfanın altından istediğiniz saat sayısında ve toplam fiyatta paket tanımlayabilirsiniz.</div>
       <div style="overflow-x:auto;"><table><thead><tr><th>Havuz</th><th>Grup dersi (aylık aidat)</th><th>Özel ders (saat ücreti)</th><th>Paket fiyatları</th><th></th></tr></thead><tbody>
-      ${DB.pools.map((pl,pi)=>`<tr><td>${escHtml(pl.name)}</td><td><input id="hp_g${pi}" inputmode="decimal" style="width:100px;${inp}" value="${poolPrice(pl.name,'group')||''}"></td><td><input id="hp_p${pi}" inputmode="decimal" style="width:100px;${inp}" value="${poolPrice(pl.name,'private')||''}"></td><td style="font-size:12px;color:var(--muted);">${poolPrice(pl.name,'private')?PKG_SIZES.map(h=>h+' sa: '+money(pkgPriceFor(pl.name,h))).join(' · '):'Önce özel ders ücretini girin'}</td><td><button class="btn sm primary" onclick="priceSave(${pi})">Kaydet</button></td></tr>`).join('')}</tbody></table></div><div id="pp_res" style="font-size:12.5px;margin-top:8px;"></div></div>`;
+      ${DB.pools.map((pl,pi)=>`<tr><td>${escHtml(pl.name)}</td><td><input id="hp_g${pi}" inputmode="decimal" style="width:100px;${inp}" value="${poolPrice(pl.name,'group')||''}"></td><td><input id="hp_p${pi}" inputmode="decimal" style="width:100px;${inp}" value="${poolPrice(pl.name,'private')||''}"></td><td style="font-size:12px;color:var(--muted);">${poolPackages(pl.name).length?poolPackages(pl.name).map(x=>x.hours+' sa: '+money(x.price)).join(' · '):'Aşağıdan paket ekleyin'}</td><td><button class="btn sm primary" onclick="priceSave(${pi})">Kaydet</button></td></tr>`).join('')}</tbody></table></div><div id="pp_res" style="font-size:12.5px;margin-top:8px;"></div></div>`;
   } else if(finTab==='rates'){
     const exs=(DB.extraSessions||[]).filter(x=>ymOf(x.date)===finMonth).sort((a,b)=>b.date.localeCompare(a.date));
     body=`<div class="card"><b>Antrenör ders ücretleri havuza göre ayrıdır</b><div style="font-size:12.5px;color:var(--muted);margin:4px 0 0;">Grup dersi: gruba atanan ana antrenör, o grubun havuzundaki her ders için. Özel ders: onaylanan her saat için, dersin düştüğü paketin havuzu esas alınır. Diğer antrenman: aşağıdan havuz seçilerek girilen ek ders için.</div><div id="rt_res" style="font-size:12.5px;margin-top:8px;"></div></div>
@@ -3040,7 +3040,7 @@ function renderFinance(c){
       ${DB.coaches.map(co=>{const x=coachPayFor(co.id,finMonth); return Object.keys(x.byPool).filter(pn=>x.byPool[pn].groupCount+x.byPool[pn].privateCount+x.byPool[pn].otherCount>0).map(pn=>{const y=x.byPool[pn]; return `<tr><td>${escHtml(co.name)}</td><td>${escHtml(pn)}</td><td>${y.groupCount} · ${money(y.groupAmt)}</td><td>${y.privateCount} · ${money(y.privateAmt)}</td><td>${y.otherCount} · ${money(y.otherAmt)}</td><td><b>${money(y.total)}</b></td></tr>`;}).join('');}).join('')||'<tr><td colspan="6"><div class="empty">Bu ay ders yok</div></td></tr>'}</tbody></table></div></div>`;
   } else {
     const pks=(DB.plPackages||[]).slice().sort((a,b)=>b.createdAt.localeCompare(a.createdAt));
-    body=`<div class="card"><b>Sporcuya paket tanımla</b><div style="font-size:12.5px;color:var(--muted);margin:4px 0 8px;">Paketler hazırdır: 6, 8, 10 veya 20 saat. Fiyat, seçilen havuzun özel ders saat ücretinden hesaplanır (Havuz Fiyatları sekmesi). Serbest ders adedi girilemez.</div>
+    body=`<div class="card"><b>Sporcuya paket tanımla</b><div style="font-size:12.5px;color:var(--muted);margin:4px 0 8px;">Paketler, seçilen havuz için tanımladığınız saat sayısı ve toplam fiyattan seçilir (Fiyatlar sekmesi > Özel ders paketleri). Paket tanımlamadıysanız 6, 8, 10 ve 20 saatlik paketler saat ücretinden hesaplanır.</div>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;">
       <div class="field" style="margin:0;"><label for="pk_ath">Sporcu</label><select id="pk_ath"><option value="">Seçin</option>${DB.athletes.filter(a=>a.status==='active').map(a=>`<option value="${a.id}">${escHtml(a.name)}</option>`).join('')}</select></div>
       <div class="field" style="margin:0;"><label for="pk_pool">Havuz</label><select id="pk_pool" onchange="pkgPoolChanged()">${poolSelectOptions('',false,false)}</select></div>
@@ -3055,7 +3055,7 @@ function renderFinance(c){
 }
 function pkgPoolChanged(){
   const ps=document.getElementById('pk_pool'), hs=document.getElementById('pk_h'); if(!ps||!hs) return;
-  const prev=hs.value; hs.innerHTML=PKG_SIZES.map(h=>{const pr=pkgPriceFor(ps.value,h); return `<option value="${h}">${h} saatlik paket${pr?' — '+money(pr):' — fiyat girilmemiş'}</option>`;}).join(''); if(prev) hs.value=prev;
+  const prev=hs.value; hs.innerHTML=poolPackages(ps.value).map(x=>{const h=x.hours, pr=x.price; return `<option value="${h}">${h} saatlik paket${pr?' — '+money(pr):' — fiyat girilmemiş'}</option>`;}).join('')||'<option value="">Bu havuz için paket tanımlı değil</option>'; if(prev) hs.value=prev;
 }
 function expAdd(){const v=id=>document.getElementById(id).value; const r=saveExpense({date:v('ex_date'),pool:v('ex_pool'),category:v('ex_cat'),amount:v('ex_amt'),desc:v('ex_desc')}); if(!r.ok){document.getElementById('ex_res').textContent=r.errors.join(' ');return;} finMonth=ymOf(v('ex_date')); finMsg='Gider kaydedildi.'; renderFinance($('#content'));}
 function expDel(id){if(!confirm('Gider silinsin mi?'))return; removeExpense(id); renderFinance($('#content'));}
@@ -5801,6 +5801,60 @@ function acctExtra(p){
   if(!exists) return ' <span class="badge red">⚠ bağlı antrenör kaydı bulunamadı</span>';
   return n?` <span style="font-size:12px;color:var(--muted);">· ${n} grup</span>`:' <span class="badge amber">0 grup atanmış</span>';
 }
+
+/* ---------- ÖZEL DERS PAKET TANIMLARI (havuz başına: saat sayısı + toplam fiyat) ---------- */
+function poolPackages(pool){
+  const cat=((DB.poolPrices||{})[pool]||{}).packages;
+  if(Array.isArray(cat)&&cat.length) return cat.map(x=>({hours:Number(x.hours),price:Number(x.price)})).filter(x=>x.hours>0&&x.price>0).sort((a,b)=>a.hours-b.hours);
+  const r=poolPrice(pool,'private');
+  return r>0?PKG_SIZES.map(h=>({hours:h,price:r2(h*r),auto:true})):[];
+}
+const _pkgPriceFor=pkgPriceFor;
+pkgPriceFor=function(pool,hours){
+  const list=poolPackages(pool);
+  if(list.length&&!list[0].auto){ const x=list.find(p=>p.hours===Number(hours)); return x?x.price:0; }
+  return _pkgPriceFor(pool,hours);
+};
+function savePoolPackages(pool,rows){
+  if(role!=='admin') return {ok:false,errors:['Yalnızca yönetici paket tanımlayabilir.']};
+  if(!poolExists(pool)) return {ok:false,errors:['Havuz bulunamadı.']};
+  const out=[]; const seen=new Set(); const e=[];
+  (rows||[]).forEach((r,i)=>{
+    const hs=String(r.hours==null?'':r.hours).trim(), ps=String(r.price==null?'':r.price).trim();
+    if(!hs&&!ps) return;
+    const h=Number(hs), p=Number(ps.replace(',','.'));
+    if(!(Number.isInteger(h)&&h>=1&&h<=200)) { e.push(`${i+1}. satır: saat sayısı 1 ile 200 arasında tam sayı olmalı.`); return; }
+    if(!okAmt(p,1000000)) { e.push(`${i+1}. satır: toplam fiyat 0’dan büyük ve en çok 1.000.000 ₺ olmalı.`); return; }
+    if(seen.has(h)) { e.push(`${h} saatlik paket birden fazla kez girilmiş.`); return; }
+    seen.add(h); out.push({hours:h,price:r2(p)});
+  });
+  if(out.length>20) e.push('Bir havuz için en fazla 20 paket tanımlanabilir.');
+  if(e.length) return {ok:false,errors:e};
+  out.sort((a,b)=>a.hours-b.hours);
+  DB.poolPrices=DB.poolPrices||{};
+  const cur=DB.poolPrices[pool]||{group:0,private:0};
+  DB.poolPrices[pool]=Object.assign({},cur,{packages:out});
+  if(!out.length) delete DB.poolPrices[pool].packages;
+  save(); return {ok:true,errors:[]};
+}
+function pcRowHtml(pi,h,p){ return `<div class="pc-row" style="display:flex;gap:8px;align-items:center;margin-bottom:6px;flex-wrap:wrap;"><input class="pc-h" inputmode="numeric" placeholder="Saat" value="${h===''?'':escHtml(String(h))}" style="width:90px;" aria-label="Saat sayısı"> <span style="color:var(--muted);">saatlik paket</span> <input class="pc-p" inputmode="decimal" placeholder="Toplam fiyat ₺" value="${p===''?'':escHtml(String(p))}" style="width:140px;" aria-label="Toplam fiyat"> <button type="button" class="btn sm danger" onclick="this.closest('.pc-row').remove()">Kaldır</button></div>`; }
+function pcAddRow(pi){ const w=document.getElementById('pc_rows_'+pi); if(w) w.insertAdjacentHTML('beforeend',pcRowHtml(pi,'','')); }
+function pcSave(pi){
+  const pl=DB.pools[pi]; if(!pl) return;
+  const rows=Array.from(document.querySelectorAll('#pc_rows_'+pi+' .pc-row')).map(el=>({hours:el.querySelector('.pc-h').value,price:el.querySelector('.pc-p').value}));
+  const r=savePoolPackages(pl.name,rows); const el=document.getElementById('pc_res_'+pi);
+  if(r.ok){ finMsg=pl.name+' özel ders paketleri kaydedildi.'; renderFinance($('#content')); return; }
+  if(el){ el.style.color='var(--red)'; el.textContent=r.errors.join(' '); }
+}
+{ const _rf=renderFinance; renderFinance=function(c){ _rf(c);
+  if(role!=='admin'||finTab!=='prices') return;
+  c.insertAdjacentHTML('beforeend',`<div class="card" style="margin-top:16px;"><b>Özel ders paketleri</b>
+   <div style="font-size:12.5px;color:var(--muted);margin:4px 0 10px;">Her havuz için istediğiniz saat sayısında ve toplam fiyatta paket tanımlayın (örn. 12 saat = 7.200 ₺). Burada paket tanımlamazsanız, yukarıdaki özel ders saat ücreti × (6, 8, 10, 20 saat) kullanılır. Paket tanımladığınızda yalnızca bunlar sporcuya satılabilir.</div>
+   ${DB.pools.map((pl,pi)=>{ const cat=((DB.poolPrices||{})[pl.name]||{}).packages||[]; return `<div class="card" style="margin-bottom:10px;"><b>${escHtml(pl.name)}</b>
+     <div id="pc_rows_${pi}" style="margin-top:8px;">${cat.slice().sort((a,b)=>a.hours-b.hours).map(x=>pcRowHtml(pi,x.hours,x.price)).join('')}</div>
+     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px;"><button type="button" class="btn sm" onclick="pcAddRow(${pi})">+ Paket ekle</button><button type="button" class="btn sm primary" onclick="pcSave(${pi})">Kaydet</button></div>
+     <div id="pc_res_${pi}" style="font-size:12.5px;margin-top:6px;"></div></div>`; }).join('')}</div>`);
+}; }
 
 /* ============ INIT ============ */
 boot();
