@@ -5856,6 +5856,109 @@ function pcSave(pi){
      <div id="pc_res_${pi}" style="font-size:12.5px;margin-top:6px;"></div></div>`; }).join('')}</div>`);
 }; }
 
+/* ---------- CRM / ADAYLAR: ekleme, düzenleme, aşama değiştirme, not, takip, kayda dönüştürme (yönetici) ---------- */
+const CRM_STAGES=['Aday','İletişim kuruldu','Deneme planlandı','Deneme gerçekleşti','Teklif sunuldu','Kayıt oldu'];
+const CRM_SOURCES=['Instagram','Facebook / Sosyal medya','Google / Web sitesi','WhatsApp','Arkadaş / Çevre tavsiyesi','Okul / Etkinlik','Tabela / Çevreden geçerken','Mevcut üyenin yakını','Diğer'];
+let crmQ='', crmMsg={ok:'',err:''};
+function leadValidate(c){
+  const e=[]; const name=String(c.name||'').trim();
+  if(!/^[\p{L}\p{N} .'\-]{2,60}$/u.test(name)) e.push('Çocuğun adı 2-60 karakter olmalı.');
+  const age=String(c.age==null?'':c.age).trim();
+  if(age&&!(Number.isInteger(Number(age))&&Number(age)>=1&&Number(age)<=80)) e.push('Yaş 1 ile 80 arasında olmalı.');
+  const par=String(c.parent||'').trim(); if(par&&!/^[\p{L}\p{N} .'\-]{2,60}$/u.test(par)) e.push('Veli adı 2-60 karakter olmalı.');
+  const ph=String(c.phone||'').trim(); if(ph&&!/^[0-9 +()\-]{7,20}$/.test(ph)) e.push('Telefon numarası geçersiz.');
+  if(!par&&!ph) e.push('Veli adı veya telefon girin; aday ile iletişim kurulabilmeli.');
+  if(CRM_SOURCES.indexOf(c.source)<0) e.push('Kaynak seçin.');
+  if(CRM_STAGES.indexOf(c.stage)<0) e.push('Aşama seçin.');
+  if(String(c.note||'').length>300) e.push('Not en fazla 300 karakter olabilir.');
+  const fu=String(c.follow||''); if(fu&&!(/^\d{4}-\d{2}-\d{2}$/.test(fu)&&ymd(parseYmd(fu))===fu)) e.push('Takip tarihi geçersiz.');
+  return e;
+}
+function leadClean(c){ return {name:String(c.name).trim(),age:String(c.age==null?'':c.age).trim()?Number(c.age):'',parent:String(c.parent||'').trim(),phone:String(c.phone||'').trim(),source:c.source,stage:c.stage,note:String(c.note||'').trim(),follow:String(c.follow||'')}; }
+function leadSave(c,editId){
+  if(role!=='admin') return {ok:false,errors:['Bu işlem için yetkiniz yok.']};
+  const e=leadValidate(c); if(e.length) return {ok:false,errors:e};
+  const rec=leadClean(c);
+  if(editId){ const l=DB.leads.find(x=>x.id===editId); if(!l) return {ok:false,errors:['Aday bulunamadı.']}; Object.assign(l,rec); }
+  else DB.leads.push(Object.assign({id:'l'+Date.now()+Math.floor(Math.random()*1000),createdAt:todayStr()},rec));
+  save(); return {ok:true,errors:[]};
+}
+function leadMove(id,stage){
+  if(role!=='admin') return {ok:false,errors:['Bu işlem için yetkiniz yok.']};
+  const l=DB.leads.find(x=>x.id===id); if(!l) return {ok:false,errors:['Aday bulunamadı.']};
+  if(CRM_STAGES.indexOf(stage)<0) return {ok:false,errors:['Aşama geçersiz.']};
+  l.stage=stage; save(); return {ok:true,errors:[]};
+}
+function leadDelete(id){
+  if(role!=='admin') return {ok:false,errors:['Bu işlem için yetkiniz yok.']};
+  if(!DB.leads.some(x=>x.id===id)) return {ok:false,errors:['Aday bulunamadı.']};
+  DB.leads=DB.leads.filter(x=>x.id!==id); save(); return {ok:true,errors:[]};
+}
+function crmDays(ds){ return Math.round((parseYmd(ds)-parseYmd(todayStr()))/86400000); }
+function crmCardHtml(l){
+  const wa=fcWaLink(l.phone,`Merhaba${l.parent?' '+l.parent:''}, ${l.name} için yüzme kursumuzla ilgili yazıyorum.`);
+  const fu=l.follow?crmDays(l.follow):null;
+  const fuTxt=l.follow?`<div class="ksub" style="${fu<0?'color:var(--red);font-weight:700;':fu===0?'color:var(--amber,#b7791f);font-weight:700;':''}">📌 Takip: ${escHtml(fmtDate(l.follow))}${fu<0?' (gecikti)':fu===0?' (bugün)':''}</div>`:'';
+  return `<div class="kcard"><div class="kname">${escHtml(l.name)}${l.age!==''&&l.age!=null?` <span style="color:var(--muted);font-weight:400;">(${escHtml(String(l.age))} yaş)</span>`:''}</div>
+   <div class="ksub">${l.parent?'Veli: '+escHtml(l.parent)+'<br>':''}${l.phone?escHtml(l.phone)+'<br>':''}Kaynak: ${escHtml(l.source||'-')}</div>
+   ${l.note?`<div class="ksub" style="margin-top:4px;">📝 ${escHtml(l.note)}</div>`:''}${fuTxt}
+   ${l.converted&&DB.athletes.some(a=>a.id===l.converted)?'<div class="ksub" style="color:var(--green,#2f855a);">✔ Sporcu kaydı oluşturuldu</div>':''}
+   <div style="margin-top:8px;"><select aria-label="Aşama" onchange="crmMove('${l.id}',this.value)" style="width:100%;">${CRM_STAGES.map(s=>`<option${s===l.stage?' selected':''}>${s}</option>`).join('')}</select></div>
+   <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;"><button class="btn sm" onclick="crmOpen('${l.id}')">Düzenle</button>${wa?`<a class="btn sm" href="${escHtml(wa)}" target="_blank" rel="noopener">WhatsApp</a>`:''}${!l.converted||!DB.athletes.some(a=>a.id===l.converted)?`<button class="btn sm primary" onclick="crmConvert('${l.id}')">Sporcu kaydı oluştur</button>`:''}<button class="btn sm danger" onclick="crmDel('${l.id}')">Sil</button></div></div>`;
+}
+function renderCRM(c){
+  if(role!=='admin'){ c.innerHTML='<div class="card"><div class="empty">Bu sayfaya erişim yetkiniz yok.</div></div>'; return; }
+  const q=crmQ.trim().toLocaleLowerCase('tr');
+  const all=DB.leads, list=q?all.filter(l=>(l.name+' '+(l.parent||'')+' '+(l.phone||'')+' '+(l.source||'')).toLocaleLowerCase('tr').indexOf(q)>-1):all;
+  const reg=all.filter(l=>l.stage==='Kayıt oldu').length, due=all.filter(l=>l.follow&&l.stage!=='Kayıt oldu'&&crmDays(l.follow)<=0).length;
+  const banner=(crmMsg.ok?`<div class="note-banner" role="status">${escHtml(crmMsg.ok)}</div>`:'')+(crmMsg.err?`<div class="grp-result bad" role="alert">${escHtml(crmMsg.err)}</div>`:''); crmMsg={ok:'',err:''};
+  c.innerHTML=`${banner}<div class="card" style="margin-bottom:14px;display:flex;gap:12px;flex-wrap:wrap;align-items:center;"><button class="btn primary" onclick="crmOpen()">+ Yeni aday</button>
+   <input id="crm_q" type="search" placeholder="Ad, veli, telefon veya kaynak ara" value="${escHtml(crmQ)}" oninput="crmSearch(this.value)" style="flex:1;min-width:200px;" aria-label="Aday ara">
+   <span style="font-size:13px;color:var(--muted);">${all.length} aday · ${reg} kayıt${due?` · <b style="color:var(--red);">${due} takip bekliyor</b>`:''}</span></div>
+   <div class="kanban">${CRM_STAGES.map(s=>{ const ls=list.filter(l=>l.stage===s); return `<div class="kcol"><h4>${s} (${ls.length})</h4>${ls.map(crmCardHtml).join('')||'<div style="font-size:11.5px;color:var(--muted);">Boş</div>'}</div>`; }).join('')}</div>
+   <div class="section-title">Dönüşüm Oranı</div>
+   <div class="card">${all.length?`Aday → Kayıt dönüşümü: <b>%${Math.round(reg/all.length*100)}</b> (${reg} / ${all.length})`:'Henüz aday eklenmedi. “Yeni aday” ile başlayın.'}</div>`;
+  const s=document.getElementById('crm_q'); if(s&&crmQ){ s.focus(); try{ s.setSelectionRange(crmQ.length,crmQ.length); }catch(e){} }
+}
+function crmSearch(v){ crmQ=v; renderCRM($('#content')); }
+function crmMove(id,st){ const r=leadMove(id,st); crmMsg={ok:r.ok?'Aşama güncellendi.':'',err:r.ok?'':r.errors.join(' ')}; renderCRM($('#content')); }
+function crmDel(id){ const l=DB.leads.find(x=>x.id===id); if(!l||!confirm(`"${l.name}" adayı silinsin mi?`)) return; const r=leadDelete(id); crmMsg={ok:r.ok?'Aday silindi.':'',err:r.ok?'':r.errors.join(' ')}; renderCRM($('#content')); }
+function crmOpen(id,pre){
+  if(role!=='admin') return;
+  const l=id?DB.leads.find(x=>x.id===id):null; if(id&&!l) return;
+  const V=(k,d)=>pre&&pre[k]!==undefined?pre[k]:(l&&l[k]!==undefined?l[k]:d);
+  window.__crmEdit=id||null;
+  openDrawerHtml(`<div class="drawer-head"><div style="font-weight:800;font-size:16px;">${l?'Adayı düzenle':'Yeni aday'}</div><button class="close-x" onclick="closeDrawer()">✕</button></div>
+  <div class="drawer-body" style="padding-top:12px;">
+   <div style="display:grid;grid-template-columns:2fr 1fr;gap:10px;"><div class="field"><label for="cr_name">Çocuğun adı soyadı</label><input id="cr_name" maxlength="60" value="${escHtml(String(V('name','')))}"></div>
+   <div class="field"><label for="cr_age">Yaş</label><input id="cr_age" inputmode="numeric" maxlength="2" value="${escHtml(String(V('age','')))}"></div></div>
+   <div class="field"><label for="cr_parent">Veli adı soyadı</label><input id="cr_parent" maxlength="60" value="${escHtml(String(V('parent','')))}"></div>
+   <div class="field"><label for="cr_phone">Telefon</label><input id="cr_phone" maxlength="20" inputmode="tel" value="${escHtml(String(V('phone','')))}"></div>
+   <div class="field"><label for="cr_src">Bizi nereden buldu?</label><select id="cr_src"><option value="">Seçin</option>${cOpt(CRM_SOURCES.map(x=>[x,x]),V('source',''))}</select></div>
+   <div class="field"><label for="cr_stage">Aşama</label><select id="cr_stage">${cOpt(CRM_STAGES.map(x=>[x,x]),V('stage','Aday'))}</select></div>
+   <div class="field"><label for="cr_follow">Takip tarihi (isteğe bağlı)</label><input id="cr_follow" type="date" value="${escHtml(String(V('follow','')))}"></div>
+   <div class="field"><label for="cr_note">Not (isteğe bağlı)</label><textarea id="cr_note" rows="3" maxlength="300">${escHtml(String(V('note','')))}</textarea></div>
+   <div id="cr_res" class="grp-result bad" style="display:none;" aria-live="polite"></div>
+   <div style="display:flex;gap:10px;margin-top:12px;"><button class="btn primary" onclick="crmSubmit()">${l?'Kaydet':'Adayı ekle'}</button><button class="btn" onclick="closeDrawer()">Vazgeç</button></div></div>`);
+}
+function crmSubmit(){
+  const r=leadSave({name:cV('cr_name'),age:cV('cr_age'),parent:cV('cr_parent'),phone:cV('cr_phone'),source:cV('cr_src'),stage:cV('cr_stage'),follow:cV('cr_follow'),note:cV('cr_note')},window.__crmEdit);
+  if(!r.ok){ const el=document.getElementById('cr_res'); if(el){ el.style.display=''; el.innerHTML='<ul class="ai-list">'+r.errors.map(x=>'<li>'+escHtml(x)+'</li>').join('')+'</ul>'; } return; }
+  const wasEdit=window.__crmEdit; closeDrawer(); crmMsg={ok:wasEdit?'Aday güncellendi.':'Aday eklendi.',err:''}; renderCRM($('#content'));
+}
+/* Sporcu kaydına dönüştür: mevcut sporcu formunu adayın bilgileriyle açar */
+function crmConvert(id){
+  const l=DB.leads.find(x=>x.id===id); if(!l||role!=='admin') return;
+  const n=splitName(l.name), p=splitName(l.parent||'');
+  window.__leadConv=id;
+  athOpen(null,{first:n.first,last:n.last,pfirst:p.first,plast:p.last,pphone:l.phone||'',t_source:TRIAL_SOURCES.indexOf(l.source)>-1?l.source:'',group:/^Deneme/.test(l.stage)||l.stage==='Aday'||l.stage==='İletişim kuruldu'?'trial':''});
+}
+{ const _aa=applyAthleteAdd; applyAthleteAdd=function(c,extra){
+  const r=_aa(c,extra);
+  if(r&&r.ok&&window.__leadConv){ const l=DB.leads.find(x=>x.id===window.__leadConv); window.__leadConv=null; if(l){ l.converted=r.id; if(c.group!=='trial') l.stage='Kayıt oldu'; save(); crmMsg={ok:'Sporcu kaydı oluşturuldu: '+l.name+(c.group==='trial'?' (deneme olarak).':'. Aday “Kayıt oldu” aşamasına alındı.'),err:''}; } }
+  return r; }; }
+{ const _cd=closeDrawer; closeDrawer=function(){ window.__leadConv=null; return _cd.apply(this,arguments); }; }
+
 /* ============ INIT ============ */
 boot();
 </script>
