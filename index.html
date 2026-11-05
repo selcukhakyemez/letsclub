@@ -262,7 +262,7 @@ body.srv .role-pill:not(#userPill){display:none;}
     </div>
     <div class="role-pill" id="userPill" style="display:none;"></div>
     <nav id="nav"></nav>
-    <div class="sidebar-foot" id="sbFoot">Prototip sürüm · v0.1<br>Demo verisi — tarayıcınızda saklanır</div>
+    <div class="sidebar-foot" id="sbFoot">SH Swim Club Management<br>Demo — veriler bu tarayıcıda saklanır</div>
   </aside>
   <div class="main">
     <div class="topbar">
@@ -810,7 +810,7 @@ function openAthleteBase(id){
         ${(role==='admin'||role==='coach')?`<div class="section-title">Antrenör Notu Ekle</div>
         <div class="field"><textarea rows="3" id="noteInput" placeholder="Teknik not, gelişim notu, hedef…"></textarea></div>
         <div class="field"><label>Görünürlük</label><select id="noteVis"><option>Sadece antrenör</option><option>Antrenör + yönetici</option><option selected>Veli + Sporcu</option></select></div>
-        <button class="btn primary sm" onclick="alert('Not kaydedildi (demo).'); $('#noteInput').value='';">Notu Kaydet</button>`:''}`;
+        <button class="btn primary sm" onclick="anSubmit('${a.id}')">Notu Kaydet</button><div id="anMsg" aria-live="polite" style="margin-top:6px;"></div>`:''}${anListHtml(a.id)}`;
     } else if(tab==='veli'){
       body.innerHTML=parentsList.length? parentsList.map(p=>`<div class="card" style="margin-top:14px;">
         <b>${p.name}</b> <span class="badge aqua">${p.relation}</span>
@@ -1448,7 +1448,7 @@ function renderSchedule(c){
     <div style="font-size:12px;color:var(--muted);">${(fc||fp)?'Filtre açık: takvimde yalnızca seçilen antrenör/havuz dersleri görünür.':'Tüm dersler gösteriliyor.'}</div></div>`:''}
   <div style="overflow-x:auto;">${html}</div>
   ${fam?plFamHtml(dates):plStaffHtml()}
-  <div class="note-banner" style="margin-top:18px;">${fam?'Bu takvimde yalnızca bağlı olduğunuz grupların gün, saat ve havuz bilgileri ile onaylanmış özel dersleriniz gösterilir.':'Gerçek sistemde grup dersleri sürükle-bırak ile taşınabilir; değişiklik olduğunda veli/sporcu/antrenöre otomatik bildirim gider. Bu prototipte grup programı salt-okunurdur. Özel dersler yalnızca öğretmen onayından sonra takvimde görünür ve o saate başka ders girilemez.'}</div>`;
+  <div class="note-banner" style="margin-top:18px;">${fam?'Bu takvimde yalnızca bağlı olduğunuz grupların gün, saat ve havuz bilgileri ile onaylanmış özel dersleriniz gösterilir.':'Grup dersleri Gruplar sayfasından eklenir ve düzenlenir; değişiklik takvime hemen yansır. Özel dersler yalnızca öğretmen onayından sonra takvimde görünür ve o saate başka ders girilemez.'}</div>`;
 }
 
 /* ============ ANTRENMAN PROGRAMI (antrenör günlük antrenman yazar; veli/sporcu kendi grubunu okur) ============ */
@@ -1706,7 +1706,7 @@ function renderReports(c){
     ['CRM Satış Raporu',()=>DB.leads.map(l=>({Ad:l.name,Veli:l.parent,Aşama:l.stage,Kaynak:l.source}))],
     ['Antrenör Ders Raporu',()=>DB.coaches.map(co=>({Antrenör:co.name,Grup:DB.groups.filter(g=>g.coach===co.id).length,Sporcu:DB.athletes.filter(a=>a.coach===co.id).length}))],
   ];
-  c.innerHTML=`<div class="note-banner">Bu prototipte raporlar örnek verilerden CSV olarak indirilir. Gerçek sistemde Excel/PDF formatında, filtrelenebilir olacaktır.</div>
+  c.innerHTML=`<div class="note-banner">Raporlar CSV olarak indirilir; Excel ile açabilirsiniz.</div>
   <div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(230px,1fr));">
   ${reports.map((r,i)=>`<div class="card"><b>${r[0]}</b><div style="margin-top:12px;"><button class="btn sm" onclick="downloadReport(${i})">CSV indir</button></div></div>`).join('')}
   </div>`;
@@ -3191,16 +3191,12 @@ function renderDashboard(c){
 function renderSettingsBase(c){
   c.innerHTML=`
   <div class="card">
-    <div class="section-title" style="margin-top:0;">Bu Prototip Hakkında</div>
-    <p style="font-size:13.5px;color:var(--muted);line-height:1.6;">
-    Bu ekran, SH Swim Club Management için hazırlanan kapsamlı gereksinim dokümanının (85 madde) uygulanabilir bir <b>ön izlemesidir</b>.
-    Amaç ekibinizin ve yazılımcınızın akışlar, veri modeli ve ekranlar üzerinde hızlıca hemfikir olmasıdır.
-    Veriler yalnızca bu tarayıcıda (localStorage) saklanır; gerçek bir sunucu, veritabanı veya kimlik doğrulama içermez.
-    </p>
-    <div class="section-title">Dahil Olan Modüller</div>
-    <p style="font-size:13px;color:var(--muted);">Dashboard · Sporcu profili (veli, grup, gelişim, ödeme, lisans sekmeleri) · Veli yönetimi · Grup/kontenjan · Ders programı (haftalık takvim) · Yoklama · Gelişim değerlendirme · Yarışma & derece takibi · CRM / satış hunisi · Antrenör yönetimi · Ödeme & aidat takibi · Duyurular · Talep yönetimi · Rapor (CSV) dışa aktarma · Rol bazlı görünüm (Yönetici / Antrenör / Veli)</p>
-    <div class="section-title">Prototipte Olmayan (Gerçek Geliştirme Gerektiren)</div>
-    <p style="font-size:13px;color:var(--muted);">Gerçek kimlik doğrulama & RBAC güvenliği · Veritabanı & API · KVKK aydınlatma/açık rıza akışları · SMS/e-posta/WhatsApp entegrasyonu · Ödeme altyapısı (POS/online ödeme) · Türkiye Yüzme Federasyonu entegrasyonu · Mobil uygulama · Otomasyon motoru · Yapay zekâ analiz modülleri</p>
+    <div class="section-title" style="margin-top:0;">Sistem Hakkında</div>
+    <p style="font-size:13.5px;color:var(--muted);line-height:1.6;">${SERVER?'Veriler güvenli sunucuda saklanır; her kullanıcı yalnızca rolünün izin verdiği bilgileri görür.':'Demo sürüm: veriler yalnızca bu tarayıcıda saklanır, başka cihazlarla paylaşılmaz.'}</p>
+    <div class="section-title">Modüller</div>
+    <p style="font-size:13px;color:var(--muted);">Sporcu, veli, grup ve seviyeler · Ders programı ve özel dersler · Yoklama ve yoklama geçmişi · Ödeme, finans ve paketler · Havuz kiralama · CRM / adaylar · Antrenör puantajı ve izinler · Mesaj, anket, talepler · Yarışmalar ve süreler · Gelişim raporu · İşlem geçmişi · Yedekleme</p>
+    <div class="section-title">Henüz bulunmayanlar</div>
+    <p style="font-size:13px;color:var(--muted);">SMS / e-posta / WhatsApp otomatik gönderimi · Online ödeme ve POS · Federasyon entegrasyonu · Gerçek yapay zekâ modeli · Otomatik aidat oluşturma</p>
   </div>
   <div class="card" style="margin-top:16px;">
     <div class="section-title" style="margin-top:0;">Görünüm</div>
@@ -3400,7 +3396,7 @@ function renderAI(c){
   if(tabs.length&&!tabs.some(t=>t[0]===aiTab)) aiTab=tabs[0][0];
   const banner=role==='parent'
     ? 'Bu özet, antrenörün girdiği devam ve derece kayıtlarından otomatik hazırlanır. Yalnızca kendi çocuklarınızı kapsar.'
-    : 'Demo: analizler örnek verilerden kural tabanlı hesaplanır, gerçek bir yapay zekâ modeli bağlı değildir. AI hiçbir işlemi kendiliğinden uygulamaz; her öneri yönetici onayından geçer.';
+    : 'Analizler kayıtlı verilerden kural tabanlı hesaplanır, gerçek bir yapay zekâ modeli bağlı değildir. AI hiçbir işlemi kendiliğinden uygulamaz; her öneri yönetici onayından geçer.';
   c.innerHTML=`<div class="note-banner">${banner}</div>
   ${tabs.length?`<div class="pillbar" id="aiTabs">${tabs.map(t=>`<div class="p ${t[0]===aiTab?'active':''}" onclick="aiSetTab('${t[0]}')">${t[1]}</div>`).join('')}</div>`:''}
   <div id="aiBody"></div>`;
@@ -3500,7 +3496,7 @@ function aiViewQueue(){
     ${isAdmin?`<td>${x.status==='Onay bekliyor'?`<button class="btn sm primary" onclick="aiDecide('${x.id}','Onaylandı')">Onayla</button> <button class="btn sm danger" onclick="aiDecide('${x.id}','Reddedildi')">Reddet</button>`:''}</td>`:''}
   </tr>`).join('')||`<tr><td colspan="${isAdmin?6:5}"><div class="empty">${isAdmin?'Onay bekleyen öneri yok':'Henüz öneri göndermediniz'}</div></td></tr>`}
   </tbody></table></div>
-  <div class="note-banner" style="margin-top:14px;">Onaylanan işlemler bu prototipte yalnızca kayda alınır; gerçek mesaj gönderilmez, grup veya plan değiştirilmez.</div>`;
+  <div class="note-banner" style="margin-top:14px;">Onaylanan öneriler yalnızca kayda alınır; mesaj gönderilmez, grup veya plan kendiliğinden değiştirilmez.</div>`;
 }
 
 /* ============ SUNUCU BAĞLANTISI (Supabase): giriş, oturum, veri senkronu, hesaplar ============ */
@@ -5958,6 +5954,45 @@ function crmConvert(id){
   if(r&&r.ok&&window.__leadConv){ const l=DB.leads.find(x=>x.id===window.__leadConv); window.__leadConv=null; if(l){ l.converted=r.id; if(c.group!=='trial') l.stage='Kayıt oldu'; save(); crmMsg={ok:'Sporcu kaydı oluşturuldu: '+l.name+(c.group==='trial'?' (deneme olarak).':'. Aday “Kayıt oldu” aşamasına alındı.'),err:''}; } }
   return r; }; }
 { const _cd=closeDrawer; closeDrawer=function(){ window.__leadConv=null; return _cd.apply(this,arguments); }; }
+
+/* ---------- SPORCU NOTLARI (antrenör notu; görünürlük seçilebilir) ---------- */
+const AN_VIS={'Sadece antrenör':'coach','Antrenör + yönetici':'coachadmin','Veli + Sporcu':'family'};
+const AN_VIS_TR={coach:'Sadece antrenör',coachadmin:'Antrenör + yönetici',family:'Veli + Sporcu'};
+function anVisible(athId){
+  cEnsure();
+  return DB.athNotes.filter(n=>n.athlete===athId&&(role==='admin'||role==='coach'||n.vis==='family')).sort((a,b)=>String(b.at).localeCompare(String(a.at)));
+}
+function anSave(athId,text,visLabel){
+  if(!(role==='admin'||role==='coach')||!canViewAthlete(athId)) return {ok:false,errors:['Bu işlem için yetkiniz yok.']};
+  const t=String(text||'').trim(); const vis=AN_VIS[visLabel]||(AN_VIS_TR[visLabel]?visLabel:'');
+  if(t.length<2) return {ok:false,errors:['Not en az 2 karakter olmalı.']};
+  if(t.length>1000) return {ok:false,errors:['Not en fazla 1000 karakter olabilir.']};
+  if(!vis) return {ok:false,errors:['Görünürlük seçin.']};
+  cEnsure();
+  const by=role==='admin'?{role:'admin',id:''}:{role:'coach',id:DB.currentUser.coachId};
+  DB.athNotes.push({id:cUid('an_'),athlete:athId,text:t,vis,by,byName:role==='admin'?'Yönetim':coachName(DB.currentUser.coachId),at:new Date().toISOString()});
+  save(); return {ok:true,errors:[]};
+}
+function anDelete(id){
+  if(role!=='admin') return {ok:false,errors:['Notları yalnızca yönetici siler.']};
+  cEnsure(); if(!DB.athNotes.some(n=>n.id===id)) return {ok:false,errors:['Not bulunamadı.']};
+  DB.athNotes=DB.athNotes.filter(n=>n.id!==id); save(); return {ok:true,errors:[]};
+}
+function anListHtml(athId){
+  const L=anVisible(athId);
+  if(!L.length) return role==='admin'||role==='coach'?'<div style="font-size:12.5px;color:var(--muted);margin-top:14px;">Henüz not girilmedi.</div>':'';
+  return `<div class="section-title">Notlar</div>`+L.map(n=>`<div class="card" style="margin-top:8px;padding:10px 12px;"><div style="white-space:pre-wrap;">${escHtml(n.text)}</div>
+   <div style="font-size:11.5px;color:var(--muted);margin-top:6px;display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;"><span>${escHtml(n.byName||'')} · ${escHtml(fmtDate(String(n.at).slice(0,10)))}${(role==='admin'||role==='coach')?' · '+escHtml(AN_VIS_TR[n.vis]||''):''}</span>${role==='admin'?`<a style="cursor:pointer;color:var(--red);" onclick="anDel('${escHtml(n.id)}','${escHtml(athId)}')">Sil</a>`:''}</div></div>`).join('');
+}
+function anSubmit(athId){
+  const r=anSave(athId,cV('noteInput'),cV('noteVis'));
+  if(!r.ok){ const e=document.getElementById('anMsg'); if(e){ e.className='grp-result bad'; e.textContent=r.errors.join(' '); } return; }
+  openAthlete(athId);
+}
+function anDel(id,athId){ if(!confirm('Bu not silinsin mi?')) return; anDelete(id); openAthlete(athId); }
+(function(){
+  C_COLLS.push('athNotes'); SB_SPECS.push({c:'athNotes',t:'arr'}); SB_WRITE.coach.push('athNotes'); AU_COLL.athNotes='Sporcu notu';
+})();
 
 /* ============ INIT ============ */
 boot();
