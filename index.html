@@ -762,7 +762,7 @@ function renderAthletesBase(c){
     $('#athBody').innerHTML = rows.length? rows.map(a=>`
       <tr class="rowlink" onclick="openAthlete('${a.id}')">
         <td class="name-cell">${av('athlete:'+a.id,a.name)}${a.name}${a.status==='trial'?' <span class="badge amber" style="margin-left:6px;">Deneme</span>':''}${a.status==='passive'?' <span class="badge grey" style="margin-left:6px;">Pasif</span>':''}</td>
-        <td>${age(a.dob)}</td>
+        <td>${okDateStr(a.dob)?age(a.dob):'—'}</td>
         <td>${a.level}</td>
         <td>${a.kind==='private'&&!a.group?'Özel ders':groupName(a.group)}${a.adult?' <span class="badge" style="font-size:10.5px;">Yetişkin</span>':''}</td>
         <td>${coachName(a.coach)}</td>
@@ -791,7 +791,7 @@ function openAthleteBase(id){
   d.innerHTML=`
   <div class="drawer-head">
     <div class="name-cell">${av('athlete:'+a.id,a.name,'width:44px;height:44px;font-size:15px;')}
-      <div><div style="font-weight:800;font-size:16px;">${a.name}</div><div style="font-size:12.5px;color:var(--muted);">${a.level} · ${age(a.dob)} yaş · ${g?g.name:'-'}</div></div></div>
+      <div><div style="font-weight:800;font-size:16px;">${a.name}</div><div style="font-size:12.5px;color:var(--muted);">${a.level||'—'} · ${okDateStr(a.dob)?age(a.dob)+' yaş':'yaş —'} · ${g?g.name:(a.kind==='private'?'Özel ders':'-')}</div></div></div>
     <button class="close-x" onclick="closeDrawer()">✕</button>
   </div>
   <div class="tabs" id="atabs">${tabs.map((t,i)=>`<button class="${i===0?'active':''}" data-t="${t[0]}">${t[1]}</button>`).join('')}</div>
@@ -4920,7 +4920,7 @@ function dvHtml(d){
   const a=d.a, per=d.months?('Son '+d.months+' ay'):'Tüm zamanlar';
   const kv=(k,v)=>`<tr><td style="width:34%;color:#555;">${escHtml(k)}</td><td>${v}</td></tr>`;
   let h=`<h2 class="ps-h" style="font-size:17px;">${escHtml(a.name)} — Gelişim Raporu</h2><p style="font-size:12px;color:#555;margin:0 0 8px;">Dönem: ${escHtml(per)} (${escHtml(fmtDate(d.from||a.joined||d.to))} – ${escHtml(fmtDate(d.to))})</p>`;
-  h+=`<table class="ps-t">${kv('Yaş / Seviye',age(a.dob)+' yaş · '+escHtml(a.level))}${kv('Grup',d.g?escHtml(d.g.name+' · '+gSchedText(d.g)+' · '+d.g.pool):'—')}${kv('Antrenör',escHtml(coachName(a.coach||(d.g&&d.g.coach))))}${kv('Kulübe katılım',escHtml(fmtDate(a.joined)))}</table>`;
+  h+=`<table class="ps-t">${kv('Yaş / Seviye',(okDateStr(a.dob)?age(a.dob)+' yaş':'—')+' · '+escHtml(a.level||'—'))}${kv('Grup',d.g?escHtml(d.g.name+' · '+gSchedText(d.g)+' · '+d.g.pool):'—')}${kv('Antrenör',escHtml(coachName(a.coach||(d.g&&d.g.coach))))}${kv('Kulübe katılım',escHtml(fmtDate(a.joined)))}</table>`;
   h+=`<h3 class="ps-h">Devam durumu</h3>`;
   if(d.att){ h+=d.att.tot?`<p style="margin:2px 0 6px;font-size:13px;">Yoklaması alınan <b>${d.att.tot}</b> dersin <b>${d.att.present}</b> tanesine katıldı: <b>%${Math.round(d.att.rate*100)}</b></p>`+psTable(['Durum','Ders sayısı'],Object.keys(d.att.cnt).map(k=>[escHtml(k),String(d.att.cnt[k])])):'<p style="font-size:13px;">Bu dönemde yoklama kaydı yok.</p>'; }
   else h+=`<p style="font-size:13px;">Genel devam oranı: <b>%${Math.round((a.attendance||0)*100)}</b></p>`;
@@ -6466,7 +6466,11 @@ plRefresh=function(){ if(route==='schedule') renderSchedule($('#content')); else
 { const _v=validateAthlete;
   validateAthlete=function(c,editId){
     if(c.group!=='private') return _v(c,editId);
-    const e=_v(Object.assign({},c,{group:'trial',status:'trial'}),null);
+    /* özel ders kaydında yalnızca ad, soyad, telefon zorunlu; doğum tarihi/cinsiyet/seviye/lisans boş kalabilir */
+    const d=Object.assign({},c,{group:'trial',status:'trial'});
+    if(!String(c.dob||'').trim()) d.dob='2000-01-01'; if(!c.gender) d.gender='E'; if(!c.level) d.level=levelAll()[0]; if(!c.license) d.license='Yok';
+    const e=_v(d,null);
+    const ph=String(c.phone||'').trim(); if(!ph||ph==='-') e.push('Telefon numarasını girin.');
     if(c.status!=='active'&&c.status!=='passive') e.push('Durum seçin.');
     return e; };
   const _af=afToggle; afToggle=function(){ _af();
@@ -6480,6 +6484,13 @@ plRefresh=function(){ if(route==='schedule') renderSchedule($('#content')); else
   };
 }
 function cAthTag(a){ return (a&&a.kind==='private'?' <span class="badge aqua" style="font-size:10.5px;">Özel ders</span>':'')+(a&&a.adult?' <span class="badge" style="font-size:10.5px;">Yetişkin</span>':''); }
+
+{ const _af2=afToggle; afToggle=function(){ _af2();
+    const g=document.getElementById('af_group'); if(!g) return;
+    let n=document.getElementById('af_privnote');
+    if(g.value==='private'){ if(!n){ const f=g.closest('.field'); if(f) f.insertAdjacentHTML('afterend','<div id="af_privnote" class="note-banner" style="grid-column:1/-1;margin:0;">Özel ders kaydında yalnızca <b>ad, soyad ve telefon</b> zorunludur. Doğum tarihi, cinsiyet, seviye ve lisansı sonra düzenleyebilirsiniz.</div>'); } }
+    else if(n) n.remove();
+  }; }
 
 /* ============ INIT ============ */
 boot();
