@@ -1236,7 +1236,7 @@ function athleteBusyReason(athId,ds,h,ignoreId){
 function plSlotProblem(athId,coachId,ds,h){
   if(!/^\d{4}-\d{2}-\d{2}$/.test(ds)||ymd(parseYmd(ds))!==ds||!Number.isInteger(h)||h<PL_FIRST||h>PL_LAST) return 'geçersiz gün veya saat';
   const when=parseYmd(ds); when.setHours(h,0,0,0);
-  if(when<=new Date()) return 'geçmiş saat';
+  if(!window.__plPast&&when<=new Date()) return 'geçmiş saat';
   if(coachBusyReason(coachId,ds,h)) return 'öğretmen bu saatte dolu';
   if(athleteBusyReason(athId,ds,h)) return 'bu saatte başka bir ders var';
   if((DB.privateLessons||[]).some(p=>p.athlete===athId&&p.coach===coachId&&p.date===ds&&p.hour===h&&p.status==='Onay bekliyor')) return 'bu saat için zaten talep var';
@@ -6371,7 +6371,12 @@ function cPlSessionAdd(athIds,ds,h,note,coachArg){
   h=parseInt(h,10); if(!(h>=PL_FIRST&&h<=PL_LAST)) return {ok:false,errors:['Saat geçersiz.']};
   const aths=athIds.map(id=>DB.athletes.find(x=>x.id===id));
   if(aths.some((a,i)=>!a||a.status!=='active'||(!isAdmin&&!canViewAthlete(athIds[i])))) return {ok:false,errors:['Seçilen sporculardan biri için ders ekleyemezsiniz.']};
-  for(const id of athIds){ const bad=plSlotProblem(id,coach,ds,h); if(bad) return {ok:false,errors:['Eklenemedi ('+athleteName(id)+'): '+bad+'.']}; }
+  const monthStart=ymd(new Date(new Date().getFullYear(),new Date().getMonth(),1));
+  if(!isAdmin&&ds<monthStart) return {ok:false,errors:['Antrenör yalnızca bu ayın dersini girebilir. Önceki aylar için yönetici ile görüşün.']};
+  window.__plPast=true; let bad0=null;
+  try{ for(const id of athIds){ const bad=plSlotProblem(id,coach,ds,h); if(bad){ bad0='Eklenemedi ('+athleteName(id)+'): '+bad+'.'; break; } } } finally{ window.__plPast=false; }
+  if(bad0) return {ok:false,errors:[bad0]};
+  for(const id of []){ const bad=plSlotProblem(id,coach,ds,h); if(bad) return {ok:false,errors:['Eklenemedi ('+athleteName(id)+'): '+bad+'.']}; }
   const pks=athIds.map(id=>pickPackage(id,n)); const pool=(pks.find(Boolean)||{}).pool||cPlPoolOfAth(athIds[0]);
   if(pks.some(p=>p&&p.pool&&p.pool!==pool)) return {ok:false,errors:['Sporcuların paketleri farklı havuzlarda; aynı havuzda olmalı.']};
   note=String(note||'').trim().slice(0,200); DB.privateLessons=DB.privateLessons||[];
@@ -6386,14 +6391,14 @@ function cPlManualCard(){
   if(!aths.length) return '';
   const hrs=[]; for(let h=PL_FIRST;h<=PL_LAST;h++) hrs.push(h);
   const opt=(blank)=>`${blank?'<option value="">— seçin —</option>':''}${aths.map(a=>`<option value="${escHtml(a.id)}">${escHtml(a.name)}</option>`).join('')}`;
-  return `<div class="card" style="margin-bottom:14px;"><b>Özel ders ekle</b><div style="font-size:12.5px;color:var(--muted);margin:4px 0 10px;">${isAdmin?'Eklediğiniz ders hemen takvime girer.':'Eklediğiniz ders hemen takvime girer, yöneticiye bilgi gider.'} Sporcunun ilgili türde (bireysel/ikili/üçlü) paketi yoksa ders “paketsiz” işaretlenir. İkili ve üçlü derste her sporcunun kendi paketinden 1 saat düşer.</div>
+  return `<div class="card" style="margin-bottom:14px;"><b>Özel ders ekle</b><div style="font-size:12.5px;color:var(--muted);margin:4px 0 10px;">${isAdmin?'Geçmiş tarihli ders de girebilirsiniz; ders hemen işlenir.':'Bu ayın geçmiş günleri dahil ders girebilirsiniz; ders hemen işlenir, yöneticiye bilgi gider.'} Sporcunun ilgili türde (bireysel/ikili/üçlü) paketi yoksa ders “paketsiz” işaretlenir. İkili ve üçlü derste her sporcunun kendi paketinden 1 saat düşer.</div>
   <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;">
   ${isAdmin?`<div class="field" style="margin:0;min-width:160px;"><label for="pm_coach">Antrenör</label><select id="pm_coach">${DB.coaches.map(c=>`<option value="${escHtml(c.id)}">${escHtml(c.name)}</option>`).join('')}</select></div>`:''}
   <div class="field" style="margin:0;"><label for="pm_type">Ders türü</label><select id="pm_type" onchange="cPlTypeChanged()"><option value="1">Bireysel</option><option value="2">İkili</option><option value="3">Üçlü</option></select></div>
   <div class="field" style="margin:0;min-width:180px;"><label for="pm_ath">Sporcu</label><select id="pm_ath">${opt(false)}</select></div>
   <div class="field" id="pm_w2" style="margin:0;min-width:180px;display:none;"><label for="pm_ath2">2. sporcu</label><select id="pm_ath2">${opt(true)}</select></div>
   <div class="field" id="pm_w3" style="margin:0;min-width:180px;display:none;"><label for="pm_ath3">3. sporcu</label><select id="pm_ath3">${opt(true)}</select></div>
-  <div class="field" style="margin:0;"><label for="pm_date">Tarih</label><input type="date" id="pm_date" value="${ymd(new Date())}" min="${ymd(new Date())}"></div>
+  <div class="field" style="margin:0;"><label for="pm_date">Tarih</label><input type="date" id="pm_date" value="${ymd(new Date())}" min="${isAdmin?'2020-01-01':ymd(new Date(new Date().getFullYear(),new Date().getMonth(),1))}"></div>
   <div class="field" style="margin:0;"><label for="pm_hour">Saat</label><select id="pm_hour">${hrs.map(h=>`<option value="${h}">${h}:00</option>`).join('')}</select></div>
   <div class="field" style="margin:0;flex:1;min-width:140px;"><label for="pm_note">Not</label><input id="pm_note" maxlength="200"></div>
   <button class="btn primary" onclick="cPlManualSubmit()">Dersi ekle</button></div>
