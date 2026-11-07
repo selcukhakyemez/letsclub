@@ -6492,6 +6492,57 @@ function cAthTag(a){ return (a&&a.kind==='private'?' <span class="badge aqua" st
     else if(n) n.remove();
   }; }
 
+/* ---- Menü: konuya göre gruplanmış, açılıp kapanır başlıklar ---- */
+const NAV_GROUPS={
+ admin:[['Genel',['dashboard','newitems','messages','ai']],
+  ['Kayıtlar',['athletes','parents','groups','crm']],
+  ['Ders ve Antrenman',['schedule','privlesson','attendance','atthist','trainplan','makeups']],
+  ['Gelişim',['times','levels','development','devreport','competitions']],
+  ['Antrenörler',['coaches','leaves','payroll']],
+  ['Finans',['finance','payments','discounts']],
+  ['İletişim',['announcements','tickets','surveys']],
+  ['Operasyon',['rentals','weekly','insights']],
+  ['Yönetim',['approvals','reports','audit','settings']]],
+ coach:[['Genel',['dashboard','messages','ai']],
+  ['Sporcularım',['groups','athletes','attendance','atthist']],
+  ['Ders ve Antrenman',['schedule','privlesson','trainplan','makeups']],
+  ['Gelişim',['times','levels','development','devreport','competitions']],
+  ['Benim İşlerim',['weekly','leaves','approvals']],
+  ['Sistem',['settings']]]
+};
+function cNavOpen(key,def){ try{ const v=localStorage.getItem('navgrp:'+key); return v===null?def:v==='1'; }catch(e){ return def; } }
+function cNavToggle(key,cur){ try{ localStorage.setItem('navgrp:'+key,cur?'0':'1'); }catch(e){} renderNav(); }
+(function(){ const st=document.createElement('style'); st.textContent='nav .sect.grp{cursor:pointer;display:flex;align-items:center;justify-content:space-between;user-select:none}nav .sect.grp:hover{color:#9fd3cf}nav .sect.grp .chev{font-size:9px;transition:transform .15s}nav .sect.grp.closed .chev{transform:rotate(-90deg)}nav .sect .navbadge{margin-left:6px}'; document.head.appendChild(st); })();
+renderNav=function(){
+  const nav=$('#nav'); nav.innerHTML='';
+  const items=NAV[role].filter(x=>x.id), byId={}; items.forEach(x=>byId[x.id]=x);
+  const spec=NAV_GROUPS[role];
+  if(!spec){ NAV[role].forEach(item=>{ if(item.sect){ const d=document.createElement('div'); d.className='sect'; d.textContent=item.sect; nav.appendChild(d); return; } const a=document.createElement('a'); a.className=item.id===route?'active':''; const b=navBadge(item.id); a.innerHTML=`<span class="ic">${item.ic}</span>${item.label}${b?`<span class="navbadge">${b}</span>`:''}`; a.onclick=()=>{ route=item.id; render(); if(window.innerWidth<=840) $('#sidebar').classList.remove('open'); }; nav.appendChild(a); }); return; }
+  let groups;
+  if(spec){ const used=new Set(); groups=spec.map(([t,ids])=>({t,items:ids.map(i=>byId[i]).filter(Boolean)})).filter(g=>g.items.length);
+    groups.forEach(g=>g.items.forEach(x=>used.add(x.id)));
+    const rest=items.filter(x=>!used.has(x.id)); if(rest.length){ const l=groups[groups.length-1]; l.items=l.items.concat(rest); } }
+  else { groups=[]; let cur=null; NAV[role].forEach(x=>{ if(x.sect){ cur={t:x.sect,items:[]}; groups.push(cur); } else if(cur) cur.items.push(x); }); }
+  groups.forEach(g=>{
+    const key=role+':'+g.t, hasActive=g.items.some(x=>x.id===route);
+    const open=hasActive||cNavOpen(key,g.t==='Genel');
+    const sum=g.items.reduce((s,x)=>s+(Number(navBadge(x.id))||0),0);
+    const h=document.createElement('div'); h.className='sect grp'+(open?'':' closed'); h.setAttribute('role','button'); h.setAttribute('aria-expanded',open?'true':'false'); h.tabIndex=0;
+    h.innerHTML=`<span>${escHtml(g.t)}</span><span style="display:inline-flex;align-items:center;gap:6px;">${(!open&&sum)?`<span class="navbadge">${sum}</span>`:''}<span class="chev">▼</span></span>`;
+    const tg=()=>{ cNavToggle(key,open); };
+    h.onclick=tg; h.onkeydown=e=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); tg(); } };
+    nav.appendChild(h);
+    if(!open) return;
+    g.items.forEach(item=>{
+      const a=document.createElement('a'); a.className=item.id===route?'active':'';
+      const b=navBadge(item.id);
+      a.innerHTML=`<span class="ic">${item.ic}</span>${item.label}${b?`<span class="navbadge">${b}</span>`:''}`;
+      a.onclick=()=>{ route=item.id; render(); if(window.innerWidth<=840) $('#sidebar').classList.remove('open'); };
+      nav.appendChild(a);
+    });
+  });
+};
+
 /* ============ INIT ============ */
 boot();
 </script>
