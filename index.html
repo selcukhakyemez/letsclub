@@ -764,7 +764,7 @@ function renderAthletesBase(c){
         <td class="name-cell">${av('athlete:'+a.id,a.name)}${a.name}${a.status==='trial'?' <span class="badge amber" style="margin-left:6px;">Deneme</span>':''}${a.status==='passive'?' <span class="badge grey" style="margin-left:6px;">Pasif</span>':''}</td>
         <td>${age(a.dob)}</td>
         <td>${a.level}</td>
-        <td>${groupName(a.group)}</td>
+        <td>${a.kind==='private'&&!a.group?'Özel ders':groupName(a.group)}${a.adult?' <span class="badge" style="font-size:10.5px;">Yetişkin</span>':''}</td>
         <td>${coachName(a.coach)}</td>
         <td>%${Math.round(a.attendance*100)}</td>
         <td>${statusBadge(a.license)}</td>
@@ -2001,7 +2001,7 @@ const ATH_FIELDS=['first','last','dob','gender','level','group','phone','license
 const ATH_LABELS={first:'Ad',last:'Soyad',dob:'Doğum tarihi',gender:'Cinsiyet',level:'Seviye',group:'Grup',phone:'Telefon',license:'Lisans',status:'Durum',leave:'Ayrılış sebebi'};
 function canAddAthlete(){return role==='admin'||role==='coach';}
 function groupChoices(){return (role==='admin'||role==='coach')?DB.groups:[];}
-function athGroupVal(a){return a.status==='trial'?'trial':a.group;}
+function athGroupVal(a){return a.status==='trial'?'trial':(a.kind==='private'&&!a.group?'private':a.group);}
 const okDateStr=x=>/^\d{4}-\d{2}-\d{2}$/.test(x||'')&&ymd(parseYmd(x))===x;
 const NAME_RE=/^[\p{L}][\p{L} '\-]{1,29}$/u;
 function normExtra(x){x=Object.assign({},x||{}); if(!x.newFirst&&!x.newLast&&x.newName){const s=splitName(x.newName); x.newFirst=s.first; x.newLast=s.last;} if(x.newFirst!=null) x.newFirst=cTitle(x.newFirst); if(x.newLast!=null) x.newLast=cTitle(x.newLast); return x;}
@@ -2055,19 +2055,23 @@ function validateParentExtra(x,allowExisting){
 function cleanTrial(t){t=t||{}; return {source:t.source,sourceNote:String(t.sourceNote||'').trim(),trialDate:t.trialDate||'',interest:t.interest||''};}
 function cleanLeave(l,by){return {category:l.category,note:String(l.note||'').trim(),date:todayStr(),by:by||{role:'admin',id:''}};}
 function applyAthleteAdd(c,extra){
-  extra=normExtra(extra); const isTrial=c.group==='trial';
+  extra=normExtra(extra); const isTrial=c.group==='trial', isPriv=c.group==='private';
   let e=validateAthlete(c,null).concat(validateParentExtra(extra,true));
   if(isTrial) e=e.concat(validateTrial(extra.trial));
   if(c.status==='passive') e=e.concat(validateLeave(extra.leave));
+  if(extra.adult&&okDateStr(c.dob)&&age(c.dob)<18) e.push('Yetişkin kaydı için sporcu 18 yaşında veya daha büyük olmalı.');
+  if(extra.adult&&!/^[0-9 +()\-]{7,20}$/.test(String(c.phone||'').trim())) e.push('Yetişkin sporcu için telefon numarası girin.');
+  if(isPriv&&!DB.coaches.some(x=>x.id===(extra.pcoach||extra.byCoach))) e.push('Özel ders sporcusu için antrenör seçin.');
   if(e.length) return {ok:false,errors:e};
-  const g=isTrial?null:DB.groups.find(x=>x.id===c.group);
+  const g=(isTrial||isPriv)?null:DB.groups.find(x=>x.id===c.group);
   const t=isTrial?cleanTrial(extra.trial):null;
   const ig=t&&t.interest?DB.groups.find(x=>x.id===t.interest):null;
-  const coach=isTrial?((extra.byCoach&&DB.coaches.some(x=>x.id===extra.byCoach))?extra.byCoach:(ig?ig.coach:'')):g.coach;
+  const coach=isPriv?(extra.pcoach||extra.byCoach):isTrial?((extra.byCoach&&DB.coaches.some(x=>x.id===extra.byCoach))?extra.byCoach:(ig?ig.coach:'')):g.coach;
   const id='a'+Date.now()+Math.floor(Math.random()*1000); const fn=c.first.trim(), ln=c.last.trim(); const nm=fn+' '+ln;
-  const a={id,name:nm,first:fn,last:ln,dob:c.dob,gender:c.gender,level:c.level,group:isTrial?'':g.id,coach,parents:[],phone:String(c.phone||'').trim()||'-',license:c.license,balance:0,attendance:1,status:c.status,photo:initials(nm),joined:todayStr(),attTrend:[1]};
+  const a={id,name:nm,first:fn,last:ln,dob:c.dob,gender:c.gender,level:c.level,group:(isTrial||isPriv)?'':g.id,coach,parents:[],phone:String(c.phone||'').trim()||'-',license:c.license,balance:0,attendance:1,status:c.status,photo:initials(nm),joined:todayStr(),attTrend:[1]};
   if(isTrial) a.trial=Object.assign(t,{createdAt:todayStr(),convertedAt:null,convertedGroup:null,evaluation:'',evaluatedAt:null});
   if(c.status==='passive') a.leave=cleanLeave(extra.leave,extra.by);
+  if(isPriv) a.kind='private'; if(extra.adult) a.adult=true;
   if(extra.existing){const p=DB.parents.find(x=>x.id===extra.existing); p.children.push(id); a.parents=[p.id];}
   else if(extra.newFirst){const pid='p'+Date.now()+Math.floor(Math.random()*1000); DB.parents.push(Object.assign({id:pid,name:extra.newFirst.trim()+' '+extra.newLast.trim(),first:extra.newFirst.trim(),last:extra.newLast.trim(),phone:extra.newPhone.trim(),email:'',relation:'Veli',children:[id]},window.__coachDirect?{addedBy:{role:'coach',id:window.__coachDirect,at:todayStr()},review:'pending'}:{})); a.parents=[pid];}
   if(window.__coachDirect){ a.addedBy={role:'coach',id:window.__coachDirect,at:todayStr()}; a.review='pending'; a.counted=false; }
@@ -2082,10 +2086,10 @@ function applyAthleteEdit(id,changes,by){
   if(merged.status==='passive'&&!wasPassive) e=e.concat(validateLeave(changes.leave));
   if(e.length) return {ok:false,errors:e};
   const toTrial=merged.group==='trial';
-  if(!toTrial&&merged.group!==a.group){
+  if(!toTrial&&merged.group!=='private'&&merged.group!==a.group){
     const og=DB.groups.find(x=>x.id===a.group), ng=DB.groups.find(x=>x.id===merged.group);
     if(og) og.enrolled=Math.max(0,og.enrolled-1);
-    ng.enrolled++; a.group=ng.id; a.coach=ng.coach;
+    ng.enrolled++; a.group=ng.id; a.coach=ng.coach; a.kind=null;
   }
   if(wasTrial&&!toTrial&&a.trial){ a.trial.convertedAt=todayStr(); a.trial.convertedGroup=merged.group; a.joined=todayStr(); }
   ATH_FIELDS.forEach(f=>{ if(f!=='group'&&f in changes) a[f]=(f==='first'||f==='last'||f==='phone')?(String(changes[f]).trim()||'-'):changes[f]; });
@@ -2109,7 +2113,7 @@ function submitAthlete(c,editId,extra){
       if(!Object.keys(d).length) return {ok:false,errors:['Değişiklik yapmadınız.']};
       return Object.assign(applyAthleteEdit(editId,d,by),{mode:'direct'});
     }
-    return Object.assign(applyAthleteAdd(c,{existing:extra.existing||'',newFirst:extra.newFirst||'',newLast:extra.newLast||'',newPhone:extra.newPhone||'',trial:extra.trial,leave:extra.leave,by}),{mode:'direct'});
+    return Object.assign(applyAthleteAdd(c,{existing:extra.existing||'',newFirst:extra.newFirst||'',newLast:extra.newLast||'',newPhone:extra.newPhone||'',trial:extra.trial,leave:extra.leave,pcoach:extra.pcoach,adult:extra.adult,by}),{mode:'direct'});
   }
   if(role!=='coach') return {ok:false,errors:['Bu işlem için yetkiniz yok.']};
   const cu=DB.currentUser.coachId; DB.changeRequests=DB.changeRequests||[];
@@ -2236,6 +2240,7 @@ function athFormHtml(a,pre){
     <div class="field"><label for="af_gender">Cinsiyet</label><select id="af_gender"><option value="">Seçin</option>${opt([['E','Erkek'],['K','Kız']],V('gender',a?a.gender:''))}</select></div>
     <div class="field"><label for="af_level">Seviye</label><select id="af_level"><option value="">Seçin</option>${opt(levelAll().map(x=>[x,x]),V('level',a?a.level:''))}</select></div>
     <div class="field"><label for="af_group">Grup</label><select id="af_group" onchange="afToggle()"><option value="">Seçin</option>
+      ${(!a||athGroupVal(a)==='private')?`<option value="private" ${curGroup==='private'?'selected':''}>Özel ders (grupsuz)</option>`:''}
       ${canTrial?`<option value="trial" ${curGroup==='trial'?'selected':''}>Deneme (henüz kayıt olmadı)</option>`:''}
       ${groups.map(g=>`<option value="${g.id}" ${curGroup===g.id?'selected':''}>${escHtml(g.name)} (${g.enrolled}/${g.capacity})</option>`).join('')}</select>
       ${role==='admin'?'<button type="button" class="btn sm ghost" style="padding-left:0;margin-top:4px;" onclick="athNewGroup()">+ Yeni grup ekle</button>':''}</div>
@@ -2243,6 +2248,8 @@ function athFormHtml(a,pre){
     <div class="field"><label for="af_license">Lisans</label><select id="af_license">${opt(LICENSES.map(x=>[x,x]),V('license',a?a.license:'Yok'))}</select></div>
     <div class="field" id="af_statusBox"><label for="af_status">Durum</label><select id="af_status" onchange="afToggle()">${opt([['active','Aktif'],['passive','Devam etmiyor']],V('status',a&&a.status!=='trial'?a.status:'active'))}</select></div>
   </div>
+  <div class="field" id="af_pcoachBox" style="display:none;"><label for="af_pcoach">Özel ders antrenörü</label><select id="af_pcoach">${DB.coaches.map(x=>`<option value="${escHtml(x.id)}" ${(a&&a.coach===x.id)?'selected':''}>${escHtml(x.name)}</option>`).join('')}</select></div>
+  ${a?(a.adult?'<div class="note-banner">Yetişkin sporcu</div>':''):'<label style="display:flex;gap:8px;align-items:center;margin:8px 0;font-size:14px;"><input type="checkbox" id="af_adult" onchange="afToggle()"> Yetişkin sporcu (veli bilgisi gerekmez)</label>'}
   <div id="af_trial" style="display:none;"><div class="section-title">Deneme bilgisi</div>
     <div class="field"><label for="af_tsrc">Bizi nereden buldu?</label><select id="af_tsrc"><option value="">Seçin</option>${opt(TRIAL_SOURCES.map(x=>[x,x]),V('t_source',trial?trial.source:''))}</select></div>
     <div class="field"><label for="af_tnote">Ek not (isteğe bağlı)</label><input id="af_tnote" maxlength="120" value="${escHtml(V('t_note',trial?trial.sourceNote:''))}"></div>
@@ -2253,12 +2260,12 @@ function athFormHtml(a,pre){
     <div class="field"><label for="af_lcat">Sebep</label><select id="af_lcat"><option value="">Seçin</option>${opt(LEAVE_CATS.map(x=>[x,x]),V('l_cat',''))}</select></div>
     <div class="field"><label for="af_lnote">Ek not (isteğe bağlı)</label><input id="af_lnote" maxlength="200" value="${escHtml(V('l_note',''))}"></div></div>
   ${role==='admin'?`<div class="field"><label for="af_joined">Gruba katılış tarihi</label><input id="af_joined" type="date" max="${todayStr()}" value="${escHtml(a&&a.joined?a.joined:todayStr())}"><div style="font-size:12px;color:var(--muted);margin-top:3px;">Grup daha önce başladıysa geçmiş bir tarih girebilirsiniz.</div></div>`:''}
-  ${a?'':`<div class="section-title">Veli</div>
+  ${a?'':`<div id="af_parentSec"><div class="section-title">Veli</div>
   ${role==='admin'?`<div class="field"><label for="af_parent">Mevcut veli</label><select id="af_parent"><option value="">Seçmeden yeni veli gir</option>${opt(DB.parents.map(p=>[p.id,p.name]),V('parent',''))}</select></div>`:''}
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
     <div class="field"><label for="af_pfirst">Yeni veli adı</label><input id="af_pfirst" maxlength="30" value="${escHtml(V('pfirst',''))}"></div>
     <div class="field"><label for="af_plast">Yeni veli soyadı</label><input id="af_plast" maxlength="30" value="${escHtml(V('plast',''))}"></div>
-    <div class="field"><label for="af_pphone">Veli telefonu</label><input id="af_pphone" maxlength="20" value="${escHtml(V('pphone',''))}"></div></div>`}
+    <div class="field"><label for="af_pphone">Veli telefonu</label><input id="af_pphone" maxlength="20" value="${escHtml(V('pphone',''))}"></div></div></div>`}
   <div id="af_result" class="grp-result" style="display:none;" aria-live="polite"></div>
   <div style="display:flex;gap:10px;margin-top:14px;"><button class="btn primary" onclick="athSubmit()">${role==='admin'?(a?'Kaydet':'Sporcuyu ekle'):'Onaya gönder'}</button><button class="btn" onclick="closeDrawer()">Vazgeç</button></div></div>`;
 }
@@ -2294,7 +2301,7 @@ function athNewGroup(){
 function athSubmit(){
   const r0=athRaw(); const edit=window.__athEdit;
   const c={first:r0.first,last:r0.last,dob:r0.dob,gender:r0.gender,level:r0.level,group:r0.group,phone:r0.phone,license:r0.license,status:r0.status};
-  const r=submitAthlete(c,edit,{existing:r0.parent,newFirst:r0.pfirst,newLast:r0.plast,newPhone:r0.pphone,
+  const r=submitAthlete(c,edit,{pcoach:(document.getElementById('af_pcoach')||{}).value||'',adult:!!(document.getElementById('af_adult')||{}).checked,existing:r0.parent,newFirst:r0.pfirst,newLast:r0.plast,newPhone:r0.pphone,
     trial:{source:r0.t_source,sourceNote:r0.t_note,trialDate:r0.t_date,interest:r0.t_interest},leave:{category:r0.l_cat,note:r0.l_note}});
   if(!r.ok){const el=document.getElementById('af_result'); el.style.display='block'; el.className='grp-result bad'; el.innerHTML='<ul class="ai-list">'+r.errors.map(x=>`<li>${escHtml(x)}</li>`).join('')+'</ul>'; return;}
   mgmtMsg=r.mode==='request'?'Talep yöneticiye gönderildi. Onaylanınca uygulanacak.':(edit?'Sporcu güncellendi.':(c.group==='trial'?'Deneme kaydı eklendi.':'Sporcu eklendi.'));
@@ -6092,12 +6099,12 @@ function cPlManualSubmit(){
     if(c.status==='passive') return {ok:false,errors:['Pasif kayıt yalnızca yönetici tarafından yapılır.']};
     let e=validateParentExtra({newFirst:extra.newFirst,newLast:extra.newLast,newPhone:extra.newPhone},false);
     if(e.length) return {ok:false,errors:e};
-    const g=c.group==='trial'?null:DB.groups.find(x=>x.id===c.group);
-    if(c.group!=='trial'&&(!g||!visibleGroups().some(x=>x.id===g.id))) return {ok:false,errors:['Yalnızca kendi gruplarınıza kayıt yapabilirsiniz.']};
+    const g=(c.group==='trial'||c.group==='private')?null:DB.groups.find(x=>x.id===c.group);
+    if(c.group!=='trial'&&c.group!=='private'&&(!g||!visibleGroups().some(x=>x.id===g.id))) return {ok:false,errors:['Yalnızca kendi gruplarınıza kayıt yapabilirsiniz.']};
     const orig=g?g.enrolled:0; const pend=g?DB.athletes.filter(a=>a.group===g.id&&a.addedBy&&a.counted===false).length:0;
     if(g) g.enrolled=orig+pend;
     window.__coachDirect=me; let res;
-    try{ res=applyAthleteAdd(c,{newFirst:extra.newFirst||'',newLast:extra.newLast||'',newPhone:extra.newPhone||'',trial:extra.trial,byCoach:me,by:{role:'coach',id:me}}); }
+    try{ res=applyAthleteAdd(c,{newFirst:extra.newFirst||'',newLast:extra.newLast||'',newPhone:extra.newPhone||'',trial:extra.trial,pcoach:me,adult:extra.adult,byCoach:me,by:{role:'coach',id:me}}); }
     finally{ window.__coachDirect=null; if(g) g.enrolled=orig; }
     return res.ok?Object.assign(res,{mode:'direct'}):res;
   };
@@ -6361,7 +6368,7 @@ function coachPayFor(cid,ym,pool){
 }
 
 /* ---- ders oluşturma: bireysel / ikili / üçlü (antrenör kendi sporcuları, yönetici herkes) ---- */
-function cPlSessionAdd(athIds,ds,h,note,coachArg){
+function cPlSessionAdd(athIds,ds,h,note,coachArg,poolArg){
   const isAdmin=role==='admin';
   if(!(role==='coach'||isAdmin)) return {ok:false,errors:['Bu işlemi yalnızca antrenör veya yönetici yapar.']};
   const coach=isAdmin?coachArg:DB.currentUser.coachId;
@@ -6377,7 +6384,7 @@ function cPlSessionAdd(athIds,ds,h,note,coachArg){
   try{ for(const id of athIds){ const bad=plSlotProblem(id,coach,ds,h); if(bad){ bad0='Eklenemedi ('+athleteName(id)+'): '+bad+'.'; break; } } } finally{ window.__plPast=false; }
   if(bad0) return {ok:false,errors:[bad0]};
   for(const id of []){ const bad=plSlotProblem(id,coach,ds,h); if(bad) return {ok:false,errors:['Eklenemedi ('+athleteName(id)+'): '+bad+'.']}; }
-  const pks=athIds.map(id=>pickPackage(id,n)); const pool=(pks.find(Boolean)||{}).pool||cPlPoolOfAth(athIds[0]);
+  const pks=athIds.map(id=>pickPackage(id,n)); const pool=(poolArg&&poolExists(poolArg)?poolArg:null)||(pks.find(Boolean)||{}).pool||cPlPoolOfAth(athIds[0])||(DB.groups.find(g=>g.coach===coach)||{}).pool||(DB.pools[0]||{}).name;
   if(pks.some(p=>p&&p.pool&&p.pool!==pool)) return {ok:false,errors:['Sporcuların paketleri farklı havuzlarda; aynı havuzda olmalı.']};
   note=String(note||'').trim().slice(0,200); DB.privateLessons=DB.privateLessons||[];
   const sid='s'+Date.now()+Math.floor(Math.random()*100000);
@@ -6398,6 +6405,7 @@ function cPlManualCard(){
   <div class="field" style="margin:0;min-width:180px;"><label for="pm_ath">Sporcu</label><select id="pm_ath">${opt(false)}</select></div>
   <div class="field" id="pm_w2" style="margin:0;min-width:180px;display:none;"><label for="pm_ath2">2. sporcu</label><select id="pm_ath2">${opt(true)}</select></div>
   <div class="field" id="pm_w3" style="margin:0;min-width:180px;display:none;"><label for="pm_ath3">3. sporcu</label><select id="pm_ath3">${opt(true)}</select></div>
+  <div class="field" style="margin:0;"><label for="pm_pool">Havuz</label><select id="pm_pool"><option value="">Otomatik</option>${DB.pools.map(p=>`<option value="${escHtml(p.name)}">${escHtml(p.name)}</option>`).join('')}</select></div>
   <div class="field" style="margin:0;"><label for="pm_date">Tarih</label><input type="date" id="pm_date" value="${ymd(new Date())}" min="${isAdmin?'2020-01-01':ymd(new Date(new Date().getFullYear(),new Date().getMonth(),1))}"></div>
   <div class="field" style="margin:0;"><label for="pm_hour">Saat</label><select id="pm_hour">${hrs.map(h=>`<option value="${h}">${h}:00</option>`).join('')}</select></div>
   <div class="field" style="margin:0;flex:1;min-width:140px;"><label for="pm_note">Not</label><input id="pm_note" maxlength="200"></div>
@@ -6410,7 +6418,7 @@ function cPlManualSubmit(){
   const ids=[v('pm_ath'),n>=2?v('pm_ath2'):'',n>=3?v('pm_ath3'):''].filter(Boolean);
   const res=document.getElementById('pm_res');
   if(ids.length!==n||new Set(ids).size!==n){ if(res){ res.style.color='var(--red)'; res.textContent=n===1?'Sporcu seçin.':`${PL_SIZE_LABEL[n]} ders için ${n} farklı sporcu seçin.`; } return; }
-  const r=cPlSessionAdd(ids,v('pm_date'),v('pm_hour'),v('pm_note'),v('pm_coach'));
+  const r=cPlSessionAdd(ids,v('pm_date'),v('pm_hour'),v('pm_note'),v('pm_coach'),v('pm_pool'));
   if(!r.ok){ if(res){ res.style.color='var(--red)'; res.textContent=r.errors.join(' '); } return; }
   plMsg=PL_SIZE_LABEL[r.size]+' özel ders eklendi'+(r.unpackaged?' ('+r.unpackaged+' sporcu için paketsiz olarak işaretlendi).':'.');
   plRefresh();
@@ -6453,6 +6461,25 @@ plRefresh=function(){ if(route==='schedule') renderSchedule($('#content')); else
   const iC=NAV.coach.findIndex(x=>x.id==='schedule'); if(iC>=0) NAV.coach.splice(iC+1,0,{id:'privlesson',label:'Özel Ders',ic:'🎯'});
   TITLES.privlesson='Özel Ders'; }
 { const _nb2=navBadge; navBadge=function(id){ if(id==='privlesson'&&(role==='admin'||role==='coach')){ try{ return visiblePrivateLessons().filter(p=>p.status==='Onay bekliyor').length; }catch(e){ return 0; } } return _nb2(id); }; }
+
+/* ---- Yetişkin + Özel ders (grupsuz) sporcu kaydı ---- */
+{ const _v=validateAthlete;
+  validateAthlete=function(c,editId){
+    if(c.group!=='private') return _v(c,editId);
+    const e=_v(Object.assign({},c,{group:'trial',status:'trial'}),null);
+    if(c.status!=='active'&&c.status!=='passive') e.push('Durum seçin.');
+    return e; };
+  const _af=afToggle; afToggle=function(){ _af();
+    const g=document.getElementById('af_group'); if(!g) return;
+    const priv=g.value==='private';
+    const sb=document.getElementById('af_statusBox'); if(sb&&priv) sb.style.display='';
+    const pc=document.getElementById('af_pcoachBox'); if(pc) pc.style.display=(priv&&role==='admin')?'':'none';
+    const ad=document.getElementById('af_adult'), ps=document.getElementById('af_parentSec'); if(ps) ps.style.display=(ad&&ad.checked)?'none':'';
+    const st=document.getElementById('af_status'), edit=window.__athEdit?DB.athletes.find(x=>x.id===window.__athEdit):null;
+    const lv=document.getElementById('af_leave'); if(lv&&priv) lv.style.display=(st.value==='passive'&&(!edit||edit.status!=='passive'))?'':'none';
+  };
+}
+function cAthTag(a){ return (a&&a.kind==='private'?' <span class="badge aqua" style="font-size:10.5px;">Özel ders</span>':'')+(a&&a.adult?' <span class="badge" style="font-size:10.5px;">Yetişkin</span>':''); }
 
 /* ============ INIT ============ */
 boot();
