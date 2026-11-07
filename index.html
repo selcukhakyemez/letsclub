@@ -629,7 +629,7 @@ function render(){
   const fns={dashboard:renderDashboard,athletes:renderAthletes,parents:renderParents,groups:renderGroups,
     schedule:renderSchedule,trainplan:renderTrainPlan,weekly:renderWeekly,makeups:renderMakeups,times:renderTimes,levels:renderLevels,attendance:renderAttendance,development:renderDevelopment,competitions:renderCompetitions,
     crm:renderCRM,coaches:renderCoaches,payments:renderPayments,announcements:renderAnnouncements,tickets:renderTickets,
-    reports:renderReports,settings:renderSettings,ai:renderAI,approvals:renderApprovals,insights:renderInsights,rentals:renderRentals,finance:renderFinance,messages:renderMessages,surveys:renderSurveys,leaves:renderLeaves,discounts:renderDiscounts,devreport:renderDevReport,audit:renderAudit,payroll:renderPayroll,atthist:renderAttHistory,newitems:renderNewItems};
+    reports:renderReports,settings:renderSettings,ai:renderAI,approvals:renderApprovals,insights:renderInsights,rentals:renderRentals,finance:renderFinance,messages:renderMessages,surveys:renderSurveys,leaves:renderLeaves,discounts:renderDiscounts,devreport:renderDevReport,audit:renderAudit,payroll:renderPayroll,atthist:renderAttHistory,newitems:renderNewItems,privlesson:renderPrivLessons};
   c.innerHTML='';
   (fns[route]||renderDashboard)(c);
 }
@@ -6408,7 +6408,7 @@ function cPlManualSubmit(){
   const r=cPlSessionAdd(ids,v('pm_date'),v('pm_hour'),v('pm_note'),v('pm_coach'));
   if(!r.ok){ if(res){ res.style.color='var(--red)'; res.textContent=r.errors.join(' '); } return; }
   plMsg=PL_SIZE_LABEL[r.size]+' özel ders eklendi'+(r.unpackaged?' ('+r.unpackaged+' sporcu için paketsiz olarak işaretlendi).':'.');
-  renderSchedule($('#content'));
+  plRefresh();
 }
 
 /* ---- etiket ve yönetici bildirimleri: oturum bazında ---- */
@@ -6433,6 +6433,21 @@ function cNewItems(){
 { const _rd=cReviewDone; cReviewDone=function(k,id){ if(role!=='admin') return;
     if(k==='pl'){ const p=(DB.privateLessons||[]).find(x=>x.id===id); if(p){ const sid=p.sid||p.id; (DB.privateLessons||[]).filter(x=>!x._stub&&(x.sid||x.id)===sid).forEach(x=>{ x.review='done'; }); save(); } return; }
     return _rd(k,id); }; }
+
+/* ---- Ayrı "Özel Ders" sekmesi (yönetici + antrenör); Ders Programı'nda personel için özel ders listesi/kartı görünmez ---- */
+{ const _ps=plStaffHtml; plStaffHtml=function(){ return route==='schedule'?'':_ps(); }; }
+function renderPrivLessons(c){
+  if(!(role==='admin'||role==='coach')){ c.innerHTML=''; return; }
+  const msg=plMsg; plMsg='';
+  const saved=route; route='privlesson-tmp';
+  let body; try{ body=plStaffHtml(); }finally{ route=saved; }
+  c.innerHTML=`${msg?`<div class="note-banner">${escHtml(msg)}</div>`:''}${body}`;
+}
+plRefresh=function(){ if(route==='schedule') renderSchedule($('#content')); else if(route==='privlesson') renderPrivLessons($('#content')); };
+{ const iA=NAV.admin.findIndex(x=>x.id==='schedule'); if(iA>=0) NAV.admin.splice(iA+1,0,{id:'privlesson',label:'Özel Ders',ic:'🎯'});
+  const iC=NAV.coach.findIndex(x=>x.id==='schedule'); if(iC>=0) NAV.coach.splice(iC+1,0,{id:'privlesson',label:'Özel Ders',ic:'🎯'});
+  TITLES.privlesson='Özel Ders'; }
+{ const _nb2=navBadge; navBadge=function(id){ if(id==='privlesson'&&(role==='admin'||role==='coach')){ try{ return visiblePrivateLessons().filter(p=>p.status==='Onay bekliyor').length; }catch(e){ return 0; } } return _nb2(id); }; }
 
 /* ============ INIT ============ */
 boot();
