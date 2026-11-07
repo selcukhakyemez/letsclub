@@ -1419,7 +1419,7 @@ function renderSchedule(c){
       const ds=ymd(d);
       const evts=cGrpInHour(list,ds,h);
       const pls=priv.filter(p=>p.date===ds&&p.hour===h);
-      html+=`<div class="slot">${evts.map(g=>`<div class="evt${g._cont?' cont':''}" onclick="showGroupMembers('${g.id}')">${g.name}<small>${g._cont?'devam · ':''}${gTimeOn(g,ds)} · ${g.pool}${fam?'<br>'+visibleAthletes().filter(a=>a.group===g.id).map(a=>a.name.split(' ')[0]).join(', '):''}</small></div>`).join('')}${pls.map(p=>`<div class="evt private" onclick="plShow('${p.id}')">Özel ders<small>${h}:00-${h+1}:00 · ${lab(p)}</small></div>`).join('')}${cRentEvts(ds,h)}</div>`;
+      html+=`<div class="slot">${evts.map(g=>`<div class="evt${g._cont?' cont':''}" onclick="showGroupMembers('${g.id}')">${g.name}<small>${g._cont?'devam · ':''}${gTimeOn(g,ds)} · ${g.pool}${fam?'<br>'+visibleAthletes().filter(a=>a.group===g.id).map(a=>a.name.split(' ')[0]).join(', '):''}</small></div>`).join('')}${pls.map(p=>`<div class="evt private" onclick="plShow('${p.id}')">${cPlTitle(p)}<small>${h}:00-${h+1}:00 · ${lab(p)}</small></div>`).join('')}${cRentEvts(ds,h)}</div>`;
     });
   });
   html+='</div>';
@@ -1431,7 +1431,7 @@ function renderSchedule(c){
       const ev=cGrpInHour(list,ds,h).sort((a,b)=>groupMinutes(a,ds)[0]-groupMinutes(b,ds)[0]);
       const pl=priv.filter(p=>p.date===ds&&p.hour===h);
       const cards=ev.map(g=>`<div class="evt${g._cont?' cont':''}" onclick="showGroupMembers('${g.id}')">${escHtml(g.name)}<small>${g._cont?'devam · ':''}${escHtml(gTimeOn(g,ds))} · ${escHtml(g.pool)}${g.lane&&g.lane!=='-'?' · '+escHtml(String(g.lane))+'. kulvar':''}${staffV?'<br>Antrenör: '+escHtml(cEffName(g,ds))+(g.assistant?' (yrd: '+escHtml(coachName(g.assistant))+')':'')+' · '+(g.enrolled!=null?g.enrolled+'/'+g.capacity+' sporcu':''):'<br>'+visibleAthletes().filter(a=>a.group===g.id).map(a=>escHtml(a.name.split(' ')[0])).join(', ')}</small></div>`).join('')
-        +pl.map(p=>`<div class="evt private" onclick="plShow('${p.id}')">Özel ders<small>${h}:00-${h+1}:00 · ${lab(p)}${staffV&&isAdm?' · '+escHtml(lessonPool(p)):''}</small></div>`).join('')+cRentEvts(ds,h);
+        +pl.map(p=>`<div class="evt private" onclick="plShow('${p.id}')">${cPlTitle(p)}<small>${h}:00-${h+1}:00 · ${lab(p)}${staffV&&isAdm?' · '+escHtml(lessonPool(p)):''}</small></div>`).join('')+cRentEvts(ds,h);
       return `<div class="dv-row"><div class="tcell">${h}:00</div><div class="dv-cell">${cards||'<span class="dv-empty">Ders yok</span>'}</div></div>`;
     }).join('')+'</div>';
     const total=list.filter(g=>groupOnDay(g,ds)).length+priv.filter(p=>p.date===ds).length;
@@ -2651,6 +2651,7 @@ function savePoolPrices(pool,p){
 
 /* ---------- ANTRENÖR DERS ÜCRETLERİ (havuza göre ayrı) ---------- */
 const RATE_TYPES=[['group','Grup dersi'],['private','Özel ders'],['other','Diğer antrenman'],['asst','Yardımcı antrenör']];
+const RATE_ALL=RATE_TYPES.concat([['private2','İkili özel ders'],['private3','Üçlü özel ders']]);
 const INC_ITEMS=[['Aidat','Aidat tahsilatı'],['Özel ders paketi','Özel ders paketi satışı'],['Diğer','Diğer tahsilat'],['Havuz kiralama','Havuz kiralama (tahsil edilen)']];
 const EXP_ITEMS=RATE_TYPES.map(t=>['coach:'+t[0],'Antrenör ücreti – '+t[1]]).concat(EXP_CATS.map(c=>['cat:'+c,c]));
 function rateOf(cid,t,pool){const r=((((DB.coachRates||{})[cid])||{})[pool])||{}; return Number(r[t])||0;}
@@ -2659,7 +2660,7 @@ function saveCoachRates(cid,pool,r){
   if(!DB.coaches.some(c=>c.id===cid)) return {ok:false,errors:['Antrenör bulunamadı.']};
   if(!poolExists(pool)) return {ok:false,errors:['Havuz bulunamadı.']};
   const out={}; const e=[];
-  RATE_TYPES.forEach(t=>{ if(t[0]==='asst'&&r.asst===undefined) return; const n=Number(String(r[t[0]]).replace(',','.')); if(!okAmt0(n)) e.push(t[1]+' ücreti 0 ile 100.000 ₺ arasında olmalı.'); else out[t[0]]=r2(n);});
+  RATE_ALL.forEach(t=>{ if(t[0]!=='group'&&t[0]!=='private'&&t[0]!=='other'&&r[t[0]]===undefined) return; const n=Number(String(r[t[0]]).replace(',','.')); if(!okAmt0(n)) e.push(t[1]+' ücreti 0 ile 100.000 ₺ arasında olmalı.'); else out[t[0]]=r2(n);});
   if(e.length) return {ok:false,errors:e};
   DB.coachRates=DB.coachRates||{}; DB.coachRates[cid]=DB.coachRates[cid]||{}; DB.coachRates[cid][pool]=out; save(); return {ok:true,errors:[]};
 }
@@ -3027,8 +3028,8 @@ function renderFinance(c){
     const exs=(DB.extraSessions||[]).filter(x=>ymOf(x.date)===finMonth).sort((a,b)=>b.date.localeCompare(a.date));
     body=`<div class="card"><b>Antrenör ders ücretleri havuza göre ayrıdır</b><div style="font-size:12.5px;color:var(--muted);margin:4px 0 0;">Grup dersi: gruba atanan ana antrenör, o grubun havuzundaki her ders için. Yardımcı antrenör: yardımcı olduğu grubun her dersi için; boş bırakılırsa kendi grup dersi ücreti uygulanır. Özel ders: onaylanan her saat için, dersin düştüğü paketin havuzu esas alınır. Diğer antrenman: aşağıdan havuz seçilerek girilen ek ders için.</div><div id="rt_res" style="font-size:12.5px;margin-top:8px;"></div></div>
       ${DB.pools.map((pl,pi)=>`<div class="card" style="margin-top:14px;"><b>${escHtml(pl.name)} — ders başına ücret (₺)</b>
-      <div style="overflow-x:auto;"><table style="margin-top:8px;"><thead><tr><th>Antrenör</th>${RATE_TYPES.map(t=>`<th>${t[1]}</th>`).join('')}<th></th></tr></thead><tbody>
-      ${DB.coaches.map(co=>`<tr><td>${escHtml(co.name)}</td>${RATE_TYPES.map(t=>`<td><input id="rt_${pi}_${co.id}_${t[0]}" inputmode="decimal" style="width:90px;${inp}" value="${rateOf(co.id,t[0],pl.name)}"></td>`).join('')}<td><button class="btn sm primary" onclick="rateSave('${co.id}',${pi})">Kaydet</button></td></tr>`).join('')}</tbody></table></div></div>`).join('')}
+      <div style="overflow-x:auto;"><table style="margin-top:8px;"><thead><tr><th>Antrenör</th>${RATE_ALL.map(t=>`<th>${t[1]}</th>`).join('')}<th></th></tr></thead><tbody>
+      ${DB.coaches.map(co=>`<tr><td>${escHtml(co.name)}</td>${RATE_ALL.map(t=>`<td><input id="rt_${pi}_${co.id}_${t[0]}" inputmode="decimal" style="width:90px;${inp}" value="${rateOf(co.id,t[0],pl.name)}"></td>`).join('')}<td><button class="btn sm primary" onclick="rateSave('${co.id}',${pi})">Kaydet</button></td></tr>`).join('')}</tbody></table></div></div>`).join('')}
       <div class="card" style="margin-top:14px;"><b>Diğer antrenman / ek ders kaydı</b><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-top:10px;">
       <div class="field" style="margin:0;"><label for="xs_coach">Antrenör</label><select id="xs_coach">${DB.coaches.map(co=>`<option value="${co.id}">${escHtml(co.name)}</option>`).join('')}</select></div>
       <div class="field" style="margin:0;"><label for="xs_pool">Havuz</label><select id="xs_pool">${poolSelectOptions('',false,false)}</select></div>
@@ -3046,11 +3047,12 @@ function renderFinance(c){
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;">
       <div class="field" style="margin:0;"><label for="pk_ath">Sporcu</label><select id="pk_ath"><option value="">Seçin</option>${DB.athletes.filter(a=>a.status==='active').map(a=>`<option value="${a.id}">${escHtml(a.name)}</option>`).join('')}</select></div>
       <div class="field" style="margin:0;"><label for="pk_pool">Havuz</label><select id="pk_pool" onchange="pkgPoolChanged()">${poolSelectOptions('',false,false)}</select></div>
+      <div class="field" style="margin:0;"><label for="pk_size">Ders türü</label><select id="pk_size" onchange="pkgPoolChanged()"><option value="1">Bireysel</option><option value="2">İkili</option><option value="3">Üçlü</option></select></div>
       <div class="field" style="margin:0;"><label for="pk_h">Paket</label><select id="pk_h"></select></div></div>
       <label class="chk" style="margin-top:10px;display:inline-flex;"><input type="checkbox" id="pk_pay" checked> Ödeme kaydı da oluştur (bekliyor)</label>
       <div id="pk_res" style="font-size:12.5px;color:var(--red);margin-top:6px;"></div><button class="btn primary" style="margin-top:8px;" onclick="pkgSell()">Paketi tanımla</button></div>
       ${cUnpkgCard()}<div class="card" style="padding:0;margin-top:14px;overflow-x:auto;"><table><thead><tr><th>Sporcu</th><th>Havuz</th><th>Paket</th><th>Kalan</th><th>Fiyat</th><th>Tarih</th><th></th></tr></thead><tbody>
-      ${pks.map(pk=>`<tr><td>${escHtml(athleteName(pk.athlete))}</td><td>${escHtml(pk.pool||'—')}</td><td>${pk.hours} saat</td><td>${pkgRemaining(pk)} saat</td><td>${money(pk.price)}</td><td>${fmtDate(pk.createdAt)}</td><td><button class="btn sm danger" onclick="pkgDel('${pk.id}')">Sil</button></td></tr>`).join('')||'<tr><td colspan="7"><div class="empty">Henüz paket tanımlanmadı</div></td></tr>'}</tbody></table></div>`;
+      ${pks.map(pk=>`<tr><td>${escHtml(athleteName(pk.athlete))}</td><td>${escHtml(pk.pool||'—')}</td><td>${pk.hours} saat${(pk.size||1)>1?' · '+PL_SIZE_LABEL[pk.size]:''}</td><td>${pkgRemaining(pk)} saat</td><td>${money(pk.price)}</td><td>${fmtDate(pk.createdAt)}</td><td><button class="btn sm danger" onclick="pkgDel('${pk.id}')">Sil</button></td></tr>`).join('')||'<tr><td colspan="7"><div class="empty">Henüz paket tanımlanmadı</div></td></tr>'}</tbody></table></div>`;
   }
   c.innerHTML=`${msgBanner()}${finTabs()}${body}`;
   if(finTab==='packages') pkgPoolChanged();
@@ -3061,11 +3063,11 @@ function pkgPoolChanged(){
 }
 function expAdd(){const v=id=>document.getElementById(id).value; const r=saveExpense({date:v('ex_date'),pool:v('ex_pool'),category:v('ex_cat'),amount:v('ex_amt'),desc:v('ex_desc')}); if(!r.ok){document.getElementById('ex_res').textContent=r.errors.join(' ');return;} finMonth=ymOf(v('ex_date')); finMsg='Gider kaydedildi.'; renderFinance($('#content'));}
 function expDel(id){if(!confirm('Gider silinsin mi?'))return; removeExpense(id); renderFinance($('#content'));}
-function rateSave(cid,pi){const pl=DB.pools[pi]; const el=document.getElementById('rt_res'); if(!pl) return; const o={}; RATE_TYPES.forEach(t=>{o[t[0]]=document.getElementById('rt_'+pi+'_'+cid+'_'+t[0]).value;}); const r=saveCoachRates(cid,pl.name,o); if(!r.ok){el.style.color='var(--red)'; el.textContent=r.errors.join(' '); return;} finMsg=coachName(cid)+' — '+pl.name+' ücretleri kaydedildi.'; renderFinance($('#content'));}
+function rateSave(cid,pi){const pl=DB.pools[pi]; const el=document.getElementById('rt_res'); if(!pl) return; const o={}; RATE_ALL.forEach(t=>{o[t[0]]=document.getElementById('rt_'+pi+'_'+cid+'_'+t[0]).value;}); const r=saveCoachRates(cid,pl.name,o); if(!r.ok){el.style.color='var(--red)'; el.textContent=r.errors.join(' '); return;} finMsg=coachName(cid)+' — '+pl.name+' ücretleri kaydedildi.'; renderFinance($('#content'));}
 function extraAdd(){const v=id=>document.getElementById(id).value; const r=addExtraSession({coach:v('xs_coach'),pool:v('xs_pool'),date:v('xs_date'),label:v('xs_label'),count:v('xs_count')}); if(!r.ok){document.getElementById('xs_res').textContent=r.errors.join(' ');return;} finMonth=ymOf(v('xs_date')); finMsg='Kayıt eklendi.'; renderFinance($('#content'));}
 function extraDel(id){removeExtraSession(id); renderFinance($('#content'));}
 function priceSave(pi){const pl=DB.pools[pi]; if(!pl) return; const r=savePoolPrices(pl.name,{group:document.getElementById('hp_g'+pi).value,private:document.getElementById('hp_p'+pi).value}); const el=document.getElementById('pp_res'); if(r.ok){finMsg=pl.name+' fiyatları kaydedildi.'; renderFinance($('#content')); return;} el.style.color='var(--red)'; el.textContent=pl.name+': '+r.errors.join(' ');}
-function pkgSell(){const r=sellPackage(document.getElementById('pk_ath').value,document.getElementById('pk_h').value,document.getElementById('pk_pay').checked,document.getElementById('pk_pool').value); if(!r.ok){document.getElementById('pk_res').textContent=r.errors.join(' ');return;} finMsg='Paket tanımlandı.'+(r.attached?' '+r.attached+' paketsiz ders bu pakete bağlandı.':''); renderFinance($('#content'));}
+function pkgSell(){const r=sellPackage(document.getElementById('pk_ath').value,document.getElementById('pk_h').value,document.getElementById('pk_pay').checked,document.getElementById('pk_pool').value,Number((document.getElementById('pk_size')||{}).value)||1); if(!r.ok){document.getElementById('pk_res').textContent=r.errors.join(' ');return;} finMsg='Paket tanımlandı.'+(r.attached?' '+r.attached+' paketsiz ders bu pakete bağlandı.':''); renderFinance($('#content'));}
 function pkgDel(id){if(!confirm('Paket silinsin mi?'))return; const r=removePackage(id); finMsg=r.ok?'Paket silindi.':r.errors.join(' '); renderFinance($('#content'));}
 
 /* ---------- HAVUZ KİRALAMA EKRANI ---------- */
@@ -3686,7 +3688,7 @@ async function sbLoadAll(){
   });
   if(role!=='admin'){
     const have=new Set(db.privateLessons.map(p=>p.id));
-    slots.forEach(s=>{ if(!have.has(s.id)) db.privateLessons.push({id:s.id,pkg:null,pool:s.pool||'',athlete:'',coach:s.coach,date:s.date,hour:s.hour,status:s.status,note:'',_stub:true}); });
+    slots.forEach(s=>{ if(!have.has(s.id)) db.privateLessons.push({id:s.id,sid:s.sid,pkg:null,pool:s.pool||'',athlete:'',coach:s.coach,date:s.date,hour:s.hour,status:s.status,note:'',_stub:true}); });
   }
   const p=SB.profile; db.currentUser={parentId:p.role==='parent'?p.link_id:null,coachId:p.role==='coach'?p.link_id:null,athleteId:p.role==='athlete'?p.link_id:null};
   DB=db; sbBaseline(); SB.lastLoad=Date.now();
@@ -4052,7 +4054,7 @@ function weeklyData(off){
       days.forEach((ds,i)=>{ if(!groupOnDay(g,ds)) return; const m=groupMinutes(g,ds); const len=m[1]-m[0];
         if(effCoach(g,ds)===cid){ gCount++; gMin+=len; perDay[i]+=len; earn+=rateOf(cid,'group',g.pool); } else if(asst){ assistCount++; gMin+=len; perDay[i]+=len; earn+=rateOf(cid,'asst',g.pool); } });
     });
-    (DB.privateLessons||[]).forEach(p=>{ if(p._stub||p.coach!==cid||p.status!=='Onaylandı') return; const i=days.indexOf(p.date); if(i<0) return; pCount++; perDay[i]+=60; earn+=rateOf(cid,'private',lessonPool(p)); });
+    const seenS={}; (DB.privateLessons||[]).forEach(p=>{ if(p._stub||p.coach!==cid||p.status!=='Onaylandı') return; const i=days.indexOf(p.date); if(i<0) return; const sk=p.sid||p.id; if(seenS[sk]) return; seenS[sk]=1; const nn=cPrivN(cid,p); pCount++; perDay[i]+=60; earn+=rateOf(cid,nn>=3?'private3':nn===2?'private2':'private',lessonPool(p)); });
     (DB.extraSessions||[]).forEach(x=>{ if(x.coach!==cid) return; if(days.indexOf(x.date)<0) return; xCount+=Number(x.count)||0; earn+=(Number(x.count)||0)*rateOf(cid,'other',x.pool); });
     earnKnown=role==='admin'&&!!((DB.coachRates||{})[cid]); if(role!=='admin') earn=0;
     return {cid,name:coachName(cid),gCount,assistCount,pCount,xCount,hours:Math.round((gMin+pCount*60)/6)/10,perDay:perDay.map(m=>Math.round(m/6)/10),earn:r2(earn),earnKnown};
@@ -5486,7 +5488,7 @@ function cPlCapInfo(poolName,ds,h,ignoreId){
   (pool.plRentals||[]).forEach(r=>{ if(r.d.indexOf(dow)>-1&&(!r.a||ds>=r.a)&&(!r.b||ds<=r.b)&&plOverlap([r.s,r.e],[s,e])){ rent+=r.u; anyRent++; } });
   if(pool.lanes>0){ free=pool.lanes-lanesUsed.size-rent; if(free<=0) blocked=true; }
   else if(anyGroup||anyRent) blocked=true;
-  const used=(DB.privateLessons||[]).filter(p=>p.id!==ignoreId&&p.status==='Onaylandı'&&p.date===ds&&p.hour===h&&(p.pool||(p.pkg?lessonPool(p):poolName))===poolName).length;
+  const used=new Set((DB.privateLessons||[]).filter(p=>p.id!==ignoreId&&p.status==='Onaylandı'&&p.date===ds&&p.hour===h&&(p.pool||(p.pkg?lessonPool(p):poolName))===poolName).map(p=>p.sid||p.id)).size;
   const cap=blocked?0:Math.min(pool.plCap,free);
   return {limited:true,cap,used,full:used>=cap};
 }
@@ -6078,7 +6080,7 @@ function cPlManualSubmit(){
   plMsg='Özel ders eklendi'+(r.unpackaged?' (paketsiz olarak işaretlendi; yönetici ücreti kendisi düzenler).':'.');
   renderSchedule($('#content'));
 }
-(function(){ const _p=plStaffHtml; plStaffHtml=function(){ return (role==='coach'?cPlManualCard():'')+_p(); }; })();
+(function(){ const _p=plStaffHtml; plStaffHtml=function(){ return ((role==='coach'||role==='admin')?cPlManualCard():'')+_p(); }; })();
 
 /* ---- 4) Antrenör sporcu + veli kaydını doğrudan yapar (yönetici sonradan kontrol eder) ---- */
 (function(){
@@ -6230,6 +6232,207 @@ function cTitleLive(s){
     const pos=t.selectionStart; t.value=n; try{ t.setSelectionRange(pos,pos); }catch(_){}
   });
 })();
+/* ============ C15: İkili / üçlü özel ders (paket fiyatı, hoca ücreti, havuz bazlı) ============ */
+const PL_SIZE_LABEL={1:'Bireysel',2:'İkili',3:'Üçlü'};
+function cPlTitle(p){ const n=(p&&p.size)||1; return n>=3?'Üçlü özel ders':n===2?'İkili özel ders':'Özel ders'; }
+
+/* ---- paket seçimi / kalan saat: ders türüne göre ---- */
+pickPackage=function(id,size){ size=Number(size)||1; return athletePackages(id).find(p=>(p.size||1)===size&&pkgRemaining(p)>0)||null; };
+athleteRemaining=function(id,size){ size=Number(size)||1; return athletePackages(id).filter(p=>(p.size||1)===size).reduce((s,p)=>s+pkgRemaining(p),0); };
+pkgBanner=function(athId){
+  const pk=athletePackages(athId);
+  if(!pk.length) return '<div class="note-banner">Bu öğrenci için özel ders paketi tanımlı değil. özel ders paketi için yönetici ile görüşün.</div>';
+  const parts=[1,2,3].map(sz=>{ const L=pk.filter(p=>(p.size||1)===sz); if(!L.length) return null; return {sz,rem:L.reduce((s,p)=>s+pkgRemaining(p),0),tot:L.reduce((s,p)=>s+p.hours,0)}; }).filter(Boolean);
+  const rem1=athleteRemaining(athId,1);
+  return `<div class="note-banner" style="${parts.some(x=>x.rem>0)?'':'background:var(--red-light);color:var(--red);'}">Özel ders paketi: ${parts.map(x=>`${x.sz>1?PL_SIZE_LABEL[x.sz]+' ':''}<b>${x.rem}</b> saat kaldı (toplam ${x.tot} saat)`).join(' · ')}.${parts.some(x=>x.rem>0)?'':' Yeni paket için yönetici ile görüşün.'}${parts.length&&!pk.some(p=>(p.size||1)===1)?' Bireysel ders için paket yok.':''}</div>`;
+};
+
+/* ---- paket fiyat listeleri: bireysel (mevcut) + ikili + üçlü, havuz başına ---- */
+{ const _pp=poolPackages, _pf=pkgPriceFor, _sv=savePoolPackages;
+  poolPackages=function(pool,size){ size=Number(size)||1; if(size===1) return _pp(pool);
+    const cat=((DB.poolPrices||{})[pool]||{})['packages'+size];
+    return Array.isArray(cat)?cat.map(x=>({hours:Number(x.hours),price:Number(x.price)})).filter(x=>x.hours>0&&x.price>0).sort((a,b)=>a.hours-b.hours):[]; };
+  pkgPriceFor=function(pool,hours,size){ size=Number(size)||1; if(size===1) return _pf(pool,hours);
+    const x=poolPackages(pool,size).find(p=>p.hours===Number(hours)); return x?x.price:0; };
+  savePoolPackages=function(pool,rows,size){ size=Number(size)||1; if(size===1) return _sv(pool,rows);
+    if(role!=='admin') return {ok:false,errors:['Yalnızca yönetici paket tanımlayabilir.']};
+    if(!poolExists(pool)) return {ok:false,errors:['Havuz bulunamadı.']};
+    const out=[], seen=new Set(), e=[];
+    (rows||[]).forEach((r,i)=>{ const hs=String(r.hours==null?'':r.hours).trim(), ps=String(r.price==null?'':r.price).trim(); if(!hs&&!ps) return;
+      const h=Number(hs), p=Number(ps.replace(',','.'));
+      if(!(Number.isInteger(h)&&h>=1&&h<=200)){ e.push(`${i+1}. satır: saat sayısı 1 ile 200 arasında tam sayı olmalı.`); return; }
+      if(!okAmt(p,1000000)){ e.push(`${i+1}. satır: kişi başı fiyat 0’dan büyük ve en çok 1.000.000 ₺ olmalı.`); return; }
+      if(seen.has(h)){ e.push(`${h} saatlik paket birden fazla kez girilmiş.`); return; }
+      seen.add(h); out.push({hours:h,price:r2(p)}); });
+    if(out.length>20) e.push('Bir havuz için en fazla 20 paket tanımlanabilir.');
+    if(e.length) return {ok:false,errors:e};
+    out.sort((a,b)=>a.hours-b.hours); DB.poolPrices=DB.poolPrices||{};
+    const cur=Object.assign({group:0,private:0},DB.poolPrices[pool]||{}); const key='packages'+size;
+    if(out.length) cur[key]=out; else delete cur[key]; DB.poolPrices[pool]=cur; save(); return {ok:true,errors:[]};
+  };
+}
+function pcSizeSave(pi,size){
+  const pl=DB.pools[pi]; if(!pl) return;
+  const rows=Array.from(document.querySelectorAll('#pc_rows_'+pi+'_'+size+' .pc-row')).map(el=>({hours:el.querySelector('.pc-h').value,price:el.querySelector('.pc-p').value}));
+  const r=savePoolPackages(pl.name,rows,size); const el=document.getElementById('pc_res_'+pi+'_'+size);
+  if(r.ok){ finMsg=pl.name+' '+PL_SIZE_LABEL[size].toLowerCase()+' özel ders paketleri kaydedildi.'; renderFinance($('#content')); return; }
+  if(el){ el.style.color='var(--red)'; el.textContent=r.errors.join(' '); }
+}
+function pcSizeAdd(pi,size){ const w=document.getElementById('pc_rows_'+pi+'_'+size); if(w) w.insertAdjacentHTML('beforeend',pcRowHtml(pi,'','')); }
+{ const _rf=renderFinance; renderFinance=function(c){ _rf(c);
+  if(role!=='admin'||finTab!=='prices') return;
+  [2,3].forEach(size=>{
+    c.insertAdjacentHTML('beforeend',`<div class="card" style="margin-top:16px;"><b>${PL_SIZE_LABEL[size]} özel ders paketleri</b>
+     <div style="font-size:12.5px;color:var(--muted);margin:4px 0 10px;">Her havuz için ${PL_SIZE_LABEL[size].toLowerCase()} ders paketlerini <b>kişi başı</b> toplam fiyatla girin (örn. 10 saat = 5.000 ₺, her sporcu için). Boş bırakılan havuzda ${PL_SIZE_LABEL[size].toLowerCase()} paket satılamaz.</div>
+     ${DB.pools.map((pl,pi)=>{ const cat=((DB.poolPrices||{})[pl.name]||{})['packages'+size]||[]; return `<div class="card" style="margin-bottom:10px;"><b>${escHtml(pl.name)}</b>
+       <div id="pc_rows_${pi}_${size}" style="margin-top:8px;">${cat.slice().sort((a,b)=>a.hours-b.hours).map(x=>pcRowHtml(pi,x.hours,x.price)).join('')}</div>
+       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px;"><button type="button" class="btn sm" onclick="pcSizeAdd(${pi},${size})">+ Paket ekle</button><button type="button" class="btn sm primary" onclick="pcSizeSave(${pi},${size})">Kaydet</button></div>
+       <div id="pc_res_${pi}_${size}" style="font-size:12.5px;margin-top:6px;"></div></div>`; }).join('')}</div>`);
+  });
+}; }
+
+/* ---- paket satışı: ders türü ---- */
+{ const _sp=sellPackage;
+  sellPackage=function(athId,hours,withPayment,pool,size){
+    size=Number(size)||1; if(size===1) return _sp(athId,hours,withPayment,pool);
+    if(size!==2&&size!==3) return {ok:false,errors:['Ders türü geçersiz.']};
+    if(role!=='admin') return {ok:false,errors:['Paketi yalnızca yönetici tanımlayabilir.']};
+    hours=Number(hours); if(!(Number.isInteger(hours)&&hours>=1&&hours<=200)) return {ok:false,errors:['Paket saat sayısı 1 ile 200 arasında tam sayı olmalıdır.']};
+    const a=DB.athletes.find(x=>x.id===athId); if(!a||a.status!=='active') return {ok:false,errors:['Paket yalnızca aktif sporcuya tanımlanır.']};
+    if(!poolExists(pool)) return {ok:false,errors:['Paketin geçerli olacağı havuzu seçin.']};
+    const price=pkgPriceFor(pool,hours,size); if(!okAmt(price)) return {ok:false,errors:[`${pool} havuzu için ${hours} saatlik ${PL_SIZE_LABEL[size].toLowerCase()} paket tanımlı değil. Finans > Fiyatlar bölümünden ekleyin.`]};
+    DB.plPackages=DB.plPackages||[];
+    const pk={id:'pk'+Date.now()+Math.floor(Math.random()*1000),athlete:athId,hours,price,pool,size,createdAt:todayStr()};
+    DB.plPackages.push(pk);
+    if(withPayment) DB.payments.push({id:'pay'+Date.now()+Math.floor(Math.random()*1000),athlete:athId,amount:price,due:todayStr(),status:'pending',type:'Özel ders paketi ('+PL_SIZE_LABEL[size]+')',method:'-',paidDate:'',pkg:pk.id,pool});
+    recalcBalances(); const n=cAttachUnpackaged(athId,pk.id); save(); return {ok:true,id:pk.id,errors:[],attached:n};
+  };
+}
+pkgPoolChanged=function(){
+  const ps=document.getElementById('pk_pool'), hs=document.getElementById('pk_h'), sz=document.getElementById('pk_size'); if(!ps||!hs) return;
+  const size=sz?Number(sz.value)||1:1; const prev=hs.value;
+  hs.innerHTML=poolPackages(ps.value,size).map(x=>`<option value="${x.hours}">${x.hours} saatlik paket${x.price?' — '+money(x.price)+(size>1?' (kişi başı)':''):' — fiyat girilmemiş'}</option>`).join('')||'<option value="">Bu havuz için paket tanımlı değil</option>';
+  if(prev) hs.value=prev;
+};
+
+/* ---- paketsiz dersleri pakete bağlama: ders türüne uygun paket ---- */
+function cAttachUnpackaged(athId,pkgId){
+  const pk=(DB.plPackages||[]).find(x=>x.id===pkgId); if(!pk) return 0; let n=0; const sz=pk.size||1;
+  (DB.privateLessons||[]).filter(p=>p.athlete===athId&&!p.pkg&&p.status==='Onaylandı'&&!p._stub&&(p.size||1)===sz)
+    .sort((a,b)=>String(a.date).localeCompare(String(b.date))||(a.hour-b.hour)).forEach(p=>{ if(pkgRemaining(pk)<=0) return; p.pkg=pk.id; p.unpackaged=false; n++; });
+  return n;
+}
+function cPlAttach(athId){
+  if(role!=='admin') return {ok:false,errors:['Bu işlemi yalnızca yönetici yapar.']};
+  const L=cUnpkgOf(athId); if(!L.length) return {ok:false,errors:['Bu sporcunun paketsiz dersi yok.']};
+  let n=0; for(const p of L){ const pk=pickPackage(athId,p.size||1); if(!pk) continue; p.pkg=pk.id; p.unpackaged=false; n++; }
+  if(!n) return {ok:false,errors:['Sporcunun ilgili ders türünde kalan saati olan bir paketi yok. Önce paket tanımlayın.']};
+  save(); return {ok:true,count:n,left:L.length-n,errors:[]};
+}
+
+/* ---- hoca ücreti: oturum başına tek ücret, katılımcı sayısına göre (bireysel / ikili / üçlü) ---- */
+{ const _ro=rateOf;
+  rateOf=function(cid,t,pool){
+    if(t==='private2'||t==='private3'){ const r=((((DB.coachRates||{})[cid])||{})[pool])||{};
+      if(r[t]===undefined||r[t]===null||r[t]==='') return _ro(cid,'private',pool); return Number(r[t])||0; }
+    return _ro(cid,t,pool);
+  };
+}
+function cPrivN(cid,p){ const k=p.sid||p.id; return Math.min(3,Math.max(1,(DB.privateLessons||[]).filter(x=>!x._stub&&(x.sid||x.id)===k&&x.coach===cid&&x.status==='Onaylandı').length)); }
+function coachPayFor(cid,ym,pool){
+  if(pool===undefined) pool=null;
+  const per={}; DB.pools.forEach(p=>{per[p.name]={groupCount:0,asstCount:0,privateCount:0,private2Count:0,private3Count:0,otherCount:0};});
+  const bump=(pn,k,n)=>{ if(per[pn]) per[pn][k]+=n; };
+  DB.groups.forEach(g=>{ const n=cGroupSessionsFor(g,ym,cid); if(n) bump(g.pool,'groupCount',n); const m=cAsstSessions(g,ym,cid); if(m) bump(g.pool,'asstCount',m); });
+  const sess={}; (DB.privateLessons||[]).filter(p=>!p._stub&&p.coach===cid&&p.status==='Onaylandı'&&ymOf(p.date)===ym).forEach(p=>{ const k=p.sid||p.id; (sess[k]=sess[k]||{pool:lessonPool(p),n:0}).n++; });
+  Object.values(sess).forEach(s=>{ bump(s.pool,s.n>=3?'private3Count':s.n===2?'private2Count':'privateCount',1); });
+  (DB.extraSessions||[]).filter(x=>x.coach===cid&&ymOf(x.date)===ym).forEach(x=>bump(x.pool,'otherCount',x.count));
+  const byPool={}; let gc=0,ac=0,pc=0,p2=0,p3=0,oc=0,ga=0,aa=0,pa=0,oa=0;
+  Object.keys(per).forEach(pn=>{
+    if(pool!==null&&pn!==pool) return; const x=per[pn];
+    const a=r2(x.groupCount*rateOf(cid,'group',pn)), s=r2(x.asstCount*rateOf(cid,'asst',pn));
+    const b=r2(x.privateCount*rateOf(cid,'private',pn)+x.private2Count*rateOf(cid,'private2',pn)+x.private3Count*rateOf(cid,'private3',pn));
+    const c=r2(x.otherCount*rateOf(cid,'other',pn)); const tc=x.privateCount+x.private2Count+x.private3Count;
+    byPool[pn]={groupCount:x.groupCount,asstCount:x.asstCount,privateCount:tc,private2Count:x.private2Count,private3Count:x.private3Count,otherCount:x.otherCount,groupAmt:a,asstAmt:s,privateAmt:b,otherAmt:c,total:r2(a+s+b+c)};
+    gc+=x.groupCount; ac+=x.asstCount; pc+=tc; p2+=x.private2Count; p3+=x.private3Count; oc+=x.otherCount; ga+=a; aa+=s; pa+=b; oa+=c;
+  });
+  ga=r2(ga); aa=r2(aa); pa=r2(pa); oa=r2(oa);
+  return {coach:cid,name:coachName(cid),groupCount:gc,asstCount:ac,privateCount:pc,private2Count:p2,private3Count:p3,otherCount:oc,groupAmt:ga,asstAmt:aa,privateAmt:pa,otherAmt:oa,total:r2(ga+aa+pa+oa),byPool};
+}
+
+/* ---- ders oluşturma: bireysel / ikili / üçlü (antrenör kendi sporcuları, yönetici herkes) ---- */
+function cPlSessionAdd(athIds,ds,h,note,coachArg){
+  const isAdmin=role==='admin';
+  if(!(role==='coach'||isAdmin)) return {ok:false,errors:['Bu işlemi yalnızca antrenör veya yönetici yapar.']};
+  const coach=isAdmin?coachArg:DB.currentUser.coachId;
+  if(!coach||!DB.coaches.some(c=>c.id===coach)) return {ok:false,errors:['Antrenör seçin.']};
+  athIds=[...new Set((athIds||[]).filter(Boolean))]; const n=athIds.length;
+  if(n<1||n>3) return {ok:false,errors:['1 ile 3 arasında sporcu seçin.']};
+  h=parseInt(h,10); if(!(h>=PL_FIRST&&h<=PL_LAST)) return {ok:false,errors:['Saat geçersiz.']};
+  const aths=athIds.map(id=>DB.athletes.find(x=>x.id===id));
+  if(aths.some((a,i)=>!a||a.status!=='active'||(!isAdmin&&!canViewAthlete(athIds[i])))) return {ok:false,errors:['Seçilen sporculardan biri için ders ekleyemezsiniz.']};
+  for(const id of athIds){ const bad=plSlotProblem(id,coach,ds,h); if(bad) return {ok:false,errors:['Eklenemedi ('+athleteName(id)+'): '+bad+'.']}; }
+  const pks=athIds.map(id=>pickPackage(id,n)); const pool=(pks.find(Boolean)||{}).pool||cPlPoolOfAth(athIds[0]);
+  if(pks.some(p=>p&&p.pool&&p.pool!==pool)) return {ok:false,errors:['Sporcuların paketleri farklı havuzlarda; aynı havuzda olmalı.']};
+  note=String(note||'').trim().slice(0,200); DB.privateLessons=DB.privateLessons||[];
+  const sid='s'+Date.now()+Math.floor(Math.random()*100000);
+  athIds.forEach((id,i)=>{ DB.privateLessons.push(Object.assign({id:'pl'+Date.now()+Math.floor(Math.random()*100000)+i,sid,size:n,pkg:pks[i]?pks[i].id:'',pool,athlete:id,coach,date:ds,hour:h,status:'Onaylandı',note,createdAt:ymd(new Date()),requestedBy:isAdmin?'admin':'coach',decidedAt:ymd(new Date()),decidedBy:isAdmin?'admin':coach,reason:'',unpackaged:!pks[i]},isAdmin?{}:{addedBy:'coach',review:'pending'})); });
+  save(); return {ok:true,errors:[],size:n,unpackaged:pks.filter(p=>!p).length};
+}
+function cPlManualAdd(athId,ds,h,note){ return cPlSessionAdd([athId],ds,h,note); }
+function cPlManualCard(){
+  const isAdmin=role==='admin';
+  const aths=(isAdmin?DB.athletes:visibleAthletes()).filter(a=>a.status==='active').slice().sort((a,b)=>a.name.localeCompare(b.name,'tr'));
+  if(!aths.length) return '';
+  const hrs=[]; for(let h=PL_FIRST;h<=PL_LAST;h++) hrs.push(h);
+  const opt=(blank)=>`${blank?'<option value="">— seçin —</option>':''}${aths.map(a=>`<option value="${escHtml(a.id)}">${escHtml(a.name)}</option>`).join('')}`;
+  return `<div class="card" style="margin-bottom:14px;"><b>Özel ders ekle</b><div style="font-size:12.5px;color:var(--muted);margin:4px 0 10px;">${isAdmin?'Eklediğiniz ders hemen takvime girer.':'Eklediğiniz ders hemen takvime girer, yöneticiye bilgi gider.'} Sporcunun ilgili türde (bireysel/ikili/üçlü) paketi yoksa ders “paketsiz” işaretlenir. İkili ve üçlü derste her sporcunun kendi paketinden 1 saat düşer.</div>
+  <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;">
+  ${isAdmin?`<div class="field" style="margin:0;min-width:160px;"><label for="pm_coach">Antrenör</label><select id="pm_coach">${DB.coaches.map(c=>`<option value="${escHtml(c.id)}">${escHtml(c.name)}</option>`).join('')}</select></div>`:''}
+  <div class="field" style="margin:0;"><label for="pm_type">Ders türü</label><select id="pm_type" onchange="cPlTypeChanged()"><option value="1">Bireysel</option><option value="2">İkili</option><option value="3">Üçlü</option></select></div>
+  <div class="field" style="margin:0;min-width:180px;"><label for="pm_ath">Sporcu</label><select id="pm_ath">${opt(false)}</select></div>
+  <div class="field" id="pm_w2" style="margin:0;min-width:180px;display:none;"><label for="pm_ath2">2. sporcu</label><select id="pm_ath2">${opt(true)}</select></div>
+  <div class="field" id="pm_w3" style="margin:0;min-width:180px;display:none;"><label for="pm_ath3">3. sporcu</label><select id="pm_ath3">${opt(true)}</select></div>
+  <div class="field" style="margin:0;"><label for="pm_date">Tarih</label><input type="date" id="pm_date" value="${ymd(new Date())}" min="${ymd(new Date())}"></div>
+  <div class="field" style="margin:0;"><label for="pm_hour">Saat</label><select id="pm_hour">${hrs.map(h=>`<option value="${h}">${h}:00</option>`).join('')}</select></div>
+  <div class="field" style="margin:0;flex:1;min-width:140px;"><label for="pm_note">Not</label><input id="pm_note" maxlength="200"></div>
+  <button class="btn primary" onclick="cPlManualSubmit()">Dersi ekle</button></div>
+  <div id="pm_res" role="alert" style="font-size:12.5px;margin-top:8px;"></div></div>`;
+}
+function cPlTypeChanged(){ const n=Number((document.getElementById('pm_type')||{}).value)||1; ['pm_w2','pm_w3'].forEach((id,i)=>{ const e=document.getElementById(id); if(e) e.style.display=(n>=i+2)?'':'none'; }); }
+function cPlManualSubmit(){
+  const v=id=>(document.getElementById(id)||{}).value||''; const n=Number(v('pm_type'))||1;
+  const ids=[v('pm_ath'),n>=2?v('pm_ath2'):'',n>=3?v('pm_ath3'):''].filter(Boolean);
+  const res=document.getElementById('pm_res');
+  if(ids.length!==n||new Set(ids).size!==n){ if(res){ res.style.color='var(--red)'; res.textContent=n===1?'Sporcu seçin.':`${PL_SIZE_LABEL[n]} ders için ${n} farklı sporcu seçin.`; } return; }
+  const r=cPlSessionAdd(ids,v('pm_date'),v('pm_hour'),v('pm_note'),v('pm_coach'));
+  if(!r.ok){ if(res){ res.style.color='var(--red)'; res.textContent=r.errors.join(' '); } return; }
+  plMsg=PL_SIZE_LABEL[r.size]+' özel ders eklendi'+(r.unpackaged?' ('+r.unpackaged+' sporcu için paketsiz olarak işaretlendi).':'.');
+  renderSchedule($('#content'));
+}
+
+/* ---- etiket ve yönetici bildirimleri: oturum bazında ---- */
+function cPlTag(p){
+  let t=''; if(p&&(p.size||1)>1) t+=` <span class="badge" style="font-size:10.5px;background:var(--aqua-light,#e0f7fa);">${PL_SIZE_LABEL[p.size]}</span>`;
+  if(p&&p.addedBy==='coach') t+=' <span class="badge aqua" style="font-size:10.5px;">antrenör ekledi</span>';
+  if(p&&p.unpackaged) t+=' <span class="badge amber" style="font-size:10.5px;">paketsiz</span>';
+  return t;
+}
+function cNewItems(){
+  if(role!=='admin') return [];
+  const out=[];
+  (DB.athletes||[]).forEach(a=>{ if(a.addedBy&&a.review==='pending'){
+    const ps=(a.parents||[]).map(id=>DB.parents.find(p=>p.id===id)).filter(Boolean);
+    out.push({k:'ath',id:a.id,date:(a.addedBy.at||a.joined||''),text:`${coachName(a.addedBy.id)} yeni sporcu ekledi: ${a.name}`+(a.status==='trial'?' (deneme)':''),detail:ps.length?'Veli: '+ps.map(p=>p.name+(p.phone?' · '+p.phone:'')).join(', '):''});
+  }});
+  const bySid={}; (DB.privateLessons||[]).forEach(p=>{ if(!p._stub&&p.addedBy==='coach'&&p.review==='pending'){ const k=p.sid||p.id; (bySid[k]=bySid[k]||[]).push(p); } });
+  Object.keys(bySid).forEach(k=>{ const L=bySid[k], p=L[0], un=L.some(x=>x.unpackaged);
+    out.push({k:'pl',id:p.id,ids:L.map(x=>x.id),date:p.createdAt||'',text:`${coachName(p.coach)} ${L.length>1?PL_SIZE_LABEL[Math.min(3,L.length)].toLowerCase()+' ':''}özel ders ekledi: ${L.map(x=>athleteName(x.athlete)).join(' + ')} · ${fmtDate(p.date)} ${p.hour}:00`+(un?' (paketsiz)':''),detail:un?'Paketi olmayan sporcu var; ücreti sizin takip etmeniz gerekir.':''}); });
+  return out.sort((x,y)=>String(y.date).localeCompare(String(x.date)));
+}
+{ const _rd=cReviewDone; cReviewDone=function(k,id){ if(role!=='admin') return;
+    if(k==='pl'){ const p=(DB.privateLessons||[]).find(x=>x.id===id); if(p){ const sid=p.sid||p.id; (DB.privateLessons||[]).filter(x=>!x._stub&&(x.sid||x.id)===sid).forEach(x=>{ x.review='done'; }); save(); } return; }
+    return _rd(k,id); }; }
 
 /* ============ INIT ============ */
 boot();
