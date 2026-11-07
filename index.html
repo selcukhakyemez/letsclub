@@ -6543,6 +6543,34 @@ renderNav=function(){
   });
 };
 
+/* ---- Menü otomatik gizlenme (bilgisayar ekranı): seçimden sonra kaybolur, sol kenara gelince geri açılır ---- */
+(function(){
+  const st=document.createElement('style');
+  st.textContent='@media(min-width:841px){body.navauto .sidebar{position:fixed;left:0;top:0;z-index:60;transform:translateX(-100%);transition:transform .22s ease;box-shadow:6px 0 24px rgba(0,0,0,.25);}body.navauto .sidebar.show{transform:none;}body.navauto .navhot{display:block;}body.navauto .navtab{display:flex;}}.navhot{display:none;position:fixed;left:0;top:0;bottom:0;width:12px;z-index:55;}.navtab{display:none;position:fixed;left:0;top:50%;transform:translateY(-50%);z-index:56;width:16px;height:64px;border-radius:0 10px 10px 0;background:var(--teal-900);color:#9fd3cf;align-items:center;justify-content:center;font-size:12px;cursor:pointer;opacity:.75;}.navtab:hover{opacity:1}.navpinbtn{background:none;border:0;color:#8FBAB6;font:inherit;font-size:11px;cursor:pointer;padding:0;text-decoration:underline;}@media print{.navhot,.navtab{display:none!important}}';
+  document.head.appendChild(st);
+  const pinned=()=>{ try{ return localStorage.getItem('navpin')==='1'; }catch(e){ return false; } };
+  let hideT=null; const sb=()=>document.getElementById('sidebar');
+  const wide=()=>window.innerWidth>840;
+  const show=()=>{ clearTimeout(hideT); const s=sb(); if(s&&wide()) s.classList.add('show'); };
+  const hide=(ms)=>{ clearTimeout(hideT); hideT=setTimeout(()=>{ const s=sb(); if(s&&!pinned()&&wide()&&!s.matches(':focus-within')) s.classList.remove('show'); },ms); };
+  function apply(){ document.body.classList.toggle('navauto',!pinned()); const s=sb(); if(!s) return; if(pinned()||!wide()) s.classList.remove('show'); }
+  window.cNavPinToggle=function(){ try{ localStorage.setItem('navpin',pinned()?'0':'1'); }catch(e){} apply(); cNavPinLabel(); if(!pinned()) hide(300); };
+  function cNavPinLabel(){ const b=document.getElementById('navpinbtn'); if(b) b.textContent=pinned()?'Menüyü otomatik gizle':'Menüyü sabitle'; }
+  function init(){
+    const s=sb(); if(!s||document.getElementById('navhot')) return;
+    const hot=document.createElement('div'); hot.id='navhot'; hot.className='navhot'; document.body.appendChild(hot);
+    const tab=document.createElement('div'); tab.className='navtab'; tab.textContent='›'; tab.title='Menü'; document.body.appendChild(tab);
+    hot.addEventListener('mouseenter',show); tab.addEventListener('mouseenter',show); tab.addEventListener('click',()=>{ const o=s.classList.contains('show'); if(o) s.classList.remove('show'); else show(); });
+    s.addEventListener('mouseenter',()=>{ clearTimeout(hideT); }); s.addEventListener('mouseleave',()=>hide(500));
+    s.addEventListener('focusin',show); s.addEventListener('focusout',()=>hide(600));
+    s.addEventListener('click',e=>{ if(e.target.closest('nav a')) hide(1200); });
+    const f=s.querySelector('.sidebar-foot'); if(f) f.insertAdjacentHTML('beforeend','<div style="margin-top:8px;"><button type="button" id="navpinbtn" class="navpinbtn" onclick="cNavPinToggle()"></button></div>');
+    apply(); cNavPinLabel(); window.addEventListener('resize',apply);
+    if(!pinned()&&wide()){ s.classList.add('show'); hide(2500); }
+  }
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',init); else setTimeout(init,0);
+})();
+
 /* ============ INIT ============ */
 boot();
 </script>
