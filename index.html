@@ -1209,9 +1209,9 @@ function schedSetView(v){
   if(v==='day'&&schedView!=='day') schedDayOff=schedWeek===0?0:7*schedWeek;
   schedView=v==='day'?'day':'week'; renderSchedule($('#content'));
 }
-function schedDayShift(n){ schedDayOff=Math.max(-28,Math.min(90,schedDayOff+n)); renderSchedule($('#content')); }
+function schedDayShift(n){ schedDayOff=Math.max(-365,Math.min(90,schedDayOff+n)); renderSchedule($('#content')); }
 function schedDayToday(){ schedDayOff=0; renderSchedule($('#content')); }
-function schedDayPick(v){ if(!/^\d{4}-\d{2}-\d{2}$/.test(v||'')) return; const t=new Date(); const base=new Date(t.getFullYear(),t.getMonth(),t.getDate()); const d=Math.round((parseYmd(v)-base)/864e5); schedDayOff=Math.max(-28,Math.min(90,d)); renderSchedule($('#content')); }
+function schedDayPick(v){ if(!/^\d{4}-\d{2}-\d{2}$/.test(v||'')) return; const t=new Date(); const base=new Date(t.getFullYear(),t.getMonth(),t.getDate()); const d=Math.round((parseYmd(v)-base)/864e5); schedDayOff=Math.max(-365,Math.min(90,d)); renderSchedule($('#content')); }
 function schedSetFilt(k,v){ if(role!=='admin') return; schedFilt[k]=String(v||''); renderSchedule($('#content')); }
 function schedClearFilt(){ schedFilt={coach:'',pool:''}; renderSchedule($('#content')); }
 const plSel={coach:null,athlete:null,slots:[],note:''};
@@ -1294,7 +1294,7 @@ function plCancel(id){
   p.status='İptal'; p.decidedAt=ymd(new Date()); p.decidedBy=role==='admin'?'admin':role==='coach'?DB.currentUser.coachId:role;
   save(); closeDrawer(); plMsg='Özel ders iptal edildi, saat tekrar boşaldı.'; plRefresh();
 }
-function schedShift(n){schedWeek=Math.max(-4,Math.min(12,schedWeek+n)); renderSchedule($('#content'));}
+function schedShift(n){schedWeek=Math.max(-52,Math.min(12,schedWeek+n)); renderSchedule($('#content'));}
 function schedToday(){schedWeek=0; renderSchedule($('#content'));}
 function plPickCoach(v){plSel.coach=v||null; plSel.slots=[]; renderSchedule($('#content'));}
 function plPickAthlete(v){ if(!canRequestFor(v)) return; plSel.athlete=v; plSel.slots=[]; renderSchedule($('#content')); }
@@ -1423,7 +1423,7 @@ function renderSchedule(c){
     });
   });
   html+='</div>';
-  let navHtml=`<button class="btn sm" onclick="schedShift(-1)" aria-label="Önceki hafta">←</button><b>${d2(dates[0])} – ${d2(dates[6])} ${dates[6].getFullYear()}</b><button class="btn sm" onclick="schedShift(1)" aria-label="Sonraki hafta">→</button>${schedWeek!==0?'<button class="btn sm ghost" onclick="schedToday()">Bu hafta</button>':''}`;
+  let navHtml=`<button class="btn sm" onclick="schedShift(-1)" aria-label="Önceki hafta">←</button><b>${d2(dates[0])} – ${d2(dates[6])} ${dates[6].getFullYear()}</b><button class="btn sm" onclick="schedShift(1)" aria-label="Sonraki hafta">→</button>${schedWeek!==0?'<button class="btn sm ghost" onclick="schedToday()">Bu hafta</button>':''}<input type="date" id="sw_pick" value="${ymd(dates[0])}" onchange="schedWeekPick(this.value)" aria-label="Tarihe git" style="padding:5px 8px;border:1px solid var(--line);border-radius:8px;">`;
   if(dayMode){
     const ds=ymd(dayDate), dIdx=(dayDate.getDay()+6)%7;
     const staffV=!fam;
@@ -6615,6 +6615,8 @@ function plCancelDo(id){
     const k=b.indexOf('<div class="section-title">Özel Ders Talepleri'); let t=k>=0?b.slice(k):b; t=t.replace(/<div class="section-title">[\s\S]*?<\/div>/,'');
     return a+`<details style="margin-top:14px;"><summary style="cursor:pointer;font-weight:600;padding:6px 0;">İptal edilen ve reddedilen dersler (${n})</summary>${t}</details>`;
   }; }
+
+function schedWeekPick(v){ if(!/^\d{4}-\d{2}-\d{2}$/.test(v||'')) return; const d=parseYmd(v); const mon=new Date(d); mon.setDate(mon.getDate()-((mon.getDay()+6)%7)); schedWeek=Math.max(-52,Math.min(12,Math.round((mon-weekStart(0))/(7*864e5)))); renderSchedule($('#content')); }
 
 /* ============ C16: Havuz teması — açık (Cam Havuz) / koyu (Gece Havuzu) + hareketli su ============ */
 (function(){
