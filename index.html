@@ -764,7 +764,7 @@ function renderAthletesBase(c){
         <td class="name-cell">${av('athlete:'+a.id,a.name)}${a.name}${a.status==='trial'?' <span class="badge amber" style="margin-left:6px;">Deneme</span>':''}${a.status==='passive'?' <span class="badge grey" style="margin-left:6px;">Pasif</span>':''}</td>
         <td>${okDateStr(a.dob)?age(a.dob):'—'}</td>
         <td>${a.level}</td>
-        <td>${a.kind==='private'&&!a.group?'Özel ders':groupName(a.group)}${a.adult?' <span class="badge" style="font-size:10.5px;">Yetişkin</span>':''}</td>
+        <td>${a.kind==='private'&&!a.group?'Özel ders':groupName(a.group)}${a.adult?' <span class="badge" style="font-size:10.5px;">Yetişkin</span>':''}${a.membership?' <span class="badge aqua" style="font-size:10.5px;">'+a.membership.months+' aylık</span>':''}</td>
         <td>${coachName(a.coach)}</td>
         <td>%${Math.round(a.attendance*100)}</td>
         <td>${statusBadge(a.license)}</td>
@@ -2266,7 +2266,7 @@ function athFormHtml(a,pre){
     <div class="field"><label for="af_pfirst">Yeni veli adı</label><input id="af_pfirst" maxlength="30" value="${escHtml(V('pfirst',''))}"></div>
     <div class="field"><label for="af_plast">Yeni veli soyadı</label><input id="af_plast" maxlength="30" value="${escHtml(V('plast',''))}"></div>
     <div class="field"><label for="af_pphone">Veli telefonu</label><input id="af_pphone" maxlength="20" value="${escHtml(V('pphone',''))}"></div></div></div>`}
-  ${a?'':cAthPkgSection()}
+  ${a?'':cAthTermSection()+cAthPkgSection()}
   <div id="af_result" class="grp-result" style="display:none;" aria-live="polite"></div>
   <div style="display:flex;gap:10px;margin-top:14px;"><button class="btn primary" onclick="athSubmit()">${role==='admin'?(a?'Kaydet':'Sporcuyu ekle'):'Onaya gönder'}</button><button class="btn" onclick="closeDrawer()">Vazgeç</button></div></div>`;
 }
@@ -6150,7 +6150,7 @@ function renderNewItems(c){
   c.innerHTML=`<div class="note-banner" style="margin-bottom:12px;">Antrenörlerin kendi yaptığı sporcu/veli kayıtları ve özel dersler burada görünür. Kontrol edince “Gördüm”e basın; kayıtlar silinmez.</div>
   ${L.length?`<div style="margin-bottom:10px;"><button class="btn sm" onclick="cReviewAll();renderNewItems($('#content'));render();">Hepsini gördüm</button></div>`:''}
   ${L.map(i=>`<div class="card" style="margin-bottom:10px;"><div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center;"><div><b>${escHtml(i.text)}</b>${i.detail?`<div style="font-size:12.5px;color:var(--muted);margin-top:3px;">${escHtml(i.detail)}</div>`:''}</div>
-   <div style="display:flex;gap:6px;">${i.unpk?`<button class="btn sm" onclick="cUnpkgDo('${i.ath}')">Pakete bağla</button>`:''}${i.k==='pkg'?`<button class="btn sm primary" onclick="cPkgPrice('${i.id}')">Fiyatlandır</button>`:i.k==='ath'?`<button class="btn sm" onclick="openAthlete('${i.id}')">Aç</button>`:`<button class="btn sm" onclick="route='schedule';render();">Programda gör</button>`}<button class="btn sm primary" onclick="cReviewDone('${i.k}','${i.id}');renderNewItems($('#content'));render();">Gördüm</button></div></div></div>`).join('')||'<div class="card"><div class="empty">Kontrol bekleyen yeni kayıt yok</div></div>'}`;
+   <div style="display:flex;gap:6px;">${i.unpk?`<button class="btn sm" onclick="cUnpkgDo('${i.ath}')">Pakete bağla</button>`:''}${i.mem?`<button class="btn sm primary" onclick="cMemPrice('${i.id}')">Üyelik ücretini işle</button>`:''}${i.k==='pkg'?`<button class="btn sm primary" onclick="cPkgPrice('${i.id}')">Fiyatlandır</button>`:i.k==='ath'?`<button class="btn sm" onclick="openAthlete('${i.id}')">Aç</button>`:`<button class="btn sm" onclick="route='schedule';render();">Programda gör</button>`}<button class="btn sm primary" onclick="cReviewDone('${i.k}','${i.id}');renderNewItems($('#content'));render();">Gördüm</button></div></div></div>`).join('')||'<div class="card"><div class="empty">Kontrol bekleyen yeni kayıt yok</div></div>'}`;
 }
 (function(){
   const i=NAV.admin.findIndex(x=>x.id==='dashboard'); NAV.admin.splice(i<0?0:i+1,0,{id:'newitems',label:'Yeni Kayıtlar',ic:'🆕'});
@@ -6763,6 +6763,125 @@ document.addEventListener('click',function(e){
   /* Ayarlar sayfasına hareketli su seçeneği */
   const _rs=renderSettings; renderSettings=function(c){ _rs(c); const card=Array.from(c.querySelectorAll('.card')).find(x=>/Açık \/ Koyu Tema/.test(x.textContent)); if(card){ card.insertAdjacentHTML('beforeend','<label style="display:flex;gap:8px;align-items:center;margin-top:12px;font-size:14px;"><input type="checkbox" id="waterChk" onchange="toggleWater()"> Hareketli su efekti (arka planda yavaş dalgalanma)</label><div style="font-size:12px;color:var(--muted);margin-top:4px;">Telefon ve tablette pil tasarrufu için varsayılan olarak kapalıdır.</div>'); applyWater(); } };
 })();
+/* ============ C17: Dönemlik grup üyeliği (3/6/10 aylık) + ikili/üçlü saat ücreti + 6/8/10/20 ders paket seçenekleri ============ */
+const TERM_MONTHS=[3,6,10];
+function addMonthsYmd(ds,n){ const d=parseYmd(ds); const day=d.getDate(); d.setDate(1); d.setMonth(d.getMonth()+n); const last=new Date(d.getFullYear(),d.getMonth()+1,0).getDate(); d.setDate(Math.min(day,last)); return ymd(d); }
+function termPrice(pool,m){ m=Number(m); if(m===1) return poolPrice(pool,'group'); return Number((((DB.poolPrices||{})[pool]||{}).terms||{})[m])||0; }
+function saveTermPrices(pool,vals){
+  if(role!=='admin') return {ok:false,errors:['Yalnızca yönetici fiyat girebilir.']};
+  if(!poolExists(pool)) return {ok:false,errors:['Havuz bulunamadı.']};
+  const out={}, e=[];
+  TERM_MONTHS.forEach(m=>{ const s=String(vals[m]==null?'':vals[m]).trim(); if(!s) return; const v=Number(s.replace(',','.')); if(!okAmt(v,1000000)){ e.push(`${m} aylık fiyat 0’dan büyük ve en çok 1.000.000 ₺ olmalı.`); return; } out[m]=r2(v); });
+  if(e.length) return {ok:false,errors:e};
+  DB.poolPrices=DB.poolPrices||{}; const cur=Object.assign({group:0,private:0},DB.poolPrices[pool]||{});
+  if(Object.keys(out).length) cur.terms=out; else delete cur.terms; DB.poolPrices[pool]=cur; save(); return {ok:true,errors:[]};
+}
+function savePoolHourly(pool,size,val){
+  if(role!=='admin') return {ok:false,errors:['Yalnızca yönetici fiyat girebilir.']};
+  if(!poolExists(pool)||![2,3].includes(Number(size))) return {ok:false,errors:['Geçersiz işlem.']};
+  const s=String(val==null?'':val).trim(); const cur=Object.assign({group:0,private:0},(DB.poolPrices||{})[pool]||{}); const k='private'+size;
+  if(!s) delete cur[k]; else { const v=Number(s.replace(',','.')); if(!okAmt(v,1000000)) return {ok:false,errors:['Saat ücreti 0’dan büyük olmalı.']}; cur[k]=r2(v); }
+  DB.poolPrices=DB.poolPrices||{}; DB.poolPrices[pool]=cur; save(); return {ok:true,errors:[]};
+}
+/* ikili/üçlü: katalog yoksa saat ücretinden 6/8/10/20 ders paketi türetilir; saat ücreti de yoksa seçenekler yine görünür (fiyatsız) */
+{ const _pp2=poolPackages; poolPackages=function(pool,size){ size=Number(size)||1; const L=_pp2(pool,size); if(size===1||L.length) return L;
+    const r=poolPrice(pool,'private'+size); return r>0?PKG_SIZES.map(h=>({hours:h,price:r2(h*r),auto:true})):[]; }; }
+/* ---- Finans > Havuz Fiyatları: dönemlik üyelik + ikili/üçlü saat ücreti ---- */
+function ptSave(pi){ const pl=DB.pools[pi]; if(!pl) return; const v={}; TERM_MONTHS.forEach(m=>{ v[m]=(document.getElementById(`pt_${pi}_${m}`)||{}).value; });
+  const r=saveTermPrices(pl.name,v); const el=document.getElementById('pt_res'); if(r.ok){ finMsg=pl.name+' dönemlik üyelik fiyatları kaydedildi.'; renderFinance($('#content')); } else if(el){ el.style.color='var(--red)'; el.textContent=r.errors.join(' '); } }
+function phSave(pi,size){ const pl=DB.pools[pi]; if(!pl) return; const r=savePoolHourly(pl.name,size,(document.getElementById(`ph_${pi}_${size}`)||{}).value); const el=document.getElementById('pt_res'); if(r.ok){ finMsg=pl.name+' '+PL_SIZE_LABEL[size].toLowerCase()+' saat ücreti kaydedildi.'; renderFinance($('#content')); } else if(el){ el.style.color='var(--red)'; el.textContent=r.errors.join(' '); } }
+{ const _rf3=renderFinance; renderFinance=function(c){ _rf3(c); if(role!=='admin'||finTab!=='prices') return;
+  const inp='padding:6px 8px;border:1px solid var(--line);border-radius:8px;width:110px;';
+  c.insertAdjacentHTML('beforeend',`<div class="card" style="margin-top:16px;"><b>Dönemlik grup / takım üyelik fiyatları</b>
+   <div style="font-size:12.5px;color:var(--muted);margin:4px 0 10px;">Grup ve takım sporcuları aylık dışında 3, 6 ve 10 aylık da satın alabilir. Her havuz için <b>toplam dönem fiyatını</b> girin. Aylık fiyat yukarıdaki “grup dersi” fiyatıdır.</div>
+   <div style="overflow-x:auto;"><table><thead><tr><th>Havuz</th><th>Aylık</th>${TERM_MONTHS.map(m=>`<th>${m} aylık (toplam ₺)</th>`).join('')}<th></th></tr></thead><tbody>
+   ${DB.pools.map((pl,pi)=>`<tr><td>${escHtml(pl.name)}</td><td>${money(poolPrice(pl.name,'group'))}</td>${TERM_MONTHS.map(m=>`<td><input id="pt_${pi}_${m}" inputmode="decimal" style="${inp}" value="${termPrice(pl.name,m)||''}"></td>`).join('')}<td><button class="btn sm primary" onclick="ptSave(${pi})">Kaydet</button></td></tr>`).join('')}</tbody></table></div>
+   <div id="pt_res" style="font-size:12.5px;margin-top:6px;"></div></div>
+   <div class="card" style="margin-top:16px;"><b>İkili ve üçlü özel ders saat ücreti (kişi başı)</b>
+   <div style="font-size:12.5px;color:var(--muted);margin:4px 0 10px;">Buraya saat ücretini girerseniz 6, 8, 10 ve 20 derslik paketlerin fiyatı otomatik hesaplanır. İsterseniz aşağıdaki “paketleri” kartlarından kendi paket fiyatlarınızı da girebilirsiniz (onlar önceliklidir).</div>
+   <div style="overflow-x:auto;"><table><thead><tr><th>Havuz</th><th>İkili (₺/saat, kişi başı)</th><th></th><th>Üçlü (₺/saat, kişi başı)</th><th></th></tr></thead><tbody>
+   ${DB.pools.map((pl,pi)=>`<tr><td>${escHtml(pl.name)}</td>${[2,3].map(sz=>`<td><input id="ph_${pi}_${sz}" inputmode="decimal" style="${inp}" value="${poolPrice(pl.name,'private'+sz)||''}"></td><td><button class="btn sm" onclick="phSave(${pi},${sz})">Kaydet</button></td>`).join('')}</tr>`).join('')}</tbody></table></div></div>`);
+}; }
+/* ---- Kayıt formu: üyelik süresi ---- */
+function cAthTermSection(){
+  if(!(role==='admin'||role==='coach')) return '';
+  const isAdmin=role==='admin';
+  return `<div id="af_termbox" style="display:none;margin:12px 0;"><div class="section-title" style="margin:0 0 6px;">Üyelik süresi</div>
+   <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;align-items:end;">
+   <div class="field" style="margin:0;"><label for="af_term">Süre</label><select id="af_term" onchange="cAthTermHint()"><option value="1">Aylık</option>${TERM_MONTHS.map(m=>`<option value="${m}">${m} aylık</option>`).join('')}</select></div>
+   ${isAdmin?'<label style="display:flex;gap:8px;align-items:center;font-size:14px;"><input type="checkbox" id="af_termpay"> Ödeme kaydı oluştur (bekliyor)</label>':''}</div>
+   <div id="af_termhint" style="font-size:12.5px;color:var(--muted);margin-top:6px;"></div></div>`;
+}
+function cAthTermHint(){
+  const g=document.getElementById('af_group'), t=document.getElementById('af_term'), h=document.getElementById('af_termhint'), box=document.getElementById('af_termbox'); if(!g||!t||!box) return;
+  const real=g.value&&g.value!=='trial'&&g.value!=='private'; box.style.display=real?'':'none'; if(!real) return;
+  const m=Number(t.value)||1, grp=DB.groups.find(x=>x.id===g.value), pay=document.getElementById('af_termpay');
+  if(pay&&!pay.dataset.touched){ pay.checked=m>1; pay.onchange=()=>{ pay.dataset.touched='1'; }; }
+  if(!h) return;
+  if(m===1){ h.textContent='Aylık üyelik: ödeme, her ay Ödemeler bölümünden alınır.'; return; }
+  if(role==='admin'&&grp){ const pr=termPrice(grp.pool,m); const end=addMonthsYmd((document.getElementById('af_joined')||{}).value||todayStr(),m);
+    h.textContent=pr>0?`${grp.pool} havuzu ${m} aylık fiyatı: ${money(pr)} · bitiş: ${fmtDate(end)}`:`${grp.pool} havuzu için ${m} aylık fiyat girilmemiş (Finans > Havuz Fiyatları). Kayıt yine yapılır, ücreti sonra işlersiniz.`; }
+  else h.textContent=`${m} aylık üyelik seçildi. Ücreti yönetici belirleyecek.`;
+}
+{ const _af3=afToggle; afToggle=function(){ _af3(); cAthTermHint(); }; }
+function cMemPay(a,m,pool,start,price){ DB.payments.push({id:'pay'+Date.now()+Math.floor(Math.random()*1000),athlete:a.id,amount:price,due:start,status:'pending',type:'Aidat',method:'-',paidDate:'',pool,term:m}); recalcBalances(); }
+function cAthTermApply(athId){
+  const t=document.getElementById('af_term'); const m=t?Number(t.value)||1:1; if(m<2) return '';
+  const a=DB.athletes.find(x=>x.id===athId); const g=a&&DB.groups.find(x=>x.id===a.group); if(!a||!g) return '';
+  const start=a.joined||todayStr(); a.membership={months:m,start,end:addMonthsYmd(start,m),pool:g.pool};
+  if(role==='admin'){ const pr=termPrice(g.pool,m);
+    if(pr>0){ if((document.getElementById('af_termpay')||{}).checked) cMemPay(a,m,g.pool,start,pr); else a.membership.unpaid=true; save(); return `${m} aylık üyelik tanımlandı (${money(pr)})${(document.getElementById('af_termpay')||{}).checked?', ödeme kaydı oluşturuldu.':'.'}`; }
+    a.membership.pending=true; save(); return `${m} aylık üyelik kaydedildi ama ${g.pool} için ${m} aylık fiyat girilmemiş. Fiyatı girince sporcu ekranından işleyebilirsiniz.`; }
+  a.membership.pending=true; save(); return `${m} aylık üyelik seçildi (ücreti yönetici belirleyecek).`;
+}
+{ const _sa2=submitAthlete; submitAthlete=function(c,editId,extra){ const r=_sa2(c,editId,extra);
+    if(r&&r.ok&&!editId&&r.id){ try{ const m=cAthTermApply(r.id); if(m) r.pkgMsg=(m+' '+(r.pkgMsg||'')).trim(); }catch(e){} } return r; }; }
+/* ---- Yönetici: fiyat bekleyen üyeliği işle ---- */
+function cMemPrice(id){
+  if(role!=='admin') return; const a=DB.athletes.find(x=>x.id===id); if(!a||!a.membership||!a.membership.pending) return;
+  const m=a.membership, pr=termPrice(m.pool,m.months);
+  if(!okAmt(pr)){ alert(`${m.pool} havuzu için ${m.months} aylık fiyat tanımlı değil. Önce Finans > Havuz Fiyatları’ndan ekleyin.`); return; }
+  if(confirm(`${a.name} — ${m.months} aylık üyelik: ${money(pr)}\\n\\nÖdeme kaydı oluşturulsun mu? (Tamam = evet)`)) cMemPay(a,m.months,m.pool,m.start,pr); else m.unpaid=true;
+  delete m.pending; if(a.review==='pending') a.review='done'; save(); render();
+}
+{ const _cn3=cNewItems; cNewItems=function(){ const out=_cn3(); if(role!=='admin') return out;
+    out.forEach(i=>{ if(i.k==='ath'){ const a=DB.athletes.find(x=>x.id===i.id); if(a&&a.membership&&a.membership.pending){ i.mem=true; i.detail=((i.detail?i.detail+' · ':'')+`${a.membership.months} aylık üyelik seçildi, ücret bekliyor`); } } }); return out; }; }
+/* ---- Sporcu ekranı: üyelik bilgisi ---- */
+{ const _oa=openAthlete; openAthlete=function(id){ _oa(id); try{ const a=DB.athletes.find(x=>x.id===id); const body=$('#drawer .drawer-body'); if(!a||!a.membership||!body||!$('#drawer').classList.contains('open')) return; const m=a.membership;
+    const left=Math.ceil((parseYmd(m.end)-new Date())/864e5);
+    body.insertAdjacentHTML('afterbegin',`<div class="note-banner" style="margin-bottom:10px;">${m.months} aylık üyelik · ${fmtDate(m.start)} – ${fmtDate(m.end)} ${left<0?'<b style="color:var(--red)">(süresi doldu)</b>':left<=14?`<b>(${left} gün kaldı)</b>`:''}${m.pending&&role==='admin'?` <button class="btn sm primary" onclick="cMemPrice('${a.id}')">Ücreti işle</button>`:''}${m.pending&&role!=='admin'?' · ücret yönetici tarafından belirlenecek':''}</div>`); }catch(e){} }; }
+/* ---- Bildirim: üyeliği bitmek üzere olanlar (yönetici) ---- */
+{ const _cn4=cNotifs; cNotifs=function(){ const L=_cn4(); if(role==='admin'){ try{ DB.athletes.filter(a=>a.status==='active'&&a.membership).forEach(a=>{ const left=Math.ceil((parseYmd(a.membership.end)-new Date())/864e5); if(left<=14) L.push({ic:'⏳',text:`${a.name}: ${a.membership.months} aylık üyelik ${left<0?'sona erdi':left+' gün sonra bitiyor'}`,to:'athletes'}); }); }catch(e){} } return L; }; }
+/* ---- Özel ders paketi seçenekleri: 6 / 8 / 10 / 20 ders ---- */
+function cAthPkgSection(){
+  const isAdmin=role==='admin'; if(!(isAdmin||role==='coach')||!DB.pools.length) return '';
+  const pools=DB.pools.map(p=>`<option value="${escHtml(p.name)}">${escHtml(p.name)}</option>`).join('');
+  const sizes='<option value="1">Bireysel</option><option value="2">İkili</option><option value="3">Üçlü</option>';
+  const opts=PKG_SIZES.map(h=>`<option value="${h}">${h} ders</option>`).join('');
+  return `<details id="af_pkgbox" style="margin:12px 0;" ${isAdmin?'ontoggle="cAthPkgCat()"':''}><summary style="cursor:pointer;font-weight:600;">Özel ders paketi tanımla (isteğe bağlı)</summary>
+   <div style="font-size:12.5px;color:var(--muted);margin:6px 0 8px;">${isAdmin?'Paket fiyatı Finans > Havuz Fiyatları’ndan gelir (paket listesi veya ikili/üçlü saat ücreti).':'Kaç derslik paket aldığını seçin. Fiyatı ve ödemeyi yönetici belirler; ders hakkı hemen kullanılabilir.'}</div>
+   <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;">
+    <div class="field" style="margin:0;"><label for="af_pkpool">Havuz</label><select id="af_pkpool" onchange="cAthPkgCat()">${pools}</select></div>
+    <div class="field" style="margin:0;"><label for="af_pksize">Ders türü</label><select id="af_pksize" onchange="cAthPkgCat()">${sizes}</select></div>
+    <div class="field" style="margin:0;"><label for="af_pkh">Paket</label><select id="af_pkh" onchange="cAthPkgOther()"><option value="">Paket tanımlama</option>${opts}${isAdmin?'':'<option value="x">Başka sayı…</option>'}</select></div>
+    <div class="field" id="af_pkxw" style="margin:0;display:none;"><label for="af_pkx">Ders sayısı</label><input id="af_pkx" type="number" min="1" max="200"></div></div>
+   ${isAdmin?'<label style="display:flex;gap:8px;align-items:center;margin-top:8px;font-size:14px;"><input type="checkbox" id="af_pkpay" checked> Ödeme kaydı da oluştur (bekliyor)</label>':''}</details>`;
+}
+function cAthPkgOther(){ const h=document.getElementById('af_pkh'), w=document.getElementById('af_pkxw'); if(w) w.style.display=(h&&h.value==='x')?'':'none'; }
+function cAthPkgCat(){
+  const ps=document.getElementById('af_pkpool'), sz=document.getElementById('af_pksize'), hs=document.getElementById('af_pkh'); if(!ps||!hs||role!=='admin') return;
+  const size=Number(sz.value)||1, prev=hs.value, cat=poolPackages(ps.value,size), by={}; cat.forEach(x=>by[x.hours]=x.price);
+  const hours=Array.from(new Set(PKG_SIZES.concat(cat.map(x=>x.hours)))).sort((a,b)=>a-b);
+  hs.innerHTML='<option value="">Paket tanımlama</option>'+hours.map(h=>`<option value="${h}">${h} ders — ${by[h]?money(by[h])+(size>1?' (kişi başı)':''):'fiyat girilmemiş'}</option>`).join('');
+  if(prev) hs.value=prev;
+}
+function cAthPkgApply(athId){
+  const v=id=>(document.getElementById(id)||{}).value||''; let h=v('af_pkh'); if(!h) return ''; if(h==='x') h=v('af_pkx'); if(!h) return 'Paket eklenemedi: ders sayısını girin.';
+  const pool=v('af_pkpool'), size=Number(v('af_pksize'))||1;
+  if(role==='admin'){ const r=sellPackage(athId,Number(h),!!(document.getElementById('af_pkpay')||{}).checked,pool,size); return r.ok?`${h} derslik ${PL_SIZE_LABEL[size].toLowerCase()} paket tanımlandı.`:'Paket tanımlanamadı: '+r.errors.join(' '); }
+  if(role==='coach'){ const r=cPkgPending(athId,h,pool,size); return r.ok?`${h} derslik paket eklendi (fiyatı yönetici belirleyecek).`:'Paket eklenemedi: '+r.errors.join(' '); }
+  return '';
+}
 
 /* ============ INIT ============ */
 boot();
