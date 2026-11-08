@@ -5497,12 +5497,17 @@ function cPlCapInfo(poolName,ds,h,ignoreId){
   else if(anyGroup||anyRent) blocked=true;
   const used=new Set((DB.privateLessons||[]).filter(p=>p.id!==ignoreId&&p.status==='Onaylandı'&&p.date===ds&&p.hour===h&&(p.pool||(p.pkg?lessonPool(p):poolName))===poolName).map(p=>p.sid||p.id)).size;
   const cap=blocked?0:Math.min(pool.plCap,free);
-  return {limited:true,cap,used,full:used>=cap};
+  return {limited:true,cap,used,full:used>=cap,blocked,lanes:pool.lanes||0,laneGroups:lanesUsed.size,anyGroup,rent,pool:poolName,plCap:pool.plCap};
+}
+function cPlCapWhy(i){
+  if(i.blocked) return i.lanes>0?`${i.pool} havuzunda bu saatte tüm kulvarlar grup dersi/kiralama için ayrılmış (${i.lanes} kulvardan ${i.laneGroups} grup, ${i.rent} kiralama)`:`${i.pool} havuzunda bu saatte grup dersi veya kiralama var (havuzda kulvar sayısı tanımlı değil)`;
+  return `${i.pool} havuzunda bu saatte özel ders kontenjanı dolu (${i.used}/${i.cap})`;
 }
 const _cPlSlotProblem=plSlotProblem;
 plSlotProblem=function(athId,coachId,ds,h){
   const bad=_cPlSlotProblem(athId,coachId,ds,h); if(bad) return bad;
-  const i=cPlCapInfo(cPlPoolOfAth(athId),ds,h,null); if(i.full) return 'havuz kontenjanı dolu';
+  if(window.__plNoCap) return null;
+  const i=cPlCapInfo(window.__plPool||cPlPoolOfAth(athId),ds,h,null); if(i.full) return 'havuz kontenjanı dolu — '+cPlCapWhy(i);
   return null;
 };
 const _cPlApproveProblem=plApproveProblem;
@@ -6380,12 +6385,13 @@ function cPlSessionAdd(athIds,ds,h,note,coachArg,poolArg){
   if(aths.some((a,i)=>!a||a.status!=='active'||(!isAdmin&&!canViewAthlete(athIds[i])))) return {ok:false,errors:['Seçilen sporculardan biri için ders ekleyemezsiniz.']};
   const monthStart=ymd(new Date(new Date().getFullYear(),new Date().getMonth(),1));
   if(!isAdmin&&ds<monthStart) return {ok:false,errors:['Antrenör yalnızca bu ayın dersini girebilir. Önceki aylar için yönetici ile görüşün.']};
-  window.__plPast=true; let bad0=null;
-  try{ for(const id of athIds){ const bad=plSlotProblem(id,coach,ds,h); if(bad){ bad0='Eklenemedi ('+athleteName(id)+'): '+bad+'.'; break; } } } finally{ window.__plPast=false; }
-  if(bad0) return {ok:false,errors:[bad0]};
-  for(const id of []){ const bad=plSlotProblem(id,coach,ds,h); if(bad) return {ok:false,errors:['Eklenemedi ('+athleteName(id)+'): '+bad+'.']}; }
   const pks=athIds.map(id=>pickPackage(id,n)); const pool=(poolArg&&poolExists(poolArg)?poolArg:null)||(pks.find(Boolean)||{}).pool||cPlPoolOfAth(athIds[0])||(DB.groups.find(g=>g.coach===coach)||{}).pool||(DB.pools[0]||{}).name;
   if(pks.some(p=>p&&p.pool&&p.pool!==pool)) return {ok:false,errors:['Sporcuların paketleri farklı havuzlarda; aynı havuzda olmalı.']};
+  const nowD=new Date(); const isPastSlot=(()=>{ const w=parseYmd(ds); w.setHours(h,0,0,0); return w<=nowD; })();
+  window.__plPast=true; window.__plPool=pool; window.__plNoCap=isAdmin||isPastSlot; let bad0=null;
+  try{ for(const id of athIds){ const bad=plSlotProblem(id,coach,ds,h); if(bad){ bad0='Eklenemedi ('+athleteName(id)+'): '+bad+'.'; break; } } } finally{ window.__plPast=false; window.__plPool=null; window.__plNoCap=false; }
+  if(bad0) return {ok:false,errors:[bad0]};
+  for(const id of []){ const bad=plSlotProblem(id,coach,ds,h); if(bad) return {ok:false,errors:['Eklenemedi ('+athleteName(id)+'): '+bad+'.']}; }
   note=String(note||'').trim().slice(0,200); DB.privateLessons=DB.privateLessons||[];
   const sid='s'+Date.now()+Math.floor(Math.random()*100000);
   athIds.forEach((id,i)=>{ DB.privateLessons.push(Object.assign({id:'pl'+Date.now()+Math.floor(Math.random()*100000)+i,sid,size:n,pkg:pks[i]?pks[i].id:'',pool,athlete:id,coach,date:ds,hour:h,status:'Onaylandı',note,createdAt:ymd(new Date()),requestedBy:isAdmin?'admin':'coach',decidedAt:ymd(new Date()),decidedBy:isAdmin?'admin':coach,reason:'',unpackaged:!pks[i]},isAdmin?{}:{addedBy:'coach',review:'pending'})); });
