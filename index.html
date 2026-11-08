@@ -6518,8 +6518,10 @@ const NAV_GROUPS={
   ['Benim İşlerim',['weekly','leaves','approvals']],
   ['Sistem',['settings']]]
 };
-function cNavOpen(key,def){ try{ const v=localStorage.getItem('navgrp:'+key); return v===null?def:v==='1'; }catch(e){ return def; } }
-function cNavToggle(key,cur){ try{ localStorage.setItem('navgrp:'+key,cur?'0':'1'); }catch(e){} renderNav(); }
+const cNavState={};
+function cNavOpen(key,def){ return key in cNavState?cNavState[key]:def; }
+function cNavToggle(key,cur){ cNavState[key]=!cur; renderNav(); }
+function cNavReset(){ Object.keys(cNavState).forEach(k=>delete cNavState[k]); }
 (function(){ const st=document.createElement('style'); st.textContent='nav .sect.grp{cursor:pointer;display:flex;align-items:center;justify-content:space-between;user-select:none}nav .sect.grp:hover{color:#9fd3cf}nav .sect.grp .chev{font-size:9px;transition:transform .15s}nav .sect.grp.closed .chev{transform:rotate(-90deg)}nav .sect .navbadge{margin-left:6px}'; document.head.appendChild(st); })();
 renderNav=function(){
   const nav=$('#nav'); nav.innerHTML='';
@@ -6533,7 +6535,7 @@ renderNav=function(){
   else { groups=[]; let cur=null; NAV[role].forEach(x=>{ if(x.sect){ cur={t:x.sect,items:[]}; groups.push(cur); } else if(cur) cur.items.push(x); }); }
   groups.forEach(g=>{
     const key=role+':'+g.t, hasActive=g.items.some(x=>x.id===route);
-    const open=hasActive||cNavOpen(key,g.t==='Genel');
+    const open=cNavOpen(key,hasActive);
     const sum=g.items.reduce((s,x)=>s+(Number(navBadge(x.id))||0),0);
     const h=document.createElement('div'); h.className='sect grp'+(open?'':' closed'); h.setAttribute('role','button'); h.setAttribute('aria-expanded',open?'true':'false'); h.tabIndex=0;
     h.innerHTML=`<span>${escHtml(g.t)}</span><span style="display:inline-flex;align-items:center;gap:6px;">${(!open&&sum)?`<span class="navbadge">${sum}</span>`:''}<span class="chev">▼</span></span>`;
@@ -6673,6 +6675,15 @@ function cPkgPrice(id){
     (DB.plPackages||[]).forEach(pk=>{ if(pk.pricePending&&pk.review==='pending') out.push({k:'pkg',id:pk.id,date:pk.createdAt||'',text:`${coachName(pk.by)} ${athleteName(pk.athlete)} için ${pk.hours} saatlik ${(PL_SIZE_LABEL[pk.size||1]||'Bireysel').toLowerCase()} paket ekledi (${pk.pool})`,detail:'Fiyat girilmedi; “Fiyatlandır” ile katalogdaki fiyatı uygulayın.'}); });
     return out.sort((x,y)=>String(y.date).localeCompare(String(x.date))); }; }
 { const _rd2=cReviewDone; cReviewDone=function(k,id){ if(k==='pkg'){ if(role!=='admin') return; const pk=(DB.plPackages||[]).find(x=>x.id===id); if(pk){ pk.review='done'; save(); } return; } return _rd2(k,id); }; }
+
+/* ---- Menü davranışı: boşluğa basınca kapan; giriş/çıkışta başlıklar kapansın ---- */
+{ const _sl=sbShowLogin; sbShowLogin=function(){ cNavReset(); return _sl.apply(this,arguments); }; }
+document.addEventListener('click',function(e){
+  const s=document.getElementById('sidebar'); if(!s) return;
+  if(e.target.closest('#sidebar,.navtab,.navhot,.hamburger')) return;
+  if(window.innerWidth<=840){ s.classList.remove('open'); }
+  else if(document.body.classList.contains('navauto')){ s.classList.remove('show'); }
+},true);
 
 /* ============ C16: Havuz teması — açık (Cam Havuz) / koyu (Gece Havuzu) + hareketli su ============ */
 (function(){
