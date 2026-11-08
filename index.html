@@ -2266,6 +2266,7 @@ function athFormHtml(a,pre){
     <div class="field"><label for="af_pfirst">Yeni veli adı</label><input id="af_pfirst" maxlength="30" value="${escHtml(V('pfirst',''))}"></div>
     <div class="field"><label for="af_plast">Yeni veli soyadı</label><input id="af_plast" maxlength="30" value="${escHtml(V('plast',''))}"></div>
     <div class="field"><label for="af_pphone">Veli telefonu</label><input id="af_pphone" maxlength="20" value="${escHtml(V('pphone',''))}"></div></div></div>`}
+  ${a?'':cAthPkgSection()}
   <div id="af_result" class="grp-result" style="display:none;" aria-live="polite"></div>
   <div style="display:flex;gap:10px;margin-top:14px;"><button class="btn primary" onclick="athSubmit()">${role==='admin'?(a?'Kaydet':'Sporcuyu ekle'):'Onaya gönder'}</button><button class="btn" onclick="closeDrawer()">Vazgeç</button></div></div>`;
 }
@@ -2305,6 +2306,7 @@ function athSubmit(){
     trial:{source:r0.t_source,sourceNote:r0.t_note,trialDate:r0.t_date,interest:r0.t_interest},leave:{category:r0.l_cat,note:r0.l_note}});
   if(!r.ok){const el=document.getElementById('af_result'); el.style.display='block'; el.className='grp-result bad'; el.innerHTML='<ul class="ai-list">'+r.errors.map(x=>`<li>${escHtml(x)}</li>`).join('')+'</ul>'; return;}
   mgmtMsg=r.mode==='request'?'Talep yöneticiye gönderildi. Onaylanınca uygulanacak.':(edit?'Sporcu güncellendi.':(c.group==='trial'?'Deneme kaydı eklendi.':'Sporcu eklendi.'));
+  if(r.pkgMsg) mgmtMsg+=' '+r.pkgMsg;
   closeDrawer();
   if(route==='athletes') renderAthletes($('#content')); else if(route==='approvals') renderApprovals($('#content')); else if(route==='insights') renderInsights($('#content'));
 }
@@ -3059,7 +3061,7 @@ function renderFinance(c){
       <label class="chk" style="margin-top:10px;display:inline-flex;"><input type="checkbox" id="pk_pay" checked> Ödeme kaydı da oluştur (bekliyor)</label>
       <div id="pk_res" style="font-size:12.5px;color:var(--red);margin-top:6px;"></div><button class="btn primary" style="margin-top:8px;" onclick="pkgSell()">Paketi tanımla</button></div>
       ${cUnpkgCard()}<div class="card" style="padding:0;margin-top:14px;overflow-x:auto;"><table><thead><tr><th>Sporcu</th><th>Havuz</th><th>Paket</th><th>Kalan</th><th>Fiyat</th><th>Tarih</th><th></th></tr></thead><tbody>
-      ${pks.map(pk=>`<tr><td>${escHtml(athleteName(pk.athlete))}</td><td>${escHtml(pk.pool||'—')}</td><td>${pk.hours} saat${(pk.size||1)>1?' · '+PL_SIZE_LABEL[pk.size]:''}</td><td>${pkgRemaining(pk)} saat</td><td>${money(pk.price)}</td><td>${fmtDate(pk.createdAt)}</td><td><button class="btn sm danger" onclick="pkgDel('${pk.id}')">Sil</button></td></tr>`).join('')||'<tr><td colspan="7"><div class="empty">Henüz paket tanımlanmadı</div></td></tr>'}</tbody></table></div>`;
+      ${pks.map(pk=>`<tr><td>${escHtml(athleteName(pk.athlete))}</td><td>${escHtml(pk.pool||'—')}</td><td>${pk.hours} saat${(pk.size||1)>1?' · '+PL_SIZE_LABEL[pk.size]:''}</td><td>${pkgRemaining(pk)} saat</td><td>${pk.pricePending?`<span class="badge amber">fiyat bekliyor</span> <button class="btn sm" onclick="cPkgPrice('${pk.id}')">Fiyatlandır</button>`:money(pk.price)}</td><td>${fmtDate(pk.createdAt)}</td><td><button class="btn sm danger" onclick="pkgDel('${pk.id}')">Sil</button></td></tr>`).join('')||'<tr><td colspan="7"><div class="empty">Henüz paket tanımlanmadı</div></td></tr>'}</tbody></table></div>`;
   }
   c.innerHTML=`${msgBanner()}${finTabs()}${body}`;
   if(finTab==='packages') pkgPoolChanged();
@@ -3742,7 +3744,7 @@ async function sbPush(d){
     }
     return {ok:true};
   };
-  if(d.adds.length){ const r=await writeBatch(d.adds); if(!r.ok) return r; }
+  if(d.adds.length){ const a1=d.adds.filter(x=>admin||x.c!=='plPackages'), a2=d.adds.filter(x=>!admin&&x.c==='plPackages'); if(a1.length){ const r=await writeBatch(a1); if(!r.ok) return r; } if(a2.length){ const r=await writeBatch(a2); if(!r.ok) return r; } }
   if(d.upds.length){
     if(admin){ const r=await writeBatch(d.upds); if(!r.ok) return r; }
     else for(const x of d.upds){
@@ -6148,7 +6150,7 @@ function renderNewItems(c){
   c.innerHTML=`<div class="note-banner" style="margin-bottom:12px;">Antrenörlerin kendi yaptığı sporcu/veli kayıtları ve özel dersler burada görünür. Kontrol edince “Gördüm”e basın; kayıtlar silinmez.</div>
   ${L.length?`<div style="margin-bottom:10px;"><button class="btn sm" onclick="cReviewAll();renderNewItems($('#content'));render();">Hepsini gördüm</button></div>`:''}
   ${L.map(i=>`<div class="card" style="margin-bottom:10px;"><div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center;"><div><b>${escHtml(i.text)}</b>${i.detail?`<div style="font-size:12.5px;color:var(--muted);margin-top:3px;">${escHtml(i.detail)}</div>`:''}</div>
-   <div style="display:flex;gap:6px;">${i.unpk?`<button class="btn sm" onclick="cUnpkgDo('${i.ath}')">Pakete bağla</button>`:''}${i.k==='ath'?`<button class="btn sm" onclick="openAthlete('${i.id}')">Aç</button>`:`<button class="btn sm" onclick="route='schedule';render();">Programda gör</button>`}<button class="btn sm primary" onclick="cReviewDone('${i.k}','${i.id}');renderNewItems($('#content'));render();">Gördüm</button></div></div></div>`).join('')||'<div class="card"><div class="empty">Kontrol bekleyen yeni kayıt yok</div></div>'}`;
+   <div style="display:flex;gap:6px;">${i.unpk?`<button class="btn sm" onclick="cUnpkgDo('${i.ath}')">Pakete bağla</button>`:''}${i.k==='pkg'?`<button class="btn sm primary" onclick="cPkgPrice('${i.id}')">Fiyatlandır</button>`:i.k==='ath'?`<button class="btn sm" onclick="openAthlete('${i.id}')">Aç</button>`:`<button class="btn sm" onclick="route='schedule';render();">Programda gör</button>`}<button class="btn sm primary" onclick="cReviewDone('${i.k}','${i.id}');renderNewItems($('#content'));render();">Gördüm</button></div></div></div>`).join('')||'<div class="card"><div class="empty">Kontrol bekleyen yeni kayıt yok</div></div>'}`;
 }
 (function(){
   const i=NAV.admin.findIndex(x=>x.id==='dashboard'); NAV.admin.splice(i<0?0:i+1,0,{id:'newitems',label:'Yeni Kayıtlar',ic:'🆕'});
@@ -6617,6 +6619,60 @@ function plCancelDo(id){
   }; }
 
 function schedWeekPick(v){ if(!/^\d{4}-\d{2}-\d{2}$/.test(v||'')) return; const d=parseYmd(v); const mon=new Date(d); mon.setDate(mon.getDate()-((mon.getDay()+6)%7)); schedWeek=Math.max(-52,Math.min(12,Math.round((mon-weekStart(0))/(7*864e5)))); renderSchedule($('#content')); }
+
+/* ---- Yeni sporcu kaydında özel ders paketi (yönetici: katalogdan + ödeme; antrenör: saat seçer, fiyatı yönetici belirler) ---- */
+SB_WRITE.coach.push('plPackages');
+function cAthPkgSection(){
+  const isAdmin=role==='admin'; if(!(isAdmin||role==='coach')||!DB.pools.length) return '';
+  const pools=DB.pools.map(p=>`<option value="${escHtml(p.name)}">${escHtml(p.name)}</option>`).join('');
+  const sizeSel=`<select id="af_pksize" ${isAdmin?'onchange="cAthPkgCat()"':''}><option value="1">Bireysel</option><option value="2">İkili</option><option value="3">Üçlü</option></select>`;
+  const hoursField=isAdmin?`<select id="af_pkh"><option value="">Paket tanımlama</option></select>`:`<input id="af_pkh" type="number" min="1" max="200" placeholder="Boş = paket yok">`;
+  return `<details id="af_pkgbox" style="margin:12px 0;" ${isAdmin?'ontoggle="cAthPkgCat()"':''}><summary style="cursor:pointer;font-weight:600;">Özel ders paketi tanımla (isteğe bağlı)</summary>
+   <div style="font-size:12.5px;color:var(--muted);margin:6px 0 8px;">${isAdmin?'Paket fiyatı Finans > Havuz Fiyatları’ndaki listeden gelir.':'Kaç saatlik paket aldığını seçin. Fiyatı ve ödemeyi yönetici belirler; ders hakkı hemen kullanılabilir.'}</div>
+   <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;">
+    <div class="field" style="margin:0;"><label for="af_pkpool">Havuz</label><select id="af_pkpool" ${isAdmin?'onchange="cAthPkgCat()"':''}>${pools}</select></div>
+    <div class="field" style="margin:0;"><label for="af_pksize">Ders türü</label>${sizeSel}</div>
+    <div class="field" style="margin:0;"><label for="af_pkh">${isAdmin?'Paket':'Kaç saat'}</label>${hoursField}</div></div>
+   ${isAdmin?'<label style="display:flex;gap:8px;align-items:center;margin-top:8px;font-size:14px;"><input type="checkbox" id="af_pkpay" checked> Ödeme kaydı da oluştur (bekliyor)</label>':''}</details>`;
+}
+function cAthPkgCat(){
+  const ps=document.getElementById('af_pkpool'), sz=document.getElementById('af_pksize'), hs=document.getElementById('af_pkh'); if(!ps||!hs||hs.tagName!=='SELECT') return;
+  const size=Number(sz.value)||1, prev=hs.value;
+  hs.innerHTML='<option value="">Paket tanımlama</option>'+poolPackages(ps.value,size).map(x=>`<option value="${x.hours}">${x.hours} saatlik — ${money(x.price)}${size>1?' (kişi başı)':''}</option>`).join('');
+  if(prev) hs.value=prev;
+}
+function cPkgPending(athId,hours,pool,size){
+  if(role!=='coach') return {ok:false,errors:['Bu işlemi yalnızca antrenör yapar.']};
+  hours=Number(hours); size=Number(size)||1;
+  if(!(Number.isInteger(hours)&&hours>=1&&hours<=200)) return {ok:false,errors:['Paket saati 1 ile 200 arasında tam sayı olmalı.']};
+  if(![1,2,3].includes(size)) return {ok:false,errors:['Ders türü geçersiz.']};
+  if(!canViewAthlete(athId)) return {ok:false,errors:['Bu sporcu için paket ekleyemezsiniz.']};
+  if(!poolExists(pool)) return {ok:false,errors:['Havuz seçin.']};
+  DB.plPackages=DB.plPackages||[];
+  const pk={id:'pk'+Date.now()+Math.floor(Math.random()*1000),athlete:athId,hours,price:0,pool,size,createdAt:todayStr(),addedBy:'coach',by:DB.currentUser.coachId,pricePending:true,review:'pending'};
+  DB.plPackages.push(pk); save(); return {ok:true,id:pk.id,errors:[]};
+}
+function cAthPkgApply(athId){
+  const v=id=>(document.getElementById(id)||{}).value||''; const h=v('af_pkh'); if(!h) return '';
+  const pool=v('af_pkpool'), size=Number(v('af_pksize'))||1;
+  if(role==='admin'){ const r=sellPackage(athId,Number(h),!!(document.getElementById('af_pkpay')||{}).checked,pool,size); return r.ok?`${h} saatlik paket tanımlandı.`:'Paket tanımlanamadı: '+r.errors.join(' '); }
+  if(role==='coach'){ const r=cPkgPending(athId,h,pool,size); return r.ok?`${h} saatlik paket eklendi (fiyatı yönetici belirleyecek).`:'Paket eklenemedi: '+r.errors.join(' '); }
+  return '';
+}
+{ const _sa=submitAthlete; submitAthlete=function(c,editId,extra){ const r=_sa(c,editId,extra); if(r&&r.ok&&!editId&&r.id){ try{ const m=cAthPkgApply(r.id); if(m) r.pkgMsg=m; }catch(e){ r.pkgMsg='Paket eklenemedi.'; } } return r; }; }
+function cPkgPrice(id){
+  if(role!=='admin') return; const pk=(DB.plPackages||[]).find(x=>x.id===id); if(!pk||!pk.pricePending) return;
+  const price=pkgPriceFor(pk.pool,pk.hours,pk.size||1);
+  if(!okAmt(price)){ alert(`${pk.pool} havuzu için ${pk.hours} saatlik ${(PL_SIZE_LABEL[pk.size||1]||'').toLowerCase()} paket fiyatı tanımlı değil. Önce Finans > Havuz Fiyatları’ndan ekleyin.`); return; }
+  const withPay=confirm(`${athleteName(pk.athlete)} — ${pk.hours} saatlik paket: ${money(price)}\n\nÖdeme kaydı da oluşturulsun mu? (Tamam = evet)`);
+  pk.price=price; delete pk.pricePending; pk.review='done';
+  if(withPay) DB.payments.push({id:'pay'+Date.now()+Math.floor(Math.random()*1000),athlete:pk.athlete,amount:price,due:todayStr(),status:'pending',type:'Özel ders paketi'+((pk.size||1)>1?' ('+PL_SIZE_LABEL[pk.size]+')':''),method:'-',paidDate:'',pkg:pk.id,pool:pk.pool});
+  recalcBalances(); save(); render();
+}
+{ const _cn2=cNewItems; cNewItems=function(){ const out=_cn2(); if(role!=='admin') return out;
+    (DB.plPackages||[]).forEach(pk=>{ if(pk.pricePending&&pk.review==='pending') out.push({k:'pkg',id:pk.id,date:pk.createdAt||'',text:`${coachName(pk.by)} ${athleteName(pk.athlete)} için ${pk.hours} saatlik ${(PL_SIZE_LABEL[pk.size||1]||'Bireysel').toLowerCase()} paket ekledi (${pk.pool})`,detail:'Fiyat girilmedi; “Fiyatlandır” ile katalogdaki fiyatı uygulayın.'}); });
+    return out.sort((x,y)=>String(y.date).localeCompare(String(x.date))); }; }
+{ const _rd2=cReviewDone; cReviewDone=function(k,id){ if(k==='pkg'){ if(role!=='admin') return; const pk=(DB.plPackages||[]).find(x=>x.id===id); if(pk){ pk.review='done'; save(); } return; } return _rd2(k,id); }; }
 
 /* ============ C16: Havuz teması — açık (Cam Havuz) / koyu (Gece Havuzu) + hareketli su ============ */
 (function(){
