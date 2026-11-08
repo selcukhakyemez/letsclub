@@ -2260,13 +2260,14 @@ function athFormHtml(a,pre){
     <div class="field"><label for="af_lcat">Sebep</label><select id="af_lcat"><option value="">Seçin</option>${opt(LEAVE_CATS.map(x=>[x,x]),V('l_cat',''))}</select></div>
     <div class="field"><label for="af_lnote">Ek not (isteğe bağlı)</label><input id="af_lnote" maxlength="200" value="${escHtml(V('l_note',''))}"></div></div>
   ${role==='admin'?`<div class="field"><label for="af_joined">Gruba katılış tarihi</label><input id="af_joined" type="date" max="${todayStr()}" value="${escHtml(a&&a.joined?a.joined:todayStr())}"><div style="font-size:12px;color:var(--muted);margin-top:3px;">Grup daha önce başladıysa geçmiş bir tarih girebilirsiniz.</div></div>`:''}
+  ${a?'':cAthTermSection()}
   ${a?'':`<div id="af_parentSec"><div class="section-title">Veli</div>
   ${role==='admin'?`<div class="field"><label for="af_parent">Mevcut veli</label><select id="af_parent"><option value="">Seçmeden yeni veli gir</option>${opt(DB.parents.map(p=>[p.id,p.name]),V('parent',''))}</select></div>`:''}
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
     <div class="field"><label for="af_pfirst">Yeni veli adı</label><input id="af_pfirst" maxlength="30" value="${escHtml(V('pfirst',''))}"></div>
     <div class="field"><label for="af_plast">Yeni veli soyadı</label><input id="af_plast" maxlength="30" value="${escHtml(V('plast',''))}"></div>
     <div class="field"><label for="af_pphone">Veli telefonu</label><input id="af_pphone" maxlength="20" value="${escHtml(V('pphone',''))}"></div></div></div>`}
-  ${a?'':cAthTermSection()+cAthPkgSection()}
+  ${a?'':cAthPkgSection()}
   <div id="af_result" class="grp-result" style="display:none;" aria-live="polite"></div>
   <div style="display:flex;gap:10px;margin-top:14px;"><button class="btn primary" onclick="athSubmit()">${role==='admin'?(a?'Kaydet':'Sporcuyu ekle'):'Onaya gönder'}</button><button class="btn" onclick="closeDrawer()">Vazgeç</button></div></div>`;
 }
@@ -6709,7 +6710,7 @@ document.addEventListener('click',function(e){
   .topbtns button{width:36px;height:36px;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--ink);cursor:pointer;font-size:16px;line-height:1;}
   .topbtns button.off{opacity:.55;}
   /* ---- AÇIK: Cam Havuz ---- */
-  :root[data-theme="light"]{--bg:transparent;--card:rgba(255,255,255,.8);--line:rgba(255,255,255,.7);--ink:#0B2A3A;--muted:#47697A;--aqua:#0AA2C0;--teal-900:#0B3B52;--aqua-light:rgba(10,162,192,.12);}
+  :root[data-theme="light"]{--bg:transparent;--card:rgba(255,255,255,.8);--line:rgba(11,59,82,.15);--ink:#0B2A3A;--muted:#47697A;--aqua:#0AA2C0;--teal-900:#0B3B52;--aqua-light:rgba(10,162,192,.12);}
   :root[data-theme="light"] body{background:#bfe6ef;}
   :root[data-theme="light"] #waterfx .wf-base{background-image:linear-gradient(rgba(240,250,253,.58),rgba(232,246,250,.72)),url(${POOL_L});}
   :root[data-theme="light"] .line-strong{border-color:#cfe3e8}
@@ -6738,6 +6739,12 @@ document.addEventListener('click',function(e){
   :root[data-theme="dark"]{--teal-600:#6fdcee;--green:#6fd19a;--red:#ff8d7a;--amber:#f0c56a;}
   :root[data-theme="dark"] .avatar{color:#8fe9f7}
   :root[data-theme="dark"] #fin_report{--muted:#4b6370;--ink:#1d2b2b;}
+  :root[data-theme="light"] input,:root[data-theme="light"] select,:root[data-theme="light"] textarea{background:#fff;border-color:rgba(11,59,82,.22);}
+  :root[data-theme="light"] .sidebar select,:root[data-theme="light"] .sidebar input{background:rgba(255,255,255,.12);border-color:rgba(255,255,255,.25);color:#fff;}
+  :root[data-theme="light"] .drawer,:root[data-theme="light"] .drawer-head{background:#fbfeff!important;}
+  :root[data-theme="dark"] .drawer,:root[data-theme="dark"] .drawer-head{background:#0a2236!important;}
+  :root[data-theme="light"] #sbOverlay{background:linear-gradient(rgba(240,250,253,.58),rgba(232,246,250,.72)),url(${POOL_L}) center/cover #bfe6ef!important;}
+  :root[data-theme="dark"] #sbOverlay{background:linear-gradient(rgba(4,18,32,.62),rgba(4,18,32,.8)),url(${POOL_D}) center/cover #061a2b!important;}
   /* buzlu cam yalnızca geniş ekranda (telefonda performans) */
   @media(min-width:841px){:root[data-theme] .card,:root[data-theme] .topbar{backdrop-filter:blur(14px) saturate(1.2);}:root[data-theme] .sidebar{backdrop-filter:blur(14px);}}
   `;
@@ -6814,8 +6821,9 @@ function cAthTermSection(){
 }
 function cAthTermHint(){
   const g=document.getElementById('af_group'), t=document.getElementById('af_term'), h=document.getElementById('af_termhint'), box=document.getElementById('af_termbox'); if(!g||!t||!box) return;
-  const real=g.value&&g.value!=='trial'&&g.value!=='private'; box.style.display=real?'':'none'; if(!real) return;
+  const real=g.value!=='trial'&&g.value!=='private'; box.style.display=real?'':'none'; if(!real) return;
   const m=Number(t.value)||1, grp=DB.groups.find(x=>x.id===g.value), pay=document.getElementById('af_termpay');
+  if(!grp&&h){ h.textContent='Önce yukarıdan grubu seçin; seçilen süre için fiyat burada görünür.'; return; }
   if(pay&&!pay.dataset.touched){ pay.checked=m>1; pay.onchange=()=>{ pay.dataset.touched='1'; }; }
   if(!h) return;
   if(m===1){ h.textContent='Aylık üyelik: ödeme, her ay Ödemeler bölümünden alınır.'; return; }
