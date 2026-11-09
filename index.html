@@ -7122,6 +7122,38 @@ function cTodayTrialHtml(){
 }
 { const _d3=renderDashboard; renderDashboard=function(c){ _d3.apply(this,arguments); try{ if(role==='admin'){ const tc=c.querySelector('.two-col'); if(tc){ const t=cTodayTrialHtml(); tc.insertAdjacentHTML('beforebegin','<div class="two-col" style="margin-top:22px;">'+cTodayPayHtml()+(t||'<div class="card"><div class="section-title" style="margin-top:0;">Bugünkü Deneme Dersleri</div><div class="empty">Bugün deneme dersi yok</div></div>')+'</div>'); } } }catch(e){ console.error(e); } }; }
 
+/* ---- Geri / ileri: sayfalar arasında dolaşım (tarayıcının geri/ileri tuşları da çalışır) ---- */
+const NAVH={stack:[],i:-1,gen:0,busy:false};
+function cNavRec(){
+  if(NAVH.busy||typeof route!=='string') return;
+  if(NAVH.stack[NAVH.i]===route) return;
+  NAVH.stack=NAVH.stack.slice(0,NAVH.i+1); NAVH.stack.push(route);
+  if(NAVH.stack.length>60) NAVH.stack.shift();
+  NAVH.i=NAVH.stack.length-1;
+  try{ const st={cn:NAVH.i,g:NAVH.gen}; if(NAVH.i===0) history.replaceState(st,''); else history.pushState(st,''); }catch(e){}
+}
+function cNavUpdate(){
+  const b=document.getElementById('navBack'), f=document.getElementById('navFwd');
+  if(b) b.disabled=!(NAVH.i>0); if(f) f.disabled=!(NAVH.i<NAVH.stack.length-1);
+}
+function cNavGo(d){ const t=NAVH.i+d; if(t<0||t>=NAVH.stack.length) return; try{ history.go(d); }catch(e){ cNavShow(t); } }
+function cNavShow(n){
+  const r=NAVH.stack[n]; if(!r) return;
+  if(!(NAV[role]||[]).find(x=>x.id===r)) { NAVH.i=n; cNavUpdate(); return; }
+  NAVH.busy=true; try{ NAVH.i=n; route=r; closeDrawer&&closeDrawer(); render(); } finally{ NAVH.busy=false; } cNavUpdate();
+}
+window.addEventListener('popstate',e=>{ const s=e.state; if(s&&typeof s.cn==='number'&&s.g===NAVH.gen&&NAVH.stack[s.cn]) cNavShow(s.cn); });
+{ const _rn3=render; render=function(){ const r=_rn3.apply(this,arguments); try{ cNavRec(); cNavUpdate(); }catch(e){} return r; }; }
+function cNavReset(){ NAVH.stack=[]; NAVH.i=-1; NAVH.gen++; cNavUpdate(); }
+{ const _sr=setRole; setRole=function(r){ cNavReset(); return _sr.apply(this,arguments); }; }
+{ const _sl=sbShowLogin; sbShowLogin=function(){ cNavReset(); return _sl.apply(this,arguments); }; }
+(function(){
+  const st=document.createElement('style'); st.textContent='.navhist{display:flex;gap:6px;margin-left:auto;}.navhist button{width:34px;height:34px;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--ink);cursor:pointer;font-size:18px;line-height:1;padding:0;}.navhist button{flex:none;}@media(max-width:840px){.topbar{flex-wrap:wrap;row-gap:8px;}.navhist{margin-left:0;order:2;}.topbar .search{order:5;flex:1 1 100%;min-width:0;}.topbar .search input{min-width:0;width:100%;}}.navhist button:disabled{opacity:.35;cursor:default;}.navhist button:not(:disabled):hover{background:rgba(14,143,181,.14);}';
+  document.head.appendChild(st);
+  function init(){ const h=document.getElementById('meBadge'); if(!h||document.getElementById('navBack')) return; const d=document.createElement('div'); d.className='navhist'; d.innerHTML='<button type="button" id="navBack" title="Geri (önceki sayfa)" aria-label="Geri" onclick="cNavGo(-1)" disabled>‹</button><button type="button" id="navFwd" title="İleri" aria-label="İleri" onclick="cNavGo(1)" disabled>›</button>'; h.parentNode.insertBefore(d,h); cNavUpdate(); }
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',init); else setTimeout(init,0);
+})();
+
 /* ============ INIT ============ */
 boot();
 </script>
