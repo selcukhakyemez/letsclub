@@ -1058,8 +1058,9 @@ function renderGroups(c){
   const msg=grpMsg; grpMsg='';
   c.innerHTML=`${msg?`<div class="note-banner">${escHtml(msg)}</div>`:''}
   ${admin?`<div style="margin-bottom:14px;"><button class="btn primary" onclick="grpOpen()">+ Yeni Grup Ekle</button> <button class="btn" onclick="poolOpen()">Havuzları yönet</button></div>`:''}
+  ${cGroupsByPool(list).map(sec=>`<div class="section-title" style="margin:18px 0 8px;">${escHtml(sec.pool)} <span style="font-weight:400;color:var(--muted);font-size:13px;">· ${sec.items.length} grup</span></div>
   <div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(280px,1fr));">
-  ${list.map(g=>{
+  ${sec.items.map(g=>{
     const pct=Math.min(100,g.enrolled/g.capacity*100);
     const ended=g.endDate&&g.endDate<today, upcoming=g.startDate&&g.startDate>today;
     return `<div class="card">
@@ -1076,7 +1077,7 @@ function renderGroups(c){
       </div>
     </div>`;
   }).join('')}
-  </div>`;
+  </div>`).join('')}`;
 }
 function grpLaneHtml(poolName,selected){
   const pool=DB.pools.find(p=>p.name===poolName);
@@ -6925,6 +6926,14 @@ function cAthPkgApply(athId){
   let t=null; const scan=()=>{ t=null; document.querySelectorAll('select').forEach(s=>{ if(IDS.test(s.id)) enhance(s); }); };
   new MutationObserver(()=>{ if(!t) t=setTimeout(scan,0); }).observe(document.body,{childList:true,subtree:true});
 })();
+
+/* ---- Gruplar havuza göre, alfabetik; sporcu listeleri alfabetik ---- */
+function cTrCmp(a,b){ return String(a||'').localeCompare(String(b||''),'tr',{numeric:true,sensitivity:'base'}); }
+function cGroupsByPool(list){
+  const by={}; list.forEach(g=>{ (by[g.pool||'—']=by[g.pool||'—']||[]).push(g); });
+  return Object.keys(by).sort(cTrCmp).map(pool=>({pool,items:by[pool].slice().sort((x,y)=>cTrCmp(x.name,y.name))}));
+}
+{ const _rn=render; render=function(){ try{ if(DB&&Array.isArray(DB.athletes)) DB.athletes.sort((x,y)=>cTrCmp(x.name,y.name)); }catch(e){} return _rn.apply(this,arguments); }; }
 
 /* ============ INIT ============ */
 boot();
