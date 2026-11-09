@@ -1330,6 +1330,7 @@ function plShow(id){
   ${p.note?`<tr><td style="color:var(--muted);">Not</td><td>${escHtml(p.note)}</td></tr>`:''}
   </table></div>
   ${canCancelPL(p)?`<button class="btn danger" style="margin-top:14px;" onclick="plCancel('${p.id}')">Özel dersi iptal et</button>`:''}
+  ${canEditPL(p)?`<button class="btn" style="margin-top:8px;display:block;" onclick="plEdit('${p.id}')">✎ Düzenle (gün / saat)</button>`:''}
   </div>`;
   $('#overlay').classList.add('open'); d.classList.add('open');
 }
@@ -1391,7 +1392,8 @@ function plStaffHtml(){
     const clash=p.status==='Onay bekliyor'?plApproveProblem(p):null;
     let act='';
     if(p.status==='Onay bekliyor'&&canDecidePL(p)) act=(clash?`<span class="badge red">${escHtml(clash)}</span> `:`<button class="btn sm primary" onclick="plDecide('${p.id}','Onaylandı')">Onayla</button> `)+`<button class="btn sm danger" onclick="plDecide('${p.id}','Reddedildi')">Reddet</button>`;
-    else if(canCancelPL(p)) act=`<button class="btn sm danger" onclick="plCancel('${p.id}')">İptal et</button>`;
+    else if(canCancelPL(p)) act=`<button class="btn sm danger" onclick="plCancel('${p.id}')">İptal et</button>`+(canEditPL(p)?`<br><button class="btn sm" style="margin-top:4px;" onclick="plEdit('${p.id}')">✎ Düzenle</button>`:'');
+    if(act&&p.status==='Onay bekliyor'&&canEditPL(p)) act+=`<br><button class="btn sm" style="margin-top:4px;" onclick="plEdit('${p.id}')">✎ Düzenle</button>`;
     return `<tr><td>${fmtDate(p.date)}</td><td>${p.hour}:00-${p.hour+1}:00</td><td>${escHtml(athleteName(p.athlete))}<div style="font-size:11.5px;color:var(--muted);">${a?escHtml(a.level):''}</div></td>${isAdmin?`<td>${escHtml(coachName(p.coach))}</td>`:''}<td style="font-size:12.5px;color:var(--muted);">${escHtml(p.note)}${cPlTag(p)}</td><td>${plBadge(p.status)}${p.reason?`<div style="font-size:11.5px;color:var(--muted);">${escHtml(p.reason)}</div>`:''}</td><td>${act}</td></tr>`;
   }).join('')||`<tr><td colspan="${isAdmin?7:6}"><div class="empty">Özel ders talebi yok</div></td></tr>`}
   </tbody></table></div>`;
@@ -1596,7 +1598,7 @@ function renderAttendance(c){
   </div>`;
   function drawGrid(){
     const gid=$('#attGroup').value, date=$('#attDate').value;
-    const members=DB.athletes.filter(a=>a.group===gid);
+    const members=cRoster(gid,date);
     const key=gid+'|'+date;
     const saved=DB.attendanceLog[key]||{};
     const opts=['Katıldı','Gelmedi','Geç geldi','İzinli','Hastalık','Telafi'];
@@ -1611,7 +1613,7 @@ function saveAttendance(){
   if(!(role==='admin'||role==='coach')||!canViewGroup(gid)) return;
   const key=gid+'|'+date; const rec={};
   $$('#attGridWrap select').forEach(s=>rec[s.dataset.a]=s.value);
-  DB.attendanceLog[key]=rec; save();
+  DB.attendanceLog[key]=Object.assign({},DB.attendanceLog[key]||{},rec); save();
   alert('Yoklama kaydedildi: '+groupName(gid)+' — '+fmtDate(date));
 }
 
@@ -2092,7 +2094,7 @@ function applyAthleteEdit(id,changes,by){
   if(!toTrial&&merged.group!=='private'&&merged.group!==a.group){
     const og=DB.groups.find(x=>x.id===a.group), ng=DB.groups.find(x=>x.id===merged.group);
     if(og) og.enrolled=Math.max(0,og.enrolled-1);
-    ng.enrolled++; a.group=ng.id; a.coach=ng.coach; a.kind=null;
+    cGrpHistPush(a,todayStr()); ng.enrolled++; a.group=ng.id; a.coach=ng.coach; a.kind=null;
   }
   if(wasTrial&&!toTrial&&a.trial){ a.trial.convertedAt=todayStr(); a.trial.convertedGroup=merged.group; a.joined=todayStr(); }
   ATH_FIELDS.forEach(f=>{ if(f!=='group'&&f in changes) a[f]=(f==='first'||f==='last'||f==='phone')?(String(changes[f]).trim()||'-'):changes[f]; });
@@ -6986,6 +6988,120 @@ function cMyTodayHtml(){
 
 /* ---- Dar ekran: tablolar kartın dışına taşmasın (yatay kaydırma kartın içinde) ---- */
 (function(){ const st=document.createElement('style'); st.textContent='@media(max-width:840px){.card{max-width:100%;overflow-x:auto;}.two-col>*,.grid>*{min-width:0;}.two-col{grid-template-columns:minmax(0,1fr)!important;}}'; document.head.appendChild(st); })();
+
+/* ================= Özel ders: gün / saat (ve yönetici için antrenör) düzenleme ================= */
+const PL_EDIT_REASONS=['Sporcu isteği','Antrenör isteği','Havuz / hava durumu','Diğer'];
+function canEditPL(p){
+  if(!p||p._stub) return false;
+  if(role==='admin') return p.status==='Onay bekliyor'||p.status==='Onaylandı';
+  if(role==='coach') return p.coach===DB.currentUser.coachId&&p.status==='Onaylandı';
+  return false;
+}
+function plEdit(id){
+  const p=(DB.privateLessons||[]).find(x=>x.id===id); if(!p||!canEditPL(p)) return;
+  const sid=p.sid||p.id; const sibs=(DB.privateLessons||[]).filter(x=>!x._stub&&x.id!==p.id&&(x.sid||x.id)===sid&&x.coach===p.coach&&x.date===p.date&&x.hour===p.hour&&canEditPL(x));
+  const isAdmin=role==='admin'; const mStart=ymd(new Date(new Date().getFullYear(),new Date().getMonth(),1));
+  const hrs=[]; for(let h=PL_FIRST;h<=PL_LAST;h++) hrs.push(h);
+  openDrawerHtml(`<div style="padding:22px;"><h2 style="margin:0 0 4px;">Özel dersi düzenle</h2>
+   <div style="color:var(--muted);font-size:13.5px;margin-bottom:14px;">${[p].concat(sibs).map(x=>escHtml(athleteName(x.athlete))).join(', ')} · şimdiki: ${fmtDate(p.date)} ${p.hour}:00-${p.hour+1}:00 · ${escHtml(coachName(p.coach))}</div>
+   <div class="field"><label for="pe_date">Yeni tarih</label><input type="date" id="pe_date" value="${p.date}" ${isAdmin?'':'min="'+mStart+'"'}></div>
+   <div class="field"><label for="pe_hour">Yeni saat</label><select id="pe_hour">${hrs.map(h=>`<option value="${h}" ${h===p.hour?'selected':''}>${h}:00-${h+1}:00</option>`).join('')}</select></div>
+   ${isAdmin?`<div class="field"><label for="pe_coach">Antrenör</label><select id="pe_coach">${DB.coaches.map(c=>`<option value="${escHtml(c.id)}" ${c.id===p.coach?'selected':''}>${escHtml(c.name)}</option>`).join('')}</select></div>`:''}
+   <div class="field"><label for="pe_why">Değişiklik nedeni</label><select id="pe_why">${PL_EDIT_REASONS.map(r=>`<option>${escHtml(r)}</option>`).join('')}</select></div>
+   ${sibs.length?`<div style="font-size:13px;color:var(--muted);margin:6px 0;">Bu oturuma katılan ${sibs.map(x=>escHtml(athleteName(x.athlete))).join(', ')} dersi de birlikte taşınır.</div>`:''}
+   <div style="font-size:12.5px;color:var(--muted);">Ders paketten düşen hak, ödeme ve not aynen korunur; yalnızca zaman değişir. Eski zaman kayıtta saklanır.</div>
+   <div id="pe_err" role="alert" style="color:var(--red);font-size:13px;min-height:18px;margin-top:8px;"></div>
+   <div style="display:flex;gap:8px;margin-top:8px;"><button class="btn primary" onclick="plEditDo('${p.id}')">Kaydet</button><button class="btn" onclick="closeDrawer()">Vazgeç</button></div></div>`);
+}
+function plEditApply(id,ds,h,coachArg,why){
+  const p=(DB.privateLessons||[]).find(x=>x.id===id); if(!p||!canEditPL(p)) return {ok:false,errors:['Bu ders düzenlenemez.']};
+  const isAdmin=role==='admin'; const coach=isAdmin?(coachArg||p.coach):p.coach;
+  h=parseInt(h,10); if(!(h>=PL_FIRST&&h<=PL_LAST)) return {ok:false,errors:['Saat geçersiz.']};
+  if(!DB.coaches.some(c=>c.id===coach)) return {ok:false,errors:['Antrenör geçersiz.']};
+  if(!PL_EDIT_REASONS.includes(why)) why='Diğer';
+  if(ds===p.date&&h===p.hour&&coach===p.coach) return {ok:false,errors:['Tarih, saat veya antrenörde bir değişiklik yok.']};
+  const monthStart=ymd(new Date(new Date().getFullYear(),new Date().getMonth(),1));
+  if(!isAdmin&&ds<monthStart) return {ok:false,errors:['Antrenör yalnızca bu ay içindeki bir zamana taşıyabilir. Önceki aylar için yönetici ile görüşün.']};
+  const sid=p.sid||p.id; const list=[p].concat((DB.privateLessons||[]).filter(x=>!x._stub&&x.id!==p.id&&(x.sid||x.id)===sid&&x.coach===p.coach&&x.date===p.date&&x.hour===p.hour&&canEditPL(x)));
+  const w=parseYmd(ds); w.setHours(h,0,0,0); const pastSlot=w<=new Date();
+  window.__plPast=true; window.__plPool=p.pool||null; window.__plNoCap=isAdmin||pastSlot; let bad0=null;
+  try{ for(const x of list){ const bad=plSlotProblem(x.athlete,coach,ds,h); if(bad){ bad0='Taşınamadı ('+athleteName(x.athlete)+'): '+bad+'.'; break; } } } finally{ window.__plPast=false; window.__plPool=null; window.__plNoCap=false; }
+  if(bad0) return {ok:false,errors:[bad0]};
+  const by=isAdmin?'admin':DB.currentUser.coachId;
+  list.forEach(x=>{ x.moved=((x.moved||[]).concat([{d:x.date,h:x.hour,c:x.coach,at:todayStr(),by,why}])).slice(-10); x.date=ds; x.hour=h; if(isAdmin) x.coach=coach; });
+  save(); return {ok:true,errors:[],n:list.length};
+}
+function plEditDo(id){
+  const g=i=>(document.getElementById(i)||{}).value;
+  const r=plEditApply(id,g('pe_date'),g('pe_hour'),g('pe_coach'),g('pe_why'));
+  if(!r.ok){ const e=document.getElementById('pe_err'); if(e) e.textContent=r.errors[0]; return; }
+  closeDrawer(); plMsg=(r.n>1?r.n+' özel ders':'Özel ders')+' yeni zamana taşındı.'; plRefresh();
+}
+{ const _t=cPlTag; cPlTag=function(p){ let t=_t(p); if(p&&p.moved&&p.moved.length){ const m=p.moved[p.moved.length-1]; t+=` <span class="badge amber" style="font-size:10.5px;" title="Önceki: ${escHtml(fmtDate(m.d))} ${m.h}:00 · ${escHtml(m.why||'')}">saati değişti</span>`; } return t; }; }
+
+/* ================= Grup dersi: sporcunun grubunu / gününü değiştirme (geçmiş dersler korunur) ================= */
+function cDayBefore(ds){ const d=parseYmd(ds); d.setDate(d.getDate()-1); return ymd(d); }
+function cGrpHistPush(a,fromDs){
+  if(!a||!a.group||a.group==='trial'||a.group==='private') { a.groupSince=fromDs; return; }
+  a.groupHistory=(a.groupHistory||[]).concat([{group:a.group,from:a.groupSince||'0000-00-00',to:cDayBefore(fromDs)}]);
+  a.groupSince=fromDs;
+}
+function cGrpAt(a,ds){
+  for(const s of (a.groupHistory||[])) if(s.from<=ds&&ds<=s.to) return s.group;
+  if(a.groupSince&&ds<a.groupSince&&(a.groupHistory||[]).length) return '';
+  return a.group;
+}
+function cRoster(gid,ds){
+  const saved=(DB.attendanceLog||{})[gid+'|'+ds]||{};
+  return DB.athletes.filter(a=>cGrpAt(a,ds)===gid||(saved[a.id]!==undefined&&(a.groupHistory||[]).some(s=>s.group===gid)));
+}
+function cGrpMove(id,newGid,fromDs){
+  if(role!=='admin') return {ok:false,errors:['Grup değişikliğini yalnızca yönetici yapar.']};
+  const a=DB.athletes.find(x=>x.id===id); if(!a) return {ok:false,errors:['Sporcu bulunamadı.']};
+  const ng=DB.groups.find(x=>x.id===newGid); if(!ng) return {ok:false,errors:['Yeni grubu seçin.']};
+  if(newGid===a.group) return {ok:false,errors:['Sporcu zaten bu grupta.']};
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(fromDs||'')) return {ok:false,errors:['Geçerli bir başlangıç tarihi girin.']};
+  if(ng.enrolled>=ng.capacity) return {ok:false,errors:['"'+ng.name+'" grubu dolu ('+ng.enrolled+'/'+ng.capacity+').']};
+  if(fromDs>todayStr()){ a.pendingMove={group:newGid,from:fromDs}; save(); return {ok:true,errors:[],pending:true}; }
+  cGrpDoMove(a,newGid,fromDs); save(); return {ok:true,errors:[]};
+}
+function cGrpDoMove(a,newGid,fromDs){
+  const og=DB.groups.find(x=>x.id===a.group), ng=DB.groups.find(x=>x.id===newGid); if(!ng) return;
+  if(og) og.enrolled=Math.max(0,og.enrolled-1);
+  cGrpHistPush(a,fromDs); ng.enrolled++; a.group=ng.id; a.coach=ng.coach; a.kind=null; a.pendingMove=null;
+}
+function cGrpPendingApply(){
+  if(role!=='admin'||!DB||!DB.athletes) return false; let ch=false; const t=todayStr();
+  DB.athletes.forEach(a=>{ if(a.pendingMove&&a.pendingMove.from<=t){ const ng=DB.groups.find(x=>x.id===a.pendingMove.group); if(ng&&ng.id!==a.group){ cGrpDoMove(a,ng.id,a.pendingMove.from); } else a.pendingMove=null; ch=true; } });
+  if(ch) save(); return ch;
+}
+{ const _rn2=render; render=function(){ try{ cGrpPendingApply(); }catch(e){ console.error(e); } return _rn2.apply(this,arguments); }; }
+function cGrpMoveOpen(id){
+  const a=DB.athletes.find(x=>x.id===id); if(!a||role!=='admin') return;
+  const gs=DB.groups.filter(g=>g.id!==a.group).slice().sort((x,y)=>cTrCmp(x.pool,y.pool)||cTrCmp(x.name,y.name));
+  const cur=DB.groups.find(g=>g.id===a.group);
+  openDrawerHtml(`<div style="padding:22px;"><h2 style="margin:0 0 4px;">Grup / gün değiştir</h2>
+   <div style="color:var(--muted);font-size:13.5px;margin-bottom:14px;">${escHtml(a.name)} · şimdiki grup: <b>${cur?escHtml(cur.name)+' ('+escHtml(gSchedText(cur))+')':'—'}</b></div>
+   <div class="field"><label for="gm_g">Yeni grup (gün / saat)</label><select id="gm_g"><option value="">Seçin</option>${gs.map(g=>`<option value="${escHtml(g.id)}">${escHtml(g.pool)} · ${escHtml(g.name)} — ${escHtml(gSchedText(g))} (${g.enrolled}/${g.capacity})</option>`).join('')}</select></div>
+   <div class="field"><label for="gm_d">Geçiş tarihi</label><input type="date" id="gm_d" value="${todayStr()}"><div style="font-size:12px;color:var(--muted);margin-top:3px;">Bugün veya sonraki bir tarih seçin; ileri tarihte geçiş o gün kendiliğinden yapılır.</div></div>
+   <div style="font-size:12.5px;color:var(--muted);">Bu tarihten önceki yoklamalar ve dersler eski grupta aynen kalır; sporcu geçiş tarihinden itibaren yeni grubun listesinde görünür. Ödeme ve diğer bilgiler değişmez.</div>
+   <div id="gm_err" role="alert" style="color:var(--red);font-size:13px;min-height:18px;margin-top:8px;"></div>
+   <div style="display:flex;gap:8px;margin-top:8px;"><button class="btn primary" onclick="cGrpMoveDo('${a.id}')">Kaydet</button><button class="btn" onclick="closeDrawer()">Vazgeç</button></div></div>`);
+}
+function cGrpMoveDo(id){
+  const g=i=>(document.getElementById(i)||{}).value; const r=cGrpMove(id,g('gm_g'),g('gm_d'));
+  if(!r.ok){ const e=document.getElementById('gm_err'); if(e) e.textContent=r.errors[0]; return; }
+  closeDrawer(); render(); setTimeout(()=>openAthlete(id),0);
+}
+function cGrpMoveCancel(id){ const a=DB.athletes.find(x=>x.id===id); if(a&&role==='admin'){ a.pendingMove=null; save(); openAthlete(id); } }
+{ const _oa2=openAthlete; openAthlete=function(id){ _oa2(id); try{ const a=DB.athletes.find(x=>x.id===id); const body=$('#drawer .drawer-body'); if(!a||!body||!$('#drawer').classList.contains('open')) return; if(role!=='admin'&&role!=='coach') return;
+    const gn=gid=>{ const g=DB.groups.find(x=>x.id===gid); return g?g.name:'—'; };
+    let h=''; const hist=a.groupHistory||[];
+    if(a.pendingMove) h+=`<div class="note-banner" style="margin-bottom:8px;">${fmtDate(a.pendingMove.from)} tarihinde <b>${escHtml(gn(a.pendingMove.group))}</b> grubuna geçecek.${role==='admin'?` <button class="btn sm ghost" onclick="cGrpMoveCancel('${a.id}')">Geçişi iptal et</button>`:''}</div>`;
+    if(hist.length) h+=`<div style="font-size:12.5px;color:var(--muted);margin-bottom:8px;">Grup geçmişi: ${hist.map(s=>escHtml(gn(s.group))+' ('+(s.from>'0000'?fmtDate(s.from):'başlangıç')+' – '+fmtDate(s.to)+')').join(' → ')} → <b>${escHtml(gn(a.group))}</b>${a.groupSince?' ('+fmtDate(a.groupSince)+' –)':''}</div>`;
+    if(role==='admin'&&a.group&&a.group!=='trial'&&a.group!=='private'&&a.status==='active') h+=`<button class="btn sm" style="margin-bottom:10px;" onclick="cGrpMoveOpen('${a.id}')">⇄ Grup / gün değiştir</button>`;
+    if(h) body.insertAdjacentHTML('afterbegin',h);
+  }catch(e){ console.error(e); } }; }
 
 /* ============ INIT ============ */
 boot();
