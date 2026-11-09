@@ -6891,6 +6891,41 @@ function cAthPkgApply(athId){
   return '';
 }
 
+/* ---- Aranabilir sporcu seçici: ad veya telefon (sporcu / veli) yazarak bul ---- */
+(function(){
+  const IDS=/^(py_ath|pk_ath|pm_ath[23]?)$/;
+  const norm=s=>String(s||'').toLocaleLowerCase('tr').replace(/ı/g,'i').replace(/ş/g,'s').replace(/ğ/g,'g').replace(/ü/g,'u').replace(/ö/g,'o').replace(/ç/g,'c').replace(/İ/g,'i');
+  const digits=s=>String(s||'').replace(/\D/g,'');
+  const st=document.createElement('style'); st.textContent='.ss-wrap{position:relative;}.ss-in{width:100%;box-sizing:border-box;}.ss-list{position:absolute;left:0;right:0;top:100%;z-index:80;max-height:260px;overflow-y:auto;background:var(--ss-bg,#fff);border:1px solid var(--line);border-radius:10px;box-shadow:0 10px 28px rgba(0,0,0,.2);margin-top:4px;}.ss-it{padding:8px 12px;cursor:pointer;font-size:14px;display:flex;justify-content:space-between;gap:10px;color:var(--ink);}.ss-it small{color:var(--muted);font-size:12px;}.ss-it.act,.ss-it:hover{background:rgba(14,143,181,.14);}.ss-none{padding:10px 12px;color:var(--muted);font-size:13px;}:root[data-theme="dark"] .ss-list{--ss-bg:#0a2236}';
+  document.head.appendChild(st);
+  function info(id){ const a=DB.athletes.find(x=>x.id===id); if(!a) return null; const ps=(a.parents||[]).map(pid=>DB.parents.find(p=>p.id===pid)).filter(Boolean);
+    const g=DB.groups.find(x=>x.id===a.group); const phones=[a.phone].concat(ps.map(p=>p.phone)).filter(x=>x&&digits(x).length>=7);
+    return {name:a.name,sub:[(g?g.name:(a.kind==='private'?'Özel ders':'')),phones[0]].filter(Boolean).join(' · '),hay:norm(a.name+' '+ps.map(p=>p.name).join(' ')),dig:phones.map(digits).filter(Boolean)}; }
+  function enhance(sel){
+    if(sel.dataset.ss) return; sel.dataset.ss='1';
+    const opts=Array.from(sel.options).filter(o=>o.value).map(o=>Object.assign({v:o.value,label:o.textContent},info(o.value)||{name:o.textContent,sub:'',hay:norm(o.textContent),dig:[]}));
+    const wrap=document.createElement('div'); wrap.className='ss-wrap';
+    const inp=document.createElement('input'); inp.type='search'; inp.className='ss-in'; inp.placeholder='Ad veya telefon yazın…'; inp.autocomplete='off'; inp.setAttribute('aria-label','Sporcu ara');
+    const list=document.createElement('div'); list.className='ss-list'; list.style.display='none'; list.setAttribute('role','listbox');
+    sel.parentNode.insertBefore(wrap,sel); wrap.appendChild(inp); wrap.appendChild(list); sel.style.display='none';
+    let act=-1, cur=[];
+    const cur0=()=>opts.find(o=>o.v===sel.value); const sync=()=>{ const o=cur0(); inp.value=o?o.name:''; }; sync();
+    function show(){ const q=norm(inp.value.trim()), qd=digits(inp.value); const sel0=cur0();
+      cur=(q&&!(sel0&&inp.value===sel0.name)?opts.filter(o=>(' '+o.hay).includes(' '+q)||(qd.length>=3&&o.dig.some(d=>d.includes(qd)))):opts).slice(0,40); act=cur.length?0:-1;
+      list.innerHTML=cur.length?cur.map((o,i)=>`<div class="ss-it ${i===act?'act':''}" role="option" data-i="${i}"><span>${escHtml(o.name)}</span><small>${escHtml(o.sub)}</small></div>`).join(''):'<div class="ss-none">Eşleşen sporcu yok</div>'; list.style.display=''; }
+    function pick(i){ const o=cur[i]; if(!o) return; sel.value=o.v; sel.dispatchEvent(new Event('change',{bubbles:true})); sync(); list.style.display='none'; }
+    inp.addEventListener('focus',()=>{ inp.select(); show(); });
+    inp.addEventListener('input',()=>{ if(!inp.value.trim()&&sel.value){ sel.value=''; sel.dispatchEvent(new Event('change',{bubbles:true})); } show(); });
+    inp.addEventListener('keydown',e=>{ if(list.style.display==='none'&&(e.key==='ArrowDown')){ show(); return; }
+      if(e.key==='ArrowDown'||e.key==='ArrowUp'){ e.preventDefault(); if(!cur.length) return; act=(act+(e.key==='ArrowDown'?1:-1)+cur.length)%cur.length; list.querySelectorAll('.ss-it').forEach((el,i)=>el.classList.toggle('act',i===act)); const el=list.querySelector('.ss-it.act'); if(el) el.scrollIntoView({block:'nearest'}); }
+      else if(e.key==='Enter'){ if(list.style.display!=='none'&&act>=0){ e.preventDefault(); pick(act); } } else if(e.key==='Escape'){ list.style.display='none'; sync(); } });
+    list.addEventListener('mousedown',e=>{ const it=e.target.closest('.ss-it'); if(it){ e.preventDefault(); pick(Number(it.dataset.i)); } });
+    inp.addEventListener('blur',()=>{ setTimeout(()=>{ list.style.display='none'; sync(); },120); });
+  }
+  let t=null; const scan=()=>{ t=null; document.querySelectorAll('select').forEach(s=>{ if(IDS.test(s.id)) enhance(s); }); };
+  new MutationObserver(()=>{ if(!t) t=setTimeout(scan,0); }).observe(document.body,{childList:true,subtree:true});
+})();
+
 /* ============ INIT ============ */
 boot();
 </script>
