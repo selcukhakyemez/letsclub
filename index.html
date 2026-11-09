@@ -734,7 +734,7 @@ function renderFamilyHome(c){
         <button class="btn sm" onclick="openAthlete('${k.id}')">Profili gör</button>
       </div>
       <div class="grid kpi" style="margin-top:14px;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));">
-        <div class="card"><div class="label">Bugünkü Ders</div><div class="val" style="font-size:16px;">${g?gTimeOn(g,todayStr()):'-'}</div></div>
+        <div class="card"><div class="label">Bugünkü Ders</div><div class="val" style="font-size:16px;">${g&&cGroupToday(g)?gTimeOn(g,todayStr()):'Bugün ders yok'}</div></div>
         <div class="card"><div class="label">Devam Oranı</div><div class="val" style="font-size:16px;">%${Math.round(k.attendance*100)}</div></div>
         <div class="card"><div class="label">Seviye</div><div class="val" style="font-size:16px;">${k.level}</div></div>
         ${role==='parent'?`<div class="card"><div class="label">Ödeme Durumu</div><div class="val" style="font-size:16px;">${pay?statusBadge(pay.status):'-'}</div></div>`:''}
@@ -6956,6 +6956,31 @@ function cTodayNotes(){
   if(!n.length) return '';
   return '<div style="margin:0 0 12px;display:grid;gap:6px;">'+n.map(x=>'<div class="attn-item" style="cursor:pointer;" onclick="route=\''+x[2]+'\';render();">'+x[0]+' '+x[1]+'</div>').join('')+'</div>';
 }
+
+/* ---- Antrenör / veli / sporcu: bugünkü program ---- */
+function cGroupToday(g){ const ds=todayStr(); if(g.startDate&&ds<g.startDate) return false; if(g.endDate&&ds>g.endDate) return false; return !!gBlockOn(g,ds); }
+function cMyTodayHtml(){
+  const ds=todayStr(), rows=[], notes=[];
+  const kids=(role==='parent'||role==='athlete')?visibleAthletes():null;
+  const gs=kids?[...new Set(kids.map(k=>k.group).filter(Boolean))].map(id=>DB.groups.find(g=>g.id===id)).filter(Boolean):visibleGroups();
+  gs.filter(cGroupToday).sort((a,b)=>String(gTimeOn(a,ds)).localeCompare(String(gTimeOn(b,ds)))||cTrCmp(a.name,b.name)).forEach(g=>{
+    const who=kids?kids.filter(k=>k.group===g.id).map(k=>escHtml(k.name)).join(', '):'';
+    rows.push('<tr'+(kids?'':' class="rowlink" onclick="showGroupMembers(\''+g.id+'\')"')+'><td>'+escHtml(g.name)+(who?'<div style="font-size:12px;color:var(--muted);">'+who+'</div>':'')+'</td><td>'+gTimeOn(g,ds)+'</td><td>'+escHtml(g.pool)+'</td><td>'+escHtml(coachName(g.coach))+'</td></tr>');
+  });
+  (DB.privateLessons||[]).filter(l=>l.date===ds&&(l.status==='Onaylandı'||l.status==='Onay bekliyor')&&(kids?kids.some(k=>k.id===l.athlete):(role!=='coach'||l.coach===DB.currentUser.coachId))).forEach(l=>{
+    rows.push('<tr><td>Özel ders'+(l.status==='Onay bekliyor'?' <span class="badge amber">onay bekliyor</span>':'')+(l.athlete?'<div style="font-size:12px;color:var(--muted);">'+escHtml(athleteName(l.athlete))+'</div>':'')+'</td><td>'+String(l.hour).padStart(2,'0')+':00</td><td>'+escHtml(l.pool||'')+'</td><td>'+escHtml(coachName(l.coach))+'</td></tr>');
+  });
+  rows.sort((a,b)=>0);
+  (DB.competitions||[]).filter(x=>x.date===ds).forEach(x=>notes.push('🏁 Yarış: <b>'+escHtml(x.name)+'</b>'+(x.city?' · '+escHtml(x.city):'')+(x.pool?' · '+escHtml(x.pool):'')));
+  (DB.competitions||[]).filter(x=>x.deadline===ds).forEach(x=>notes.push('⏰ Son başvuru günü: <b>'+escHtml(x.name)+'</b>'));
+  visibleMakeups().filter(m=>m.planDate===ds&&m.status!=='Tamamlandı'&&m.status!=='İptal').forEach(m=>notes.push('🔁 Telafi dersi: <b>'+escHtml(athleteName(m.athlete))+'</b>'));
+  if(role==='coach') DB.athletes.filter(a=>a.status==='trial'&&a.trial&&a.trial.trialDate===ds&&canViewAthlete(a.id)).forEach(a=>notes.push('🧪 Deneme dersi: <b>'+escHtml(a.name)+'</b>'));
+  if(role==='coach') (DB.extraSessions||[]).filter(e=>e.date===ds&&e.coach===DB.currentUser.coachId).forEach(e=>notes.push('➕ Ek ders: <b>'+escHtml(e.label||'')+'</b>'));
+  return '<div class="card" style="margin-bottom:16px;"><div class="section-title" style="margin-top:0;">Bugünkü Program · '+fmtDate(ds)+'</div>'
+    +(notes.length?'<div style="margin:0 0 12px;display:grid;gap:6px;">'+notes.map(t=>'<div class="attn-item">'+t+'</div>').join('')+'</div>':'')
+    +'<table><thead><tr><th>'+(kids?'Ders':'Grup')+'</th><th>Saat</th><th>Havuz</th><th>Antrenör</th></tr></thead><tbody>'+(rows.join('')||'<tr><td colspan="4"><div class="empty">Bugün ders yok</div></td></tr>')+'</tbody></table></div>';
+}
+{ const _d2=renderDashboard; renderDashboard=function(c){ _d2.apply(this,arguments); try{ if(role==='coach'||role==='parent'||role==='athlete'){ const nb=c.querySelector('.note-banner'); const h=cMyTodayHtml(); if(nb) nb.insertAdjacentHTML('afterend',h); else c.insertAdjacentHTML('afterbegin',h); } }catch(e){ console.error(e); } }; }
 
 /* ============ INIT ============ */
 boot();
