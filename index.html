@@ -3700,13 +3700,31 @@ function sbShowWaitEmpty(){
 
 /* ---------- Veri yükleme ---------- */
 const sbCmp=(a,b)=>String(a).localeCompare(String(b),'tr',{numeric:true});
-async function sbLoadAll(){
-  let rows=[];
-  for(let from=0;;from+=500){
-    const r=await sbReq('GET','/rest/v1/documents?select=collection,id,data&order=collection.asc,id.asc&limit=500&offset='+from,undefined,undefined,false,true);
-    if(!r.ok) return {ok:false,network:r.network,status:r.status};
-    rows=rows.concat(r.data||[]); if((r.data||[]).length<500) break;
+function sbErrDetail(r){ const d=r&&r.data; if(d&&(d.message||d.code)) return String((d.code?d.code+' ':'')+(d.message||'')).slice(0,140); return r&&r.network?'bağlantı kesildi':('kod '+(r&&r.status)); }
+async function sbFetchRows(){
+  const q=v=>encodeURIComponent('"'+String(v).replace(/\\/g,'\\\\').replace(/"/g,'\\"')+'"');
+  let rows=[], last=null, mode='key', off=0, fail=null;
+  for(;;){
+    let url='/rest/v1/documents?select=collection,id,data&order=collection.asc,id.asc&limit=1000';
+    if(mode==='key'){ if(last) url+='&or=('+'collection.gt.'+q(last.collection)+',and(collection.eq.'+q(last.collection)+',id.gt.'+q(last.id)+'))'; }
+    else url+='&offset='+off;
+    const r=await sbReq('GET',url,undefined,undefined,false,true);
+    if(!r.ok){ if(mode==='key'&&r.status===400){ mode='off'; rows=[]; off=0; last=null; continue; } fail=r; break; }
+    const d=r.data||[]; rows=rows.concat(d); if(d.length<1000) break; last=d[d.length-1]; off+=1000;
   }
+  if(!fail) return {ok:true,rows};
+  if(fail.network||fail.status<500) return {ok:false,network:fail.network,status:fail.status,detail:sbErrDetail(fail)};
+  /* sunucu hatası: koleksiyon koleksiyon küçük sayfalarla yeniden dene (zaman aşımı / tek bozuk kayıt tanısı) */
+  rows=[]; const bad=[]; const cols=SB_SPECS.map(s=>s.c).concat(['slots','plPackagesPub']);
+  for(const c of cols){ let o=0; for(;;){
+    const r=await sbReq('GET','/rest/v1/documents?select=collection,id,data&collection=eq.'+encodeURIComponent(c)+'&order=id.asc&limit=300&offset='+o,undefined,undefined,false,true);
+    if(!r.ok){ bad.push(c+': '+sbErrDetail(r)); break; }
+    const d=r.data||[]; rows=rows.concat(d); if(d.length<300) break; o+=300; } }
+  if(bad.length) return {ok:false,status:fail.status,detail:bad.slice(0,3).join(' | ')};
+  return {ok:true,rows};
+}
+async function sbLoadAll(){
+  const L=await sbFetchRows(); if(!L.ok) return L; const rows=L.rows;
   const db=sbEmptyDB(); const slots=[];
   const spec={}; SB_SPECS.forEach(s=>{spec[s.c]=s;});
   rows.sort((a,b)=>sbCmp(a.collection,b.collection)||sbCmp(a.id,b.id));
@@ -3824,7 +3842,7 @@ async function sbStart(){
   if(!pr.data||!pr.data.length){ SB.profile=null; sbShowNoProfile(); return; }
   SB.profile=pr.data[0]; role=SB.profile.role;
   const r=await sbLoadAll();
-  if(!r.ok){ sbShowError('Veriler yüklenemedi ('+(r.network?'bağlantı kesildi':'sunucu kodu '+r.status)+'). Lütfen tekrar deneyin.'); return; }
+  if(!r.ok){ sbShowError('Veriler yüklenemedi ('+(r.network?'bağlantı kesildi':'sunucu kodu '+r.status)+'). Lütfen tekrar deneyin.'+(r.detail?' Ayrıntı: '+r.detail:'')); return; }
   if(r.count===0){ if(role==='admin'){ sbShowSetup(); return; } sbShowWaitEmpty(); return; }
   sbEnter();
 }
