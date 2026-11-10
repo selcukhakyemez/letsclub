@@ -3567,16 +3567,31 @@ async function sbAuth(path,body,method,useToken){
 }
 async function sbRefresh(){
   if(!SB.session) return false;
-  const r=await sbAuth('token?grant_type=refresh_token',{refresh_token:SB.session.refresh_token});
-  if(!r.ok||!r.data.access_token) return false;
-  sbStoreSession(sbFromTokenResponse(r.data)); return true;
+  if(SB._rf) return SB._rf;
+  SB._rf=(async()=>{
+    try{
+      let r;
+      for(let i=0;i<3;i++){
+        r=await sbAuth('token?grant_type=refresh_token',{refresh_token:SB.session.refresh_token});
+        if(r.ok||r.code||i===2) break;
+        await new Promise(x=>setTimeout(x,800*(i+1)));
+      }
+      if(!r.ok||!r.data.access_token) return false;
+      sbStoreSession(sbFromTokenResponse(r.data)); return true;
+    } finally { SB._rf=null; }
+  })();
+  return SB._rf;
 }
 async function sbEnsureToken(){ if(SB.session&&SB.session.expires_at-Math.floor(Date.now()/1000)<60) await sbRefresh(); }
-async function sbReq(method,path,body,extra,noRetry){
+async function sbReq(method,path,body,extra,noRetry,patient){
   await sbEnsureToken();
   let res;
-  try{ res=await fetch(SB_CFG.url+path,{method,headers:sbHeaders(extra),body:body===undefined?undefined:JSON.stringify(body)}); }
-  catch(e){ return {ok:false,status:0,network:true,data:null}; }
+  for(let att=0;;att++){
+    try{ res=await fetch(SB_CFG.url+path,{method,headers:sbHeaders(extra),body:body===undefined?undefined:JSON.stringify(body)}); }
+    catch(e){ if(patient&&att<3){ await new Promise(r=>setTimeout(r,700*(att+1))); continue; } return {ok:false,status:0,network:true,data:null}; }
+    if(patient&&att<2&&(res.status===408||res.status===429||res.status>=500)){ await new Promise(r=>setTimeout(r,900*(att+1))); continue; }
+    break;
+  }
   let data=null; try{ const t=await res.text(); data=t?JSON.parse(t):null; }catch(e){}
   if(res.status===401&&!noRetry){ if(await sbRefresh()) return sbReq(method,path,body,extra,true); sbLostSession(); }
   return {ok:res.ok,status:res.status,data};
@@ -3687,10 +3702,10 @@ function sbShowWaitEmpty(){
 const sbCmp=(a,b)=>String(a).localeCompare(String(b),'tr',{numeric:true});
 async function sbLoadAll(){
   let rows=[];
-  for(let from=0;;from+=1000){
-    const r=await sbReq('GET','/rest/v1/documents?select=collection,id,data&order=collection.asc,id.asc',undefined,{Range:from+'-'+(from+999),'Range-Unit':'items'});
+  for(let from=0;;from+=500){
+    const r=await sbReq('GET','/rest/v1/documents?select=collection,id,data&order=collection.asc,id.asc&limit=500&offset='+from,undefined,undefined,false,true);
     if(!r.ok) return {ok:false,network:r.network,status:r.status};
-    rows=rows.concat(r.data||[]); if((r.data||[]).length<1000) break;
+    rows=rows.concat(r.data||[]); if((r.data||[]).length<500) break;
   }
   const db=sbEmptyDB(); const slots=[];
   const spec={}; SB_SPECS.forEach(s=>{spec[s.c]=s;});
@@ -3809,7 +3824,7 @@ async function sbStart(){
   if(!pr.data||!pr.data.length){ SB.profile=null; sbShowNoProfile(); return; }
   SB.profile=pr.data[0]; role=SB.profile.role;
   const r=await sbLoadAll();
-  if(!r.ok){ sbShowError('Veriler yüklenemedi. Lütfen tekrar deneyin.'); return; }
+  if(!r.ok){ sbShowError('Veriler yüklenemedi ('+(r.network?'bağlantı kesildi':'sunucu kodu '+r.status)+'). Lütfen tekrar deneyin.'); return; }
   if(r.count===0){ if(role==='admin'){ sbShowSetup(); return; } sbShowWaitEmpty(); return; }
   sbEnter();
 }
@@ -6616,14 +6631,16 @@ function plCancelDo(id){
 }
 { const _ps3=plStaffHtml; plStaffHtml=function(){
     if(route==='schedule') return '';
-    const _v=visiblePrivateLessons; let a,b;
-    try{ visiblePrivateLessons=()=>_v().filter(p=>p.status==='Onay bekliyor'||p.status==='Onaylandı'); a=_ps3();
-         visiblePrivateLessons=()=>_v().filter(p=>p.status==='İptal'||p.status==='Reddedildi'); b=_ps3(); }
-    finally{ visiblePrivateLessons=_v; }
-    const n=_v().filter(p=>p.status==='İptal'||p.status==='Reddedildi').length;
-    if(!n) return a;
-    const k=b.indexOf('<div class="section-title">Özel Ders Talepleri'); let t=k>=0?b.slice(k):b; t=t.replace(/<div class="section-title">[\s\S]*?<\/div>/,'');
-    return a+`<details style="margin-top:14px;"><summary style="cursor:pointer;font-weight:600;padding:6px 0;">İptal edilen ve reddedilen dersler (${n})</summary>${t}</details>`;
+    const _v=visiblePrivateLessons; const today=ymd(new Date());
+    const act=p=>p.status==='Onay bekliyor'||p.status==='Onaylandı';
+    const cut=(fn)=>{ let h; try{ visiblePrivateLessons=()=>_v().filter(fn); h=_ps3(); } finally{ visiblePrivateLessons=_v; } return h; };
+    const strip=h=>{ const k=h.indexOf('<div class="section-title">Özel Ders Talepleri'); let t=k>=0?h.slice(k):h; return t.replace(/<div class="section-title">[\s\S]*?<\/div>/,''); };
+    const a=cut(p=>act(p)&&p.date>=today);
+    const nPast=_v().filter(p=>act(p)&&p.date<today).length, nCan=_v().filter(p=>p.status==='İptal'||p.status==='Reddedildi').length;
+    let out=a;
+    if(nPast){ const b=cut(p=>act(p)&&p.date<today); out+=`<details style="margin-top:14px;"><summary style="cursor:pointer;font-weight:600;padding:6px 0;">Geçmiş / yapılmış dersler (${nPast})</summary>${strip(b)}</details>`; }
+    if(nCan){ const c=cut(p=>p.status==='İptal'||p.status==='Reddedildi'); out+=`<details style="margin-top:14px;"><summary style="cursor:pointer;font-weight:600;padding:6px 0;">İptal edilen ve reddedilen dersler (${nCan})</summary>${strip(c)}</details>`; }
+    return out;
   }; }
 
 function schedWeekPick(v){ if(!/^\d{4}-\d{2}-\d{2}$/.test(v||'')) return; const d=parseYmd(v); const mon=new Date(d); mon.setDate(mon.getDate()-((mon.getDay()+6)%7)); schedWeek=Math.max(-52,Math.min(12,Math.round((mon-weekStart(0))/(7*864e5)))); renderSchedule($('#content')); }
@@ -7153,6 +7170,176 @@ function cNavReset(){ NAVH.stack=[]; NAVH.i=-1; NAVH.gen++; cNavUpdate(); }
   function init(){ const h=document.getElementById('meBadge'); if(!h||document.getElementById('navBack')) return; const d=document.createElement('div'); d.className='navhist'; d.innerHTML='<button type="button" id="navBack" title="Geri (önceki sayfa)" aria-label="Geri" onclick="cNavGo(-1)" disabled>‹</button><button type="button" id="navFwd" title="İleri" aria-label="İleri" onclick="cNavGo(1)" disabled>›</button>'; h.parentNode.insertBefore(d,h); cNavUpdate(); }
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',init); else setTimeout(init,0);
 })();
+
+/* ================= DENEME DERSİ (CRM): havuz / saat / hoca, ayrı ad-soyad, sonuç ve dönüşüm nedenleri ================= */
+const CRM_OUT_POS=['Çocuk çok beğendi','Program / saat uygun','Fiyat uygun','Antrenör beğenildi','Havuz / tesis beğenildi','Tavsiye üzerine geldi','Diğer'];
+const CRM_OUT_NEG=['Fiyat yüksek','Gün / saat uymadı','Çocuk istemedi / korktu','Mesafe / ulaşım','Başka kulübü seçti','Şimdilik ertelendi','Yaş / seviye uymadı','Diğer'];
+const CRM_OUT_NO=['Haber vermeden gelmedi','Ertelendi / yeni tarih verilecek','Hastalık','Diğer'];
+const CRM_OUT_REASONS={'Olumlu':CRM_OUT_POS,'Olumsuz':CRM_OUT_NEG,'Gelmedi':CRM_OUT_NO};
+function crmTimes(){ const o=[]; for(let h=8;h<=22;h++){ o.push(String(h).padStart(2,'0')+':00'); if(h<22) o.push(String(h).padStart(2,'0')+':30'); } return o; }
+function crmCoachNames(l){ return (l.trialCoaches||[]).map(id=>{ const c=DB.coaches.find(x=>x.id===id); return c?c.name:''; }).filter(Boolean); }
+function crmTrialLine(l){
+  const bits=[]; if(l.trialDate||l.follow) bits.push(fmtDate(l.trialDate||l.follow)+(l.trialTime?' '+l.trialTime:''));
+  if(l.trialPool) bits.push(l.trialPool); const cn=crmCoachNames(l); if(cn.length) bits.push('Hoca: '+cn.join(', ')); return bits.join(' · ');
+}
+{ const _lv=leadValidate; leadValidate=function(c){
+    const e=_lv(Object.assign({},c,{follow:''})).filter(x=>!/Takip tarihi/.test(x));
+    const d=String(c.trialDate!=null?c.trialDate:(c.follow||'')); if(d&&!(/^\d{4}-\d{2}-\d{2}$/.test(d)&&ymd(parseYmd(d))===d)) e.push('Deneme tarihi geçersiz.');
+    if(c.trialTime&&!/^([01]\d|2[0-3]):[0-5]\d$/.test(c.trialTime)) e.push('Deneme saati geçersiz.');
+    if(c.trialPool&&!DB.pools.some(p=>p.name===c.trialPool)) e.push('Havuz geçersiz.');
+    if((c.trialCoaches||[]).some(id=>!DB.coaches.some(x=>x.id===id))) e.push('Hoca geçersiz.');
+    return e; }; }
+{ const _lc=leadClean; leadClean=function(c){ const r=_lc(Object.assign({},c,{follow:c.trialDate!=null?c.trialDate:(c.follow||'')}));
+    r.trialDate=r.follow; r.trialTime=c.trialTime||''; r.trialPool=c.trialPool||''; r.trialCoaches=(c.trialCoaches||[]).slice(0,6);
+    ['first','last','pfirst','plast'].forEach(k=>{ if(c[k]!==undefined) r[k]=cTitle(c[k]); }); return r; }; }
+function leadResult(id,o){
+  if(role!=='admin') return {ok:false,errors:['Bu işlem için yetkiniz yok.']};
+  const l=DB.leads.find(x=>x.id===id); if(!l) return {ok:false,errors:['Aday bulunamadı.']};
+  const outc=o&&o.outcome; if(!CRM_OUT_REASONS[outc]) return {ok:false,errors:['Sonucu seçin (olumlu / olumsuz / gelmedi).']};
+  if(CRM_OUT_REASONS[outc].indexOf(o.reason)<0) return {ok:false,errors:['Nedeni seçin.']};
+  const note=String(o.note||'').trim(); if(note.length>200) return {ok:false,errors:['Not en fazla 200 karakter.']};
+  if(o.reason==='Diğer'&&!note) return {ok:false,errors:['“Diğer” için kısa bir açıklama yazın.']};
+  l.result={outcome:outc,reason:o.reason,note,at:todayStr(),by:'admin'};
+  if(outc!=='Gelmedi'&&l.stage!=='Kayıt oldu') l.stage='Deneme gerçekleşti';
+  save(); return {ok:true,errors:[]};
+}
+function crmResultOpen(id){
+  const l=DB.leads.find(x=>x.id===id); if(!l||role!=='admin') return; window.__crmRes=id; const cur=l.result||{};
+  openDrawerHtml(`<div class="drawer-head"><div style="font-weight:800;font-size:16px;">Deneme sonucu</div><button class="close-x" onclick="closeDrawer()">✕</button></div>
+  <div class="drawer-body" style="padding-top:12px;"><div style="margin-bottom:10px;"><b>${escHtml(l.name)}</b><div style="color:var(--muted);font-size:13px;">${escHtml(crmTrialLine(l))}</div></div>
+   <div class="field"><label for="rs_out">Sonuç</label><select id="rs_out" onchange="crmResFill()"><option value="">Seçin</option>${['Olumlu','Olumsuz','Gelmedi'].map(x=>`<option${cur.outcome===x?' selected':''}>${x}</option>`).join('')}</select></div>
+   <div class="field"><label for="rs_reason">Neden</label><select id="rs_reason"></select></div>
+   <div class="field"><label for="rs_note">Not (isteğe bağlı)</label><textarea id="rs_note" rows="3" maxlength="200">${escHtml(cur.note||'')}</textarea></div>
+   <div id="rs_err" class="grp-result bad" style="display:none;"></div>
+   <div style="display:flex;gap:10px;margin-top:12px;"><button class="btn primary" onclick="crmResSave()">Kaydet</button><button class="btn" onclick="closeDrawer()">Vazgeç</button></div></div>`);
+  crmResFill(cur.reason);
+}
+function crmResFill(keep){ const o=cV('rs_out'), el=document.getElementById('rs_reason'); if(!el) return; const L=CRM_OUT_REASONS[o]||[]; el.innerHTML=L.length?'<option value="">Seçin</option>'+L.map(x=>`<option${x===keep?' selected':''}>${escHtml(x)}</option>`).join(''):'<option value="">Önce sonucu seçin</option>'; }
+function crmResSave(){
+  const id=window.__crmRes; const r=leadResult(id,{outcome:cV('rs_out'),reason:cV('rs_reason'),note:cV('rs_note')});
+  if(!r.ok){ const e=document.getElementById('rs_err'); if(e){ e.style.display=''; e.textContent=r.errors[0]; } return; }
+  const l=DB.leads.find(x=>x.id===id); closeDrawer(); crmMsg={ok:'Deneme sonucu kaydedildi'+(l&&l.result.outcome==='Olumlu'?' — şimdi “Sporcu kaydı oluştur” ile kayda geçebilirsiniz.':'.'),err:''};
+  if(route==='crm') renderCRM($('#content')); else render();
+}
+crmMove=function(id,st){
+  if(st==='Deneme gerçekleşti'&&!(DB.leads.find(x=>x.id===id)||{}).result){ crmResultOpen(id); renderCRM($('#content')); return; }
+  const r=leadMove(id,st); crmMsg={ok:r.ok?'Aşama güncellendi.':'',err:r.ok?'':r.errors.join(' ')}; renderCRM($('#content'));
+};
+function crmCoachWa(id,cid){
+  const l=DB.leads.find(x=>x.id===id), c=DB.coaches.find(x=>x.id===cid); if(!l||!c) return '';
+  return fcWaLink(c.phone,`Merhaba ${c.name}, deneme dersi: ${l.name}${l.age!==''&&l.age!=null?' ('+l.age+' yaş)':''} — ${crmTrialLine(l).replace(/ · Hoca:.*$/,'')}.${l.note?' Not: '+l.note:''}`);
+}
+crmCardHtml=function(l){
+  const wa=fcWaLink(l.phone,`Merhaba${l.parent?' '+l.parent:''}, ${l.name} için yüzme kursumuzla ilgili yazıyorum.`);
+  const td=l.trialDate||l.follow, dd=td?crmDays(td):null;
+  const tl=crmTrialLine(l);
+  const fuTxt=tl?`<div class="ksub" style="${dd!=null&&dd<0&&!l.result?'color:var(--red);font-weight:700;':dd===0?'color:var(--amber,#b7791f);font-weight:700;':''}">🏊 Deneme: ${escHtml(tl)}${dd!=null&&!l.result?(dd<0?' (geçti)':dd===0?' (bugün)':''):''}</div>`:'';
+  const res=l.result?`<div class="ksub"><span class="badge ${l.result.outcome==='Olumlu'?'green':l.result.outcome==='Olumsuz'?'red':'amber'}">${escHtml(l.result.outcome)}</span> ${escHtml(l.result.reason)}${l.result.note?' · '+escHtml(l.result.note):''}</div>`:'';
+  const conv=l.converted&&DB.athletes.some(a=>a.id===l.converted);
+  const cw=(l.trialCoaches||[]).map(cid=>{ const u=crmCoachWa(l.id,cid); const c=DB.coaches.find(x=>x.id===cid); return u?`<a class="btn sm" href="${escHtml(u)}" target="_blank" rel="noopener">Hocaya bildir: ${escHtml((c.name||'').split(' ')[0])}</a>`:''; }).join('');
+  return `<div class="kcard"><div class="kname">${escHtml(l.name)}${l.age!==''&&l.age!=null?` <span style="color:var(--muted);font-weight:400;">(${escHtml(String(l.age))} yaş)</span>`:''}</div>
+   <div class="ksub">${l.parent?'Veli: '+escHtml(l.parent)+'<br>':''}${l.phone?escHtml(l.phone)+'<br>':''}Kaynak: ${escHtml(l.source||'-')}</div>
+   ${l.note?`<div class="ksub" style="margin-top:4px;">📝 ${escHtml(l.note)}</div>`:''}${fuTxt}${res}
+   ${conv?'<div class="ksub" style="color:var(--green,#2f855a);">✔ Sporcu kaydı oluşturuldu</div>':''}
+   <div style="margin-top:8px;"><select aria-label="Aşama" onchange="crmMove('${l.id}',this.value)" style="width:100%;">${CRM_STAGES.map(s=>`<option${s===l.stage?' selected':''}>${s}</option>`).join('')}</select></div>
+   <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;"><button class="btn sm" onclick="crmOpen('${l.id}')">Düzenle</button>${(l.stage==='Deneme planlandı'||l.stage==='Deneme gerçekleşti')&&!conv?`<button class="btn sm primary" onclick="crmResultOpen('${l.id}')">${l.result?'Sonucu düzenle':'Sonuç gir'}</button>`:''}${wa?`<a class="btn sm" href="${escHtml(wa)}" target="_blank" rel="noopener">WhatsApp</a>`:''}${cw}${!conv?`<button class="btn sm primary" onclick="crmConvert('${l.id}')">Sporcu kaydı oluştur</button>`:''}<button class="btn sm danger" onclick="crmDel('${l.id}')">Sil</button></div></div>`;
+};
+crmOpen=function(id,pre){
+  if(role!=='admin') return;
+  const l=id?DB.leads.find(x=>x.id===id):null; if(id&&!l) return;
+  const V=(k,d)=>pre&&pre[k]!==undefined?pre[k]:(l&&l[k]!==undefined?l[k]:d);
+  const n=splitName(V('name','')), pn=splitName(V('parent',''));
+  const F=(k,sp)=>V(k,sp);
+  window.__crmEdit=id||null;
+  const sel=new Set(V('trialCoaches',[])); const hr=V('trialTime','');
+  openDrawerHtml(`<div class="drawer-head"><div style="font-weight:800;font-size:16px;">${l?'Adayı düzenle':'Yeni aday / deneme dersi'}</div><button class="close-x" onclick="closeDrawer()">✕</button></div>
+  <div class="drawer-body" style="padding-top:12px;">
+   <div class="section-title" style="margin-top:0;">Çocuk</div>
+   <div style="display:grid;grid-template-columns:1fr 1fr 80px;gap:10px;"><div class="field"><label for="cr_first">Adı</label><input id="cr_first" maxlength="40" autocomplete="off" value="${escHtml(String(F('first',n.first)))}"></div>
+   <div class="field"><label for="cr_last">Soyadı</label><input id="cr_last" maxlength="40" autocomplete="off" value="${escHtml(String(F('last',n.last)))}"></div>
+   <div class="field"><label for="cr_age">Yaş</label><input id="cr_age" inputmode="numeric" maxlength="2" value="${escHtml(String(V('age','')))}"></div></div>
+   <div class="section-title">Veli</div>
+   <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;"><div class="field"><label for="cr_pfirst">Adı</label><input id="cr_pfirst" maxlength="40" autocomplete="off" value="${escHtml(String(F('pfirst',pn.first)))}"></div>
+   <div class="field"><label for="cr_plast">Soyadı</label><input id="cr_plast" maxlength="40" autocomplete="off" value="${escHtml(String(F('plast',pn.last)))}"></div></div>
+   <div class="field"><label for="cr_phone">Telefon</label><input id="cr_phone" maxlength="20" inputmode="tel" value="${escHtml(String(V('phone','')))}"></div>
+   <div class="field"><label for="cr_src">Bizi nereden buldu?</label><select id="cr_src"><option value="">Seçin</option>${cOpt(CRM_SOURCES.map(x=>[x,x]),V('source',''))}</select></div>
+   <div class="section-title">Deneme dersi</div>
+   <div class="field"><label for="cr_stage">Aşama</label><select id="cr_stage">${cOpt(CRM_STAGES.map(x=>[x,x]),V('stage','Aday'))}</select></div>
+   <div class="field"><label for="cr_follow">Deneme dersi yapılacak tarih</label><input id="cr_follow" type="date" value="${escHtml(String(V('trialDate',V('follow',''))))}"></div>
+   <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;"><div class="field"><label for="cr_pool">Havuz</label><select id="cr_pool"><option value="">Seçin</option>${DB.pools.map(p=>`<option${p.name===V('trialPool','')?' selected':''}>${escHtml(p.name)}</option>`).join('')}</select></div>
+   <div class="field"><label for="cr_time">Saat</label><select id="cr_time"><option value="">Seçin</option>${crmTimes().map(t=>`<option${t===hr?' selected':''}>${t}</option>`).join('')}</select></div></div>
+   <div class="field"><label>Deneme dersini verecek hoca(lar)</label><div id="cr_coaches" style="display:flex;flex-wrap:wrap;gap:6px 14px;">${DB.coaches.map(c=>`<label style="display:flex;gap:6px;align-items:center;font-weight:400;"><input type="checkbox" value="${escHtml(c.id)}"${sel.has(c.id)?' checked':''}> ${escHtml(c.name)}</label>`).join('')||'<span style="color:var(--muted);font-size:13px;">Tanımlı antrenör yok</span>'}</div></div>
+   <div class="field"><label for="cr_note">Not (isteğe bağlı)</label><textarea id="cr_note" rows="3" maxlength="300">${escHtml(String(V('note','')))}</textarea></div>
+   <div id="cr_res" class="grp-result bad" style="display:none;" aria-live="polite"></div>
+   <div style="display:flex;gap:10px;margin-top:12px;"><button class="btn primary" onclick="crmSubmit()">${l?'Kaydet':'Adayı ekle'}</button><button class="btn" onclick="closeDrawer()">Vazgeç</button></div></div>`);
+};
+crmSubmit=function(){
+  const first=cTitle(cV('cr_first')), last=cTitle(cV('cr_last')), pf=cTitle(cV('cr_pfirst')), pl=cTitle(cV('cr_plast'));
+  const errs=[]; if(first.length<2) errs.push('Çocuğun adını yazın.'); if(last.length<2) errs.push('Çocuğun soyadını yazın.'); if((pf&&!pl)||(!pf&&pl)) errs.push('Veli adı ve soyadını birlikte yazın.');
+  const coaches=[...document.querySelectorAll('#cr_coaches input:checked')].map(x=>x.value);
+  const c={first,last,pfirst:pf,plast:pl,name:(first+' '+last).trim(),parent:(pf+' '+pl).trim(),age:cV('cr_age'),phone:cV('cr_phone'),source:cV('cr_src'),stage:cV('cr_stage'),trialDate:cV('cr_follow'),trialPool:cV('cr_pool'),trialTime:cV('cr_time'),trialCoaches:coaches,note:cV('cr_note')};
+  const stg=c.stage; if(/^Deneme/.test(stg)&&!c.trialDate) errs.push('Deneme dersi tarihini seçin.');
+  const r=errs.length?{ok:false,errors:errs}:leadSave(c,window.__crmEdit);
+  if(!r.ok){ const el=document.getElementById('cr_res'); if(el){ el.style.display=''; el.innerHTML='<ul class="ai-list">'+r.errors.map(x=>'<li>'+escHtml(x)+'</li>').join('')+'</ul>'; } return; }
+  const wasEdit=window.__crmEdit; closeDrawer(); crmMsg={ok:wasEdit?'Aday güncellendi.':'Aday eklendi.',err:''}; renderCRM($('#content'));
+};
+crmConvert=function(id){
+  const l=DB.leads.find(x=>x.id===id); if(!l||role!=='admin') return;
+  const n=l.first?{first:l.first,last:l.last}:splitName(l.name), p=l.pfirst?{first:l.pfirst,last:l.plast}:splitName(l.parent||'');
+  window.__leadConv=id;
+  athOpen(null,{first:n.first,last:n.last,pfirst:p.first,plast:p.last,pphone:l.phone||'',t_source:TRIAL_SOURCES.indexOf(l.source)>-1?l.source:'',group:/^Deneme/.test(l.stage)||l.stage==='Aday'||l.stage==='İletişim kuruldu'?(l.result&&l.result.outcome==='Olumlu'?'':'trial'):''});
+};
+{ const _rc=renderCRM; renderCRM=function(c){ _rc(c); try{ if(role==='admin') c.insertAdjacentHTML('beforeend',crmStatsHtml(null)); }catch(e){ console.error(e); } }; }
+function crmStats(days){
+  const lim=days?ymd(new Date(Date.now()-days*864e5)):'';
+  const L=(DB.leads||[]).filter(l=>l.result&&(!lim||(l.trialDate||l.result.at)>=lim));
+  const pos=L.filter(l=>l.result.outcome==='Olumlu'), neg=L.filter(l=>l.result.outcome==='Olumsuz'), no=L.filter(l=>l.result.outcome==='Gelmedi');
+  const conv=L.filter(l=>l.converted&&DB.athletes.some(a=>a.id===l.converted)||l.stage==='Kayıt oldu');
+  const cnt=(arr)=>{ const m={}; arr.forEach(l=>{ m[l.result.reason]=(m[l.result.reason]||0)+1; }); return Object.keys(m).map(k=>[k,m[k]]).sort((a,b)=>b[1]-a[1]); };
+  const done=pos.length+neg.length;
+  return {L,pos,neg,no,conv,done,posReasons:cnt(pos),negReasons:cnt(neg),noReasons:cnt(no),rate:done?Math.round(conv.length/done*100):0,posRate:done?Math.round(pos.length/done*100):0};
+}
+function crmStatsHtml(days){
+  const S=crmStats(days); const rs=a=>a.length?a.map(x=>`<div style="display:flex;justify-content:space-between;gap:10px;font-size:13px;"><span>${escHtml(x[0])}</span><b>${x[1]}</b></div>`).join(''):'<div style="font-size:12.5px;color:var(--muted);">Henüz kayıt yok</div>';
+  return `<div class="section-title">Deneme Sonuçları ve Dönüşüm</div><div class="card">
+   ${S.L.length?`<div style="display:flex;gap:18px;flex-wrap:wrap;margin-bottom:12px;"><div><div class="klabel">Yapılan deneme</div><div class="kval">${S.done}</div></div><div><div class="klabel">Olumlu</div><div class="kval" style="color:var(--green,#2f855a);">${S.pos.length}</div></div><div><div class="klabel">Olumsuz</div><div class="kval" style="color:var(--red);">${S.neg.length}</div></div><div><div class="klabel">Gelmedi</div><div class="kval">${S.no.length}</div></div><div><div class="klabel">Kayıt olan</div><div class="kval">${S.conv.length}</div></div><div><div class="klabel">Deneme → kayıt</div><div class="kval">%${S.rate}</div></div></div>
+   <div class="two-col"><div><b>Olumlu nedenler</b>${rs(S.posReasons)}</div><div><b>Olumsuz nedenler</b>${rs(S.negReasons)}</div></div>`:'<div class="empty">Henüz deneme sonucu girilmedi. Kartta “Sonuç gir” ile başlayın.</div>'}</div>`;
+}
+/* Yönetici dashboard: bugünkü / sonucu bekleyen / tamamlanan denemeler + bugünkü iptal edilen özel dersler */
+function cTrialsToday(){
+  const ds=todayStr(); const out=[];
+  (DB.leads||[]).filter(l=>(l.trialDate||l.follow)===ds&&l.stage!=='Kayıt oldu'&&/^(Aday|İletişim kuruldu|Deneme planlandı|Deneme gerçekleşti)$/.test(l.stage)&&(l.stage==='Deneme planlandı'||l.trialTime||l.trialPool||l.result)).forEach(l=>out.push({k:'lead',l}));
+  DB.athletes.filter(a=>a.status==='trial'&&a.trial&&a.trial.trialDate===ds).forEach(a=>out.push({k:'ath',a}));
+  return out.sort((x,y)=>String(x.l?x.l.trialTime:'99').localeCompare(String(y.l?y.l.trialTime:'99')));
+}
+cTodayTrialHtml=function(){
+  const L=cTrialsToday(); if(!L.length) return '';
+  const ds=todayStr();
+  return '<div class="card"><div class="section-title" style="margin-top:0;">Bugünkü Deneme Dersleri <span class="badge aqua">'+L.length+'</span> <a class="btn ghost sm" onclick="route=\'crm\';render();">Adaylar →</a></div>'
+   +'<table><thead><tr><th>Aday</th><th>Saat · Havuz</th><th>Hoca / Grup</th><th></th></tr></thead><tbody>'+L.map(x=>{
+     if(x.k==='lead'){ const l=x.l; return '<tr><td>'+escHtml(l.name)+'<div style="font-size:12px;color:var(--muted);">'+escHtml(l.phone||l.parent||'')+'</div></td><td>'+escHtml([l.trialTime,l.trialPool].filter(Boolean).join(' · ')||'—')+'</td><td>'+escHtml(crmCoachNames(l).join(', ')||'—')+'</td><td>'+(l.result?'<span class="badge '+(l.result.outcome==='Olumlu'?'green':l.result.outcome==='Olumsuz'?'red':'amber')+'">'+escHtml(l.result.outcome)+'</span>':'<button class="btn sm primary" onclick="crmResultOpen(\''+l.id+'\')">Sonuç gir</button>')+'</td></tr>'; }
+     const a=x.a, g=DB.groups.find(y=>y.id===a.trial.interest); return '<tr class="rowlink" onclick="openAthlete(\''+a.id+'\')"><td>'+escHtml(a.name)+'</td><td>'+escHtml(g?gTimeOn(g,ds)+' · '+g.pool:'—')+'</td><td>'+escHtml(g?g.name:'—')+'</td><td></td></tr>'; }).join('')+'</tbody></table></div>';
+};
+function cTrialResultsHtml(){
+  const S=crmStats(30); const today=todayStr();
+  const wait=(DB.leads||[]).filter(l=>!l.result&&l.stage==='Deneme planlandı'&&(l.trialDate||l.follow)&&(l.trialDate||l.follow)<today);
+  const rec=S.L.slice().sort((a,b)=>String(b.trialDate||b.result.at).localeCompare(String(a.trialDate||a.result.at))).slice(0,6);
+  const bd=o=>'<span class="badge '+(o==='Olumlu'?'green':o==='Olumsuz'?'red':'amber')+'">'+escHtml(o)+'</span>';
+  return '<div class="card"><div class="section-title" style="margin-top:0;">Yapılan Deneme Dersleri <span style="font-weight:400;color:var(--muted);font-size:12.5px;">son 30 gün</span> <a class="btn ghost sm" onclick="route=\'crm\';render();">Tümü →</a></div>'
+   +'<div style="font-size:13px;color:var(--muted);margin-bottom:8px;">'+S.done+' deneme · <b style="color:var(--green,#2f855a);">'+S.pos.length+' olumlu</b> · <b style="color:var(--red);">'+S.neg.length+' olumsuz</b>'+(S.no.length?' · '+S.no.length+' gelmedi':'')+' · kayıt dönüşümü %'+S.rate+'</div>'
+   +(wait.length?'<div style="margin-bottom:8px;display:grid;gap:6px;">'+wait.map(l=>'<div class="attn-item" style="cursor:pointer;" onclick="crmResultOpen(\''+l.id+'\')">⏳ Sonucu girilmedi: <b>'+escHtml(l.name)+'</b> · '+escHtml(fmtDate(l.trialDate||l.follow))+'</div>').join('')+'</div>':'')
+   +(rec.length?'<table><thead><tr><th>Aday</th><th>Tarih</th><th>Sonuç</th><th>Neden</th></tr></thead><tbody>'+rec.map(l=>'<tr class="rowlink" onclick="route=\'crm\';render();"><td>'+escHtml(l.name)+(l.converted?' <span class="badge green">kayıt</span>':'')+'</td><td>'+escHtml(fmtDate(l.trialDate||l.result.at))+'</td><td>'+bd(l.result.outcome)+'</td><td>'+escHtml(l.result.reason)+'</td></tr>').join('')+'</tbody></table>':'<div class="empty">Son 30 günde sonucu girilmiş deneme yok</div>')+'</div>';
+}
+function cCancelledPlHtml(){
+  const ds=todayStr(); const L=(DB.privateLessons||[]).filter(p=>!p._stub&&p.status==='İptal'&&(p.date===ds||p.decidedAt===ds)).sort((a,b)=>String(a.date).localeCompare(String(b.date))||(a.hour-b.hour));
+  return '<div class="card"><div class="section-title" style="margin-top:0;">İptal Edilen Özel Dersler <span class="badge '+(L.length?'red':'aqua')+'">'+L.length+'</span> <a class="btn ghost sm" onclick="route=\'privlesson\';render();">Özel Ders →</a></div>'
+   +(L.length?'<div style="font-size:12.5px;color:var(--muted);margin-bottom:8px;">Bugünkü dersler ve bugün iptal edilenler</div><table><thead><tr><th>Ders</th><th>Sporcu</th><th>Hoca</th><th>Neden</th></tr></thead><tbody>'+L.map(p=>'<tr><td>'+escHtml(fmtDate(p.date))+' '+p.hour+':00'+(p.date!==ds?'':'')+'</td><td>'+escHtml(athleteName(p.athlete))+'</td><td>'+escHtml(coachName(p.coach))+'</td><td>'+escHtml(p.reason||'—')+(p.decidedBy?'<div style="font-size:11.5px;color:var(--muted);">'+escHtml(p.decidedBy==='admin'?'yönetici':coachName(p.decidedBy)||p.decidedBy)+(p.decidedAt?' · '+escHtml(fmtDate(p.decidedAt)):'')+'</div>':'')+'</td></tr>').join('')+'</tbody></table>':'<div class="empty">Bugün iptal edilen özel ders yok</div>')+'</div>';
+}
+{ const _d4=renderDashboard; renderDashboard=function(c){ _d4.apply(this,arguments); try{ if(role==='admin'){ const rows=c.querySelectorAll('.two-col'); let anchor=null; rows.forEach(r=>{ if(r.querySelector('.card')&&/Bugün Alınan Ödemeler/.test(r.textContent)) anchor=r; }); if(anchor) anchor.insertAdjacentHTML('afterend','<div class="two-col" style="margin-top:22px;">'+cTrialResultsHtml()+cCancelledPlHtml()+'</div>'); } }catch(e){ console.error(e); } }; }
+(function(){ const NAME2=/^(cr_first|cr_last|cr_pfirst|cr_plast)$/;
+  document.addEventListener('input',function(e){ const t=e.target; if(!t||!t.id||!NAME2.test(t.id)||e.isComposing) return; const v=t.value, n=cTitleLive(v); if(v===n) return; const pos=t.selectionStart; t.value=n; try{ t.setSelectionRange(pos,pos); }catch(_){} }); })();
+
+(function(){ const st=document.createElement('style'); st.textContent='#cr_coaches label{white-space:nowrap;}#cr_coaches input{width:auto;flex:none;margin:0;}.klabel{font-size:12px;color:var(--muted);}.kval{font-size:22px;font-weight:800;}'; document.head.appendChild(st); })();
 
 /* ============ INIT ============ */
 boot();
