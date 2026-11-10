@@ -3067,7 +3067,7 @@ function renderFinance(c){
       <label class="chk" style="margin-top:10px;display:inline-flex;"><input type="checkbox" id="pk_pay" checked> Ödeme kaydı da oluştur (bekliyor)</label>
       <div id="pk_res" style="font-size:12.5px;color:var(--red);margin-top:6px;"></div><button class="btn primary" style="margin-top:8px;" onclick="pkgSell()">Paketi tanımla</button></div>
       ${cUnpkgCard()}<div class="card" style="padding:0;margin-top:14px;overflow-x:auto;"><table><thead><tr><th>Sporcu</th><th>Havuz</th><th>Paket</th><th>Kalan</th><th>Fiyat</th><th>Tarih</th><th></th></tr></thead><tbody>
-      ${pks.map(pk=>`<tr><td>${escHtml(athleteName(pk.athlete))}</td><td>${escHtml(pk.pool||'—')}</td><td>${pk.hours} saat${(pk.size||1)>1?' · '+PL_SIZE_LABEL[pk.size]:''}</td><td>${pkgRemaining(pk)} saat</td><td>${pk.pricePending?`<span class="badge amber">fiyat bekliyor</span> <button class="btn sm" onclick="cPkgPrice('${pk.id}')">Fiyatlandır</button>`:money(pk.price)}</td><td>${fmtDate(pk.createdAt)}</td><td><button class="btn sm danger" onclick="pkgDel('${pk.id}')">Sil</button></td></tr>`).join('')||'<tr><td colspan="7"><div class="empty">Henüz paket tanımlanmadı</div></td></tr>'}</tbody></table></div>`;
+      ${pks.map(pk=>`<tr><td>${escHtml(athleteName(pk.athlete))}</td><td>${escHtml(pk.pool||'—')}</td><td>${pk.hours} saat${(pk.size||1)>1?' · '+PL_SIZE_LABEL[pk.size]:''}</td><td>${pkgRemaining(pk)} saat</td><td>${pk.gift?'<span class="badge green">🎁 Hediye</span>':pk.pricePending?`<span class="badge amber">fiyat bekliyor</span> <button class="btn sm" onclick="cPkgPrice('${pk.id}')">Fiyatlandır</button>`:money(pk.price)}</td><td>${fmtDate(pk.createdAt)}</td><td><button class="btn sm danger" onclick="pkgDel('${pk.id}')">Sil</button></td></tr>`).join('')||'<tr><td colspan="7"><div class="empty">Henüz paket tanımlanmadı</div></td></tr>'}</tbody></table></div>`;
   }
   c.innerHTML=`${msgBanner()}${finTabs()}${body}`;
   if(finTab==='packages') pkgPoolChanged();
@@ -6933,7 +6933,7 @@ function cAthPkgApply(athId){
 
 /* ---- Aranabilir sporcu seçici: ad veya telefon (sporcu / veli) yazarak bul ---- */
 (function(){
-  const IDS=/^(py_ath|pk_ath|pm_ath[23]?)$/;
+  const IDS=/^(py_ath|pk_ath|pm_ath[23]?|gf_ath)$/;
   const norm=s=>String(s||'').toLocaleLowerCase('tr').replace(/ı/g,'i').replace(/ş/g,'s').replace(/ğ/g,'g').replace(/ü/g,'u').replace(/ö/g,'o').replace(/ç/g,'c').replace(/İ/g,'i');
   const digits=s=>String(s||'').replace(/\D/g,'');
   const st=document.createElement('style'); st.textContent='.ss-wrap{position:relative;}.ss-in{width:100%;box-sizing:border-box;}.ss-list{position:fixed;z-index:300;max-height:260px;overflow-y:auto;background:var(--ss-bg,#fff);border:1px solid var(--line);border-radius:10px;box-shadow:0 10px 28px rgba(0,0,0,.2);}.ss-it{padding:8px 12px;cursor:pointer;font-size:14px;display:flex;justify-content:space-between;gap:10px;color:var(--ink);}.ss-it small{color:var(--muted);font-size:12px;}.ss-it.act,.ss-it:hover{background:rgba(14,143,181,.14);}.ss-none{padding:10px 12px;color:var(--muted);font-size:13px;}:root[data-theme="dark"] .ss-list{--ss-bg:#0a2236}:root[data-theme="light"] .ss-list{--ss-bg:#fbfeff}';
@@ -7378,6 +7378,70 @@ async function sbManualRefresh(){
     if(ok){ render(); done('Veriler güncellendi ✓'); } else done('Veriler yenilenemedi. Bağlantınızı kontrol edip tekrar deneyin.',true);
   }catch(e){ console.error(e); done('Veriler yenilenemedi.',true); }
 }
+
+/* ================= Hediye / Extra: paket dışı grup ay-ders, özel ders saati ================= */
+const GF_KINDS=[['g_ay','Grup — hediye ay'],['g_ders','Grup — hediye ders'],['p_ders','Özel ders — hediye ders (saat)']];
+function gfLabel(g){ return g.scope==='private'?g.qty+' özel ders hediye':g.qty+(g.unit==='ay'?' ay':' ders')+' hediye'; }
+function gfSave(f){
+  if(role!=='admin') return {ok:false,errors:['Hediye / extra tanımını yalnızca yönetici yapar.']};
+  const a=DB.athletes.find(x=>x.id===f.athlete); const e=[]; const qty=Number(f.qty); const reason=String(f.reason||'').trim();
+  if(!a||a.status!=='active') e.push('Aktif bir sporcu seçin.');
+  if(!GF_KINDS.some(k=>k[0]===f.kind)) e.push('Hediye türünü seçin.');
+  const max=f.kind==='g_ay'?12:f.kind==='g_ders'?60:200;
+  if(!(Number.isInteger(qty)&&qty>=1&&qty<=max)) e.push('Miktar 1 ile '+max+' arasında tam sayı olmalı.');
+  if(reason.length>60) e.push('Açıklama en çok 60 karakter olabilir.');
+  const g=a&&DB.groups.find(x=>x.id===a.group);
+  if(a&&(f.kind==='g_ay'||f.kind==='g_ders')&&!g) e.push('Bu sporcunun bir grubu yok; grup hediyesi tanımlanamaz.');
+  if(f.kind==='p_ders'){ if(!poolExists(f.pool)) e.push('Özel dersin geçerli olacağı havuzu seçin.'); if(![1,2,3].includes(Number(f.size))) e.push('Ders türünü seçin.'); }
+  if(e.length) return {ok:false,errors:e};
+  cEnsure(); const id=cUid('gf'); const rec={id,scope:f.kind==='p_ders'?'private':'group',unit:f.kind==='g_ay'?'ay':'ders',qty,reason,at:todayStr(),ref:{}}; let note='';
+  if(f.kind==='g_ay'){
+    if(a.membership&&a.membership.end){ a.membership.end=addMonthsYmd(a.membership.end,qty); a.membership.gift=(a.membership.gift||0)+qty; rec.ref.mem=qty; note='Üyelik bitişi '+qty+' ay uzatıldı ('+fmtDate(a.membership.end)+').'; }
+    else { const price=Number((DB.poolPrices[g.pool]||{}).group)||0;
+      if(price>0){ rec.ref.credits=[]; for(let i=0;i<qty;i++){ const cid=cUid('ds'); DB.discounts.push({id:cid,athlete:a.id,type:'credit',kind:'amount',value:r2(price),reason:'Hediye ay'+(reason?' — '+reason:''),used:false,gift:id,created:todayStr()}); rec.ref.credits.push(cid); } note=qty+' ay için '+money(price)+'’lik alacak tanımlandı; sonraki aidat ödemelerinde otomatik düşer.'; }
+      else note='Kaydedildi; '+g.pool+' için aylık grup fiyatı girilmediğinden otomatik alacak oluşmadı.'; }
+  } else if(f.kind==='p_ders'){
+    DB.plPackages=DB.plPackages||[]; const pid='pk'+Date.now()+Math.floor(Math.random()*1000);
+    DB.plPackages.push({id:pid,athlete:a.id,hours:qty,price:0,pool:f.pool,size:Number(f.size),createdAt:todayStr(),gift:true,giftNote:reason}); rec.ref.pkg=pid; rec.pool=f.pool; rec.size=Number(f.size); note=qty+' saat hediye özel ders paketine eklendi.';
+  } else note='Hediye ders kaydedildi.';
+  a.gifts=(a.gifts||[]).concat([rec]); recalcBalances&&recalcBalances(); save(); return {ok:true,errors:[],note,id};
+}
+function gfRemove(athId,gid){
+  if(role!=='admin') return {ok:false,errors:['Yalnızca yönetici kaldırabilir.']};
+  const a=DB.athletes.find(x=>x.id===athId); const g=a&&(a.gifts||[]).find(x=>x.id===gid); if(!g) return {ok:false,errors:['Kayıt bulunamadı.']};
+  if(g.ref.pkg){ const pk=(DB.plPackages||[]).find(x=>x.id===g.ref.pkg); if(pk){ if(pkgUsed(pk)>0) return {ok:false,errors:['Bu hediye saatlerden kullanılmış; kaldırılamaz.']}; DB.plPackages=DB.plPackages.filter(x=>x.id!==pk.id); } }
+  if(g.ref.credits){ const used=g.ref.credits.some(c=>{ const d=DB.discounts.find(x=>x.id===c); return d&&d.used; }); if(used) return {ok:false,errors:['Bu hediye alacak kullanılmış; kaldırılamaz.']}; DB.discounts=DB.discounts.filter(d=>g.ref.credits.indexOf(d.id)<0); }
+  if(g.ref.mem&&a.membership){ a.membership.end=addMonthsYmd(a.membership.end,-g.ref.mem); a.membership.gift=Math.max(0,(a.membership.gift||0)-g.ref.mem); }
+  a.gifts=a.gifts.filter(x=>x.id!==gid); save(); return {ok:true,errors:[]};
+}
+function gfUi(){
+  const r=gfSave({athlete:cV('gf_ath'),kind:cV('gf_kind'),qty:cV('gf_qty'),pool:cV('gf_pool'),size:cV('gf_size'),reason:cV('gf_rs')});
+  cSet('dc',r.ok?'Hediye / extra kaydedildi. '+r.note:'',r.ok?'':r.errors.join(' ')); renderDiscounts($('#content'));
+}
+function gfKindChange(){ const k=cV('gf_kind'); const d=document.getElementById('gf_priv'); if(d) d.style.display=k==='p_ders'?'':'none'; const u=document.getElementById('gf_unit'); if(u) u.textContent=k==='g_ay'?'ay':k==='g_ders'?'ders':'saat'; }
+function gfDel(a,g){ const r=gfRemove(a,g); cSet('dc',r.ok?'Hediye kaldırıldı.':'',r.ok?'':r.errors.join(' ')); renderDiscounts($('#content')); }
+function gfCardHtml(){
+  const act=DB.athletes.filter(a=>a.status==='active').slice().sort((x,y)=>cTrCmp(x.name,y.name));
+  const all=[]; DB.athletes.forEach(a=>(a.gifts||[]).forEach(g=>all.push({a,g})));
+  all.sort((x,y)=>String(y.g.at).localeCompare(String(x.g.at)));
+  return `<div class="two-col" style="margin-top:18px;"><div class="card"><div class="section-title" style="margin-top:0;">🎁 Hediye / Extra ekle</div>
+   <div class="field"><label for="gf_ath">Sporcu</label><select id="gf_ath"><option value="">Seçin</option>${cOpt(act.map(a=>[a.id,a.name]),'')}</select></div>
+   <div class="field"><label for="gf_kind">Ne hediye edilecek?</label><select id="gf_kind" onchange="gfKindChange()">${cOpt(GF_KINDS,'g_ay')}</select></div>
+   <div class="field"><label for="gf_qty">Miktar (<span id="gf_unit">ay</span>)</label><input id="gf_qty" inputmode="numeric" maxlength="3" value="1"></div>
+   <div id="gf_priv" style="display:none;"><div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;"><div class="field"><label for="gf_pool">Havuz</label><select id="gf_pool">${DB.pools.map(p=>`<option>${escHtml(p.name)}</option>`).join('')}</select></div><div class="field"><label for="gf_size">Ders türü</label><select id="gf_size">${cOpt([['1','Bireysel'],['2','İkili'],['3','Üçlü']],'1')}</select></div></div></div>
+   <div class="field"><label for="gf_rs">Açıklama</label><input id="gf_rs" maxlength="60" placeholder="Ör. sezon kampanyası, tavsiye hediyesi"></div>
+   <button class="btn primary" onclick="gfUi()">Hediyeyi kaydet</button>
+   <div style="font-size:12px;color:var(--muted);margin-top:8px;">Hediye ay: dönemlik üyeliği olan sporcuda bitiş tarihi uzar; aylık ödeyen sporcuda sonraki aidattan otomatik düşen alacak olur. Hediye özel ders saati sporcunun paketine fiyatsız eklenir. Sporcu profilinde ve veli ekranında “hediye” olarak görünür.</div></div>
+   <div class="card" style="padding:0;overflow-x:auto;"><div class="section-title" style="margin:14px 16px 0;">Verilen hediyeler</div><table><thead><tr><th>Sporcu</th><th>Hediye</th><th>Tarih</th><th>Açıklama</th><th></th></tr></thead><tbody>${all.map(x=>`<tr><td>${escHtml(x.a.name)}</td><td><span class="badge green">🎁 ${escHtml(gfLabel(x.g))}</span></td><td>${escHtml(fmtDate(x.g.at))}</td><td>${escHtml(x.g.reason||'—')}</td><td><button class="btn sm danger" onclick="gfDel('${x.a.id}','${x.g.id}')">Kaldır</button></td></tr>`).join('')||'<tr><td colspan="5"><div class="empty">Henüz hediye tanımlanmadı</div></td></tr>'}</tbody></table></div></div>`;
+}
+{ const _rd=renderDiscounts; renderDiscounts=function(c){ _rd(c); try{ if(role!=='admin') return; const tc=c.querySelectorAll('.two-col')[0]; if(tc) tc.insertAdjacentHTML('afterend',gfCardHtml()); }catch(e){ console.error(e); } }; }
+{ const _oa3=openAthlete; openAthlete=function(id){ _oa3(id); try{ const a=DB.athletes.find(x=>x.id===id); const body=$('#drawer .drawer-body'); if(!a||!body||!$('#drawer').classList.contains('open')) return;
+    const gs=(a.gifts||[]).slice(); const gp=(DB.plPackages||[]).filter(p=>p.athlete===id&&p.gift&&!gs.some(g=>g.ref&&g.ref.pkg===p.id));
+    if(!gs.length&&!gp.length) return;
+    const lines=gs.map(g=>`<span class="badge green" title="${escHtml(fmtDate(g.at)+(g.reason?' · '+g.reason:''))}">🎁 ${escHtml(gfLabel(g))}</span>`).concat(gp.map(p=>`<span class="badge green">🎁 ${p.hours} özel ders hediye</span>`));
+    body.insertAdjacentHTML('afterbegin',`<div class="note-banner" style="margin-bottom:8px;">${lines.join(' ')}</div>`);
+  }catch(e){ console.error(e); } }; }
+{ const _pb=pkgBanner; pkgBanner=function(id){ let h=_pb.apply(this,arguments); try{ const n=athletePackages(id).filter(p=>p.gift).reduce((s,p)=>s+p.hours,0); if(n&&/<\/div>$/.test(h)) h=h.replace(/<\/div>$/,` 🎁 Bunun <b>${n}</b> saati hediye.</div>`); }catch(e){} return h; }; }
 
 /* ============ INIT ============ */
 boot();
