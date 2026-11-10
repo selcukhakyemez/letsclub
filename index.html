@@ -7359,6 +7359,26 @@ function cCancelledPlHtml(){
 
 (function(){ const st=document.createElement('style'); st.textContent='#cr_coaches label{white-space:nowrap;}#cr_coaches input{width:auto;flex:none;margin:0;}.klabel{font-size:12px;color:var(--muted);}.kval{font-size:22px;font-weight:800;}'; document.head.appendChild(st); })();
 
+/* ---- Kenar çubuğu ↻ "Verileri yenile": her rolde çalışır, ne olduğunu gösterir ---- */
+function cToast(msg,bad){
+  let t=document.getElementById('cToast'); if(!t){ t=document.createElement('div'); t.id='cToast'; t.setAttribute('role','status'); t.style.cssText='position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:400;max-width:90vw;padding:10px 16px;border-radius:12px;font-size:14px;font-weight:600;box-shadow:0 8px 28px rgba(0,0,0,.25);color:#fff;'; document.body.appendChild(t); }
+  t.textContent=msg; t.style.background=bad?'#c0392b':'#13795b'; t.style.display='block'; clearTimeout(t._h); t._h=setTimeout(()=>{ t.style.display='none'; },bad?5000:2500);
+}
+let cRefBusy=false;
+async function sbManualRefresh(){
+  if(cRefBusy) return;
+  if(document.querySelector('.drawer.open')){ cToast('Önce açık pencereyi kapatın, sonra yenileyin.',true); return; }
+  cRefBusy=true; const btn=()=>document.querySelector('#userPill button[title="Verileri yenile"]');
+  const b0=btn(); if(b0){ b0.disabled=true; b0.textContent='…'; }
+  const done=(m,bad)=>{ cRefBusy=false; const b=btn(); if(b){ b.disabled=false; b.textContent='↻'; } cToast(m,bad); };
+  try{
+    const idle=await Promise.race([sbIdle().then(()=>true),new Promise(r=>setTimeout(()=>r(false),8000))]);
+    if(!idle){ done('Değişiklikleriniz hâlâ kaydediliyor. Birkaç saniye sonra tekrar deneyin.',true); return; }
+    const ok=await sbReload(false);
+    if(ok){ render(); done('Veriler güncellendi ✓'); } else done('Veriler yenilenemedi. Bağlantınızı kontrol edip tekrar deneyin.',true);
+  }catch(e){ console.error(e); done('Veriler yenilenemedi.',true); }
+}
+
 /* ============ INIT ============ */
 boot();
 </script>
