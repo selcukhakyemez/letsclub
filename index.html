@@ -4099,7 +4099,7 @@ function weeklyData(off){
     const perDay=days.map(()=>0); let gCount=0,gMin=0,assistCount=0,pCount=0,xCount=0,earn=0,earnKnown=false;
     DB.groups.forEach(g=>{
       const mine=g.coach===cid, asst=g.assistant===cid; if(!mine&&!asst&&!cIsSubOn(g,cid,days)) return;
-      days.forEach((ds,i)=>{ if(!groupOnDay(g,ds)) return; const m=groupMinutes(g,ds); const len=m[1]-m[0];
+      days.forEach((ds,i)=>{ if(!groupOnDay(g,ds)||gCancelled(g,ds)) return; const m=groupMinutes(g,ds); const len=m[1]-m[0];
         if(effCoach(g,ds)===cid){ gCount++; gMin+=len; perDay[i]+=len; earn+=gEarnRate(cid,g,ds); } else if(asst){ assistCount++; gMin+=len; perDay[i]+=len; earn+=rateOf(cid,'asst',gPoolOn(g,ds)); } });
     });
     const seenS={}; (DB.privateLessons||[]).forEach(p=>{ if(p._stub||p.coach!==cid||p.status!=='Onaylandı') return; const i=days.indexOf(p.date); if(i<0) return; const sk=p.sid||p.id; if(seenS[sk]) return; seenS[sk]=1; const nn=cPrivN(cid,p); pCount++; perDay[i]+=60; earn+=rateOf(cid,nn>=3?'private3':nn===2?'private2':'private',lessonPool(p)); });
@@ -7480,7 +7480,7 @@ coachPayFor=function(cid,ym,pool){
   if(pool===undefined) pool=null;
   const per={}; DB.pools.forEach(p=>{per[p.name]={groupCount:0,teamCount:0,asstCount:0,privateCount:0,private2Count:0,private3Count:0,otherCount:0};});
   const bump=(pn,k,n)=>{ if(per[pn]) per[pn][k]+=n; };
-  DB.groups.forEach(g=>{ monthDays(ym).forEach(ds=>{ if(!groupOnDay(g,ds)) return; const pn=gPoolOn(g,ds);
+  DB.groups.forEach(g=>{ monthDays(ym).forEach(ds=>{ if(!groupOnDay(g,ds)||gCancelled(g,ds)) return; const pn=gPoolOn(g,ds);
     if(effCoach(g,ds)===cid) bump(pn,gIsTeam(g)?'teamCount':'groupCount',1);
     else if(g.assistant===cid) bump(pn,'asstCount',1); }); });
   const sess={}; (DB.privateLessons||[]).filter(p=>!p._stub&&p.coach===cid&&p.status==='Onaylandı'&&ymOf(p.date)===ym).forEach(p=>{ const k=p.sid||p.id; (sess[k]=sess[k]||{pool:lessonPool(p),n:0}).n++; });
@@ -7603,6 +7603,49 @@ cEffName=function(g,ds){ const bc=gCoachOn(g,ds); if(bc===g.coach) return _cEffN
   const e=effCoach(g,ds); if(e===bc) return coachName(bc); const s=swapOf(g,ds); return coachName(e)+' (yerine; '+coachName(bc)+(s?'':' izinli')+')'; };
 const _subGroupIds3=subGroupIds;
 subGroupIds=function(coachId,ds){ const out=_subGroupIds3(coachId,ds); DB.groups.forEach(g=>{ if(Array.isArray(g.sched)&&g.sched.some(b=>b.coach===coachId)&&out.indexOf(g.id)<0) out.push(g.id); }); return out; };
+
+/* ============ DERS İPTALİ (teknik arıza / öğrenci gelmedi / yönetim iptali): ders kapanır, hakediş yazılmaz ============ */
+const CC_REASONS=['Teknik arıza','Öğrenci gelmedi','Yönetim iptali','Hava / havuz kapalı','Diğer'];
+if(C_COLLS.indexOf('classCancels')<0) C_COLLS.push('classCancels');
+if(!SB_SPECS.some(s=>s.c==='classCancels')) SB_SPECS.push({c:'classCancels',t:'arr'});
+if(typeof AU_COLL==='object') AU_COLL.classCancels='Ders iptali';
+function gCancelRec(g,ds){ return (DB.classCancels||[]).find(x=>x.group===(g&&g.id||g)&&x.date===ds)||null; }
+function gCancelled(g,ds){ return !!gCancelRec(g,ds); }
+const _gTimeOn4=gTimeOn;
+gTimeOn=function(g,ds){ const t=_gTimeOn4(g,ds); return (ds&&gCancelled(g,ds))?t+' · İPTAL ('+gCancelRec(g,ds).reason+')':t; };
+function ccAdd(groupId,ds,reason,note){
+  if(role!=='admin') return {ok:false,errors:['Dersi yalnızca yönetici kapatır.']};
+  cEnsure(); const g=DB.groups.find(x=>x.id===groupId); if(!g) return {ok:false,errors:['Grup seçin.']};
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(ds||'')) return {ok:false,errors:['Tarih seçin.']};
+  if(!groupOnDay(g,ds)) return {ok:false,errors:['Bu grubun seçilen günde dersi yok.']};
+  if(gCancelled(g,ds)) return {ok:false,errors:['Bu ders zaten iptal edilmiş.']};
+  if(CC_REASONS.indexOf(reason)<0) return {ok:false,errors:['Neden seçin.']};
+  DB.classCancels.push({id:cUid('cc'),group:groupId,date:ds,reason,note:String(note||'').slice(0,200),createdAt:todayStr()}); save(); return {ok:true,errors:[]};
+}
+function ccRemove(id){ if(role!=='admin') return; DB.classCancels=(DB.classCancels||[]).filter(x=>x.id!==id); save(); }
+function ccAddUi(){
+  const r=ccAdd(cV('cc_g'),cV('cc_d'),cV('cc_r'),cV('cc_n')); const e=document.getElementById('cc_res');
+  if(!r.ok){ if(e){ e.style.color='var(--red)'; e.textContent=r.errors.join(' '); } return; }
+  renderLeaves($('#content')); const e2=document.getElementById('cc_res'); if(e2){ e2.style.color='var(--green)'; e2.textContent='Ders kapatıldı; hoca ücreti yazılmayacak.'; }
+}
+function ccRemoveUi(id){ if(!confirm('İptal geri alınsın mı? Ders yeniden hakedişe dahil olur.')) return; ccRemove(id); renderLeaves($('#content')); }
+const _renderLeaves5=renderLeaves;
+renderLeaves=function(c){
+  _renderLeaves5(c); cEnsure(); if(role!=='admin') return; const today=todayStr();
+  const gs=DB.groups.slice().sort((a,b)=>a.name.localeCompare(b.name,'tr'));
+  const list=(DB.classCancels||[]).slice().sort((a,b)=>String(b.date).localeCompare(String(a.date))).slice(0,60);
+  c.insertAdjacentHTML('beforeend',`<div class="section-title">Dersi kapat (iptal)</div>
+  <div class="card" style="margin-bottom:12px;"><div style="font-size:12.5px;color:var(--muted);margin-bottom:8px;">Teknik arıza, öğrencilerin gelmemesi veya yönetim kararıyla yapılamayan grup dersini kapatın. İptal edilen ders için hocaya ücret yazılmaz; programda "İPTAL" görünür.</div>
+  <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;">
+  <div class="field" style="margin:0;min-width:200px;"><label for="cc_g">Grup</label><select id="cc_g"><option value="">Seçin</option>${gs.map(g=>`<option value="${escHtml(g.id)}">${escHtml(g.name)} (${escHtml(gSchedText(g))})</option>`).join('')}</select></div>
+  <div class="field" style="margin:0;"><label for="cc_d">Tarih</label><input type="date" id="cc_d" value="${today}"></div>
+  <div class="field" style="margin:0;"><label for="cc_r">Neden</label><select id="cc_r">${CC_REASONS.map(x=>`<option>${escHtml(x)}</option>`).join('')}</select></div>
+  <div class="field" style="margin:0;flex:1;min-width:140px;"><label for="cc_n">Not</label><input id="cc_n" maxlength="200"></div>
+  <button class="btn primary" onclick="ccAddUi()">Dersi kapat</button></div><div id="cc_res" role="alert" style="font-size:12.5px;margin-top:6px;"></div></div>`+
+  list.map(x=>{ const g=DB.groups.find(y=>y.id===x.group); return `<div class="card" style="margin-bottom:8px;display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center;"><div><b>${escHtml(fmtDate(x.date))}</b> · ${escHtml(g?g.name:'—')}<div style="font-size:12.5px;color:var(--muted);">${escHtml(x.reason)}${x.note?' · '+escHtml(x.note):''}</div></div><button class="btn sm" onclick="ccRemoveUi('${x.id}')">Geri al</button></div>`; }).join(''));
+};
+const _saveAttendance5=saveAttendance;
+saveAttendance=function(){ const gid=(document.getElementById('attGroup')||{}).value, d=(document.getElementById('attDate')||{}).value; if(gid&&d&&gCancelled(gid,d)){ if(typeof cToast==='function') cToast('Bu ders iptal edildi; yoklama alınamaz.'); else alert('Bu ders iptal edildi; yoklama alınamaz.'); return; } return _saveAttendance5.apply(this,arguments); };
 
 /* ============ INIT ============ */
 boot();
