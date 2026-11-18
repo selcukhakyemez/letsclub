@@ -7515,12 +7515,12 @@ function swAdd(groupId,ds,subId,note){
   if(!/^\d{4}-\d{2}-\d{2}$/.test(ds||'')) return {ok:false,errors:['Tarih seçin.']};
   if(!groupOnDay(g,ds)) return {ok:false,errors:['Bu grubun seçilen günde dersi yok.']};
   const sub=DB.coaches.find(x=>x.id===subId); if(!sub) return {ok:false,errors:['Yerine girecek antrenörü seçin.']};
-  if(subId===g.coach) return {ok:false,errors:['Yerine girecek kişi grubun kendi antrenörü olamaz.']};
+  if(subId===gCoachOn(g,ds)) return {ok:false,errors:['Yerine girecek kişi o dersin kendi antrenörü olamaz.']};
   if((DB.coachSwaps||[]).some(x=>x.group===groupId&&x.date===ds)) return {ok:false,errors:['Bu ders için zaten bir değişiklik var; önce onu kaldırın.']};
   if((DB.coachLeaves||[]).some(l=>l.coach===subId&&lcCovers(l,ds))) return {ok:false,errors:[sub.name+' bu tarihte izinli.']};
   const m=groupMinutes(g,ds); const info=coachBusyInfo(subId,ds,m[0],m[1],groupId,null);
   if(info){ const og=info.type==='group'?DB.groups.find(x=>x.id===info.ref):null; return {ok:false,errors:[sub.name+' bu saatte '+(og?'"'+og.name+'" grubunda':'özel derste')+' görevli.']}; }
-  const rec={id:cUid('sw'),group:groupId,date:ds,coach:subId,orig:g.coach,note:String(note||'').slice(0,200),createdAt:todayStr()};
+  const rec={id:cUid('sw'),group:groupId,date:ds,coach:subId,orig:gCoachOn(g,ds),note:String(note||'').slice(0,200),createdAt:todayStr()};
   DB.coachSwaps.push(rec); save(); return {ok:true,errors:[],id:rec.id};
 }
 function swRemove(id){ if(role!=='admin') return; DB.coachSwaps=(DB.coachSwaps||[]).filter(x=>x.id!==id); save(); }
@@ -7553,6 +7553,56 @@ renderLeaves=function(c){
   h+=list.map(s=>{ const g=DB.groups.find(x=>x.id===s.group); return `<div class="card" style="margin-bottom:8px;display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center;"><div><b>${escHtml(fmtDate(s.date))}</b> · ${escHtml(g?g.name:'—')}${g?' · '+escHtml(gTimeOn(g,s.date)):''}<div style="font-size:12.5px;color:var(--muted);">${escHtml(coachName(s.orig))} yerine <b>${escHtml(coachName(s.coach))}</b>${s.note?' · '+escHtml(s.note):''}</div></div>${adm&&s.date>=today?`<button class="btn sm danger" onclick="swRemoveUi('${s.id}')">Kaldır</button>`:''}</div>`; }).join('')||'<div class="card"><div class="empty">Hoca değişikliği yok</div></div>';
   c.insertAdjacentHTML('beforeend',h);
 };
+
+/* ============ PROGRAM BAZLI ANTRENÖR (aynı takımda hafta içi başka, hafta sonu başka hoca) ============ */
+function gCoachOn(g,ds){ const b=ds?gBlockOn(g,ds):null; return (b&&b.coach&&DB.coaches.some(c=>c.id===b.coach))?b.coach:g.coach; }
+const _grpBlockHtml3=grpBlockHtml;
+grpBlockHtml=function(b){
+  let h=_grpBlockHtml3(b); const sel=(b&&b.coach)||'';
+  const f=`<div class="field" style="margin:8px 0 0;"><label>Bu programın antrenörü</label><select class="gf-bc"><option value="">Grubun antrenörü ile aynı</option>${DB.coaches.map(c=>`<option value="${escHtml(c.id)}"${c.id===sel?' selected':''}>${escHtml(c.name)}</option>`).join('')}</select></div>`;
+  return h.replace(/<\/div>\s*$/,f+'</div>');
+};
+const _grpCollect3=grpCollect;
+grpCollect=function(){ const c=_grpCollect3(); const els=Array.from(document.querySelectorAll('#gf_extra .gf-blk'));
+  (c.blocks||[]).slice(1).forEach((b,i)=>{ const el=els[i]; if(el) b.coach=(el.querySelector('.gf-bc')||{}).value||''; }); return c; };
+const _groupToCfg3=groupToCfg;
+groupToCfg=function(g){ const c=_groupToCfg3(g); const bs=gBlocks(g); if(c.blocks&&bs.length>1) c.blocks.forEach((b,i)=>{ b.coach=bs[i].coach||''; }); return c; };
+grpOpen=(function(_o){ return function(editId,pre){ _o(editId,pre); try{
+  const g=editId?DB.groups.find(x=>x.id===editId):null; const src=g?gBlocks(g).slice(1):((pre&&pre.blocks)||[]).slice(1);
+  Array.from(document.querySelectorAll('#gf_extra .gf-blk')).forEach((el,i)=>{ const s=src[i]; const p=el.querySelector('.gf-bc'); if(s&&p) p.value=s.coach||''; });
+}catch(e){} }; })(grpOpen);
+const _saveGroup4=saveGroup;
+saveGroup=function(c,editId){
+  const r=_saveGroup4(c,editId); if(!r||!r.ok) return r;
+  const g=DB.groups.find(x=>x.id===r.id); const blocks=Array.isArray(c.blocks)?c.blocks:[];
+  if(g&&Array.isArray(g.sched)&&blocks.length>1){ g.sched.forEach((s,i)=>{ const b=blocks[i]||{}; if(i>0&&b.coach&&b.coach!==g.coach&&DB.coaches.some(x=>x.id===b.coach)) s.coach=b.coach; else delete s.coach; }); save(); }
+  return r;
+};
+const _validateGroup4=validateGroup;
+validateGroup=function(c,ignoreId){
+  const base=_validateGroup4(c,ignoreId); const blocks=Array.isArray(c.blocks)?c.blocks:[];
+  const extra=blocks.slice(1).filter(b=>b.coach&&b.coach!==c.coach);
+  if(!extra.length||base.errors.length) return base;
+  const conflicts=base.conflicts.slice();
+  blocks.slice(1).forEach((b,i)=>{ if(!b.coach||b.coach===c.coach) return;
+    const r=_validateGroup4(Object.assign({},c,{days:b.days,start:b.start,end:b.end,coach:b.coach},(b.pool&&b.pool!==c.pool)?{pool:b.pool,lanes:gBlkLanes(b.lane)}:{}),ignoreId);
+    r.conflicts.forEach(e=>{ if(/görevli|özel derste/.test(e)&&conflicts.indexOf(`${i+2}. program: `+e)<0) conflicts.push(`${i+2}. program: `+e); }); });
+  return {errors:base.errors,conflicts:Array.from(new Set(conflicts))};
+};
+/* etkin antrenör: swap > program antrenörü(izin/yerine dahil) > grup antrenörü */
+const _effCoach3=effCoach;
+effCoach=function(g,ds){
+  const bc=gCoachOn(g,ds);
+  if(bc===g.coach) return _effCoach3(g,ds);
+  const s=swapOf(g,ds); if(s) return s.coach;
+  const L=(DB.coachLeaves||[]).find(l=>l.coach===bc&&lcCovers(l,ds)&&(l.subs||[]).some(x=>x.group===g.id));
+  return L?L.subs.find(x=>x.group===g.id).coach:bc;
+};
+const _cEffName3=cEffName;
+cEffName=function(g,ds){ const bc=gCoachOn(g,ds); if(bc===g.coach) return _cEffName3(g,ds);
+  const e=effCoach(g,ds); if(e===bc) return coachName(bc); const s=swapOf(g,ds); return coachName(e)+' (yerine; '+coachName(bc)+(s?'':' izinli')+')'; };
+const _subGroupIds3=subGroupIds;
+subGroupIds=function(coachId,ds){ const out=_subGroupIds3(coachId,ds); DB.groups.forEach(g=>{ if(Array.isArray(g.sched)&&g.sched.some(b=>b.coach===coachId)&&out.indexOf(g.id)<0) out.push(g.id); }); return out; };
 
 /* ============ INIT ============ */
 boot();
