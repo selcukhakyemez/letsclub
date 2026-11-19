@@ -7647,6 +7647,64 @@ renderLeaves=function(c){
 const _saveAttendance5=saveAttendance;
 saveAttendance=function(){ const gid=(document.getElementById('attGroup')||{}).value, d=(document.getElementById('attDate')||{}).value; if(gid&&d&&gCancelled(gid,d)){ if(typeof cToast==='function') cToast('Bu ders iptal edildi; yoklama alınamaz.'); else alert('Bu ders iptal edildi; yoklama alınamaz.'); return; } return _saveAttendance5.apply(this,arguments); };
 
+/* ============ ÖĞRENCİ KARTINDAN DONDURMA / İNDİRİM / DEVİR ============ */
+if(C_COLLS.indexOf('transfers')<0) C_COLLS.push('transfers');
+if(!SB_SPECS.some(s=>s.c==='transfers')) SB_SPECS.push({c:'transfers',t:'arr'});
+if(typeof AU_COLL==='object') AU_COLL.transfers='Ders devri';
+function trSave(f){
+  if(role!=='admin') return {ok:false,errors:['Devri yalnızca yönetici yapar.']};
+  cEnsure(); const e=[]; const src=(DB.plPackages||[]).find(p=>p.id===f.pkg); const from=DB.athletes.find(x=>x.id===f.from); const to=DB.athletes.find(x=>x.id===f.to);
+  const n=Number(f.hours);
+  if(!src||src.athlete!==f.from) e.push('Devredilecek paketi seçin.');
+  if(!to||to.status!=='active') e.push('Devir alacak aktif bir sporcu seçin.'); else if(to.id===f.from) e.push('Kendisine devir yapılamaz.');
+  if(src&&!(Number.isInteger(n)&&n>=1&&n<=pkgRemaining(src))) e.push('Devir saati 1 ile kalan hak ('+(src?pkgRemaining(src):0)+') arasında tam sayı olmalı.');
+  const note=String(f.note||'').trim(); if(note.length>100) e.push('Not en çok 100 karakter olabilir.');
+  if(e.length) return {ok:false,errors:e};
+  const share=src.hours?r2((src.price||0)*n/src.hours):0;
+  src.hours-=n;
+  const pk={id:'pk'+Date.now()+Math.floor(Math.random()*1000),athlete:to.id,hours:n,price:0,pool:src.pool,createdAt:todayStr(),transfer:true,transferFrom:f.from,origPrice:share};
+  if(src.size) pk.size=src.size; DB.plPackages.push(pk);
+  DB.transfers.push({id:cUid('tr'),from:f.from,to:to.id,pkg:src.id,newPkg:pk.id,hours:n,pool:src.pool,size:src.size||1,note,date:todayStr()});
+  recalcBalances(); save(); return {ok:true,errors:[]};
+}
+function crdMsg(id,ok,t){ const e=document.getElementById('crd_msg'); if(e){ e.style.color=ok?'var(--green)':'var(--red)'; e.textContent=t; } if(ok) setTimeout(()=>openAthlete(id),600); }
+function crdFz(id){ const r=fzSave({athlete:id,from:cV('cf_from'),to:cV('cf_to'),reason:cV('cf_rs'),credit:cV('cf_cr')}); crdMsg(id,r.ok,r.ok?'Üyelik donduruldu.':r.errors.join(' ')); }
+function crdFzDel(id,fid){ if(!confirm('Dondurma kaldırılsın mı?')) return; const r=fzRemove(fid); crdMsg(id,r.ok,r.ok?'Kaldırıldı.':r.errors.join(' ')); }
+function crdDc(id){ const r=dcSave({athlete:id,kind:cV('cd_kind'),value:cV('cd_val'),from:cV('cd_from'),to:cV('cd_to'),reason:cV('cd_rs')}); crdMsg(id,r.ok,r.ok?'İndirim tanımlandı.':r.errors.join(' ')); }
+function crdDcDel(id,did){ if(!confirm('İndirim silinsin mi?')) return; const r=dcRemove(did); crdMsg(id,r.ok,r.ok?'Silindi.':r.errors.join(' ')); }
+function crdTr(id){ const r=trSave({from:id,pkg:cV('ct_pkg'),hours:cV('ct_h'),to:cV('ct_to'),note:cV('ct_n')}); crdMsg(id,r.ok,r.ok?'Ders hakkı devredildi.':r.errors.join(' ')); }
+function crdSection(a){
+  cEnsure(); const today=todayStr(); const adm=role==='admin'; let h='';
+  const trs=(DB.transfers||[]).filter(t=>t.from===a.id||t.to===a.id).sort((x,y)=>String(y.date).localeCompare(String(x.date)));
+  if(adm){
+    const fzs=DB.freezes.filter(f=>f.athlete===a.id&&f.to>=today); const dcs=DB.discounts.filter(d=>d.athlete===a.id&&d.type!=='credit'&&d.id!=='ds_sibling'&&(!d.to||d.to>=today)); const crs=DB.discounts.filter(d=>d.athlete===a.id&&d.type==='credit'&&!d.used);
+    const pks=athletePackages(a.id).filter(p=>pkgRemaining(p)>0);
+    const others=DB.athletes.filter(x=>x.status==='active'&&x.id!==a.id).sort((x,y)=>x.name.localeCompare(y.name,'tr'));
+    const row=(t,del)=>`<div style="display:flex;justify-content:space-between;gap:8px;font-size:13px;padding:4px 0;"><span>${t}</span>${del}</div>`;
+    h+=`<div class="section-title">Dondurma · İndirim · Devir</div><div class="card">
+    ${fzs.map(f=>row('❄️ Dondurma: '+escHtml(fmtDate(f.from))+' – '+escHtml(fmtDate(f.to))+(f.credit?' · alacak '+money(f.credit):''),`<button class="btn sm danger" onclick="crdFzDel('${a.id}','${f.id}')">Kaldır</button>`)).join('')}
+    ${dcs.map(d=>row('🏷️ İndirim: '+(d.kind==='percent'?'%'+d.value:money(d.value))+(d.reason?' · '+escHtml(d.reason):'')+(d.to?' · '+escHtml(fmtDate(d.to))+'’e kadar':''),`<button class="btn sm danger" onclick="crdDcDel('${a.id}','${d.id}')">Sil</button>`)).join('')}
+    ${crs.length?row('💳 Kullanılmamış alacak: '+money(crs.reduce((s,d)=>s+Number(d.value),0)),''):''}
+    <details style="margin-top:8px;"><summary style="cursor:pointer;font-weight:700;">Üyeliği dondur</summary><div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:8px;"><div class="field"><label for="cf_from">Başlangıç</label><input type="date" id="cf_from" value="${today}"></div><div class="field"><label for="cf_to">Bitiş</label><input type="date" id="cf_to"></div></div><div class="field"><label for="cf_rs">Sebep (yalnızca yönetici görür)</label><input id="cf_rs" maxlength="80"></div><div class="field"><label for="cf_cr">Sonraki ödemeden düşülecek alacak (₺, ops.)</label><input id="cf_cr" inputmode="decimal"></div><button class="btn primary" onclick="crdFz('${a.id}')">Dondur</button></details>
+    <details style="margin-top:8px;"><summary style="cursor:pointer;font-weight:700;">İndirim / alacak tanımla</summary><div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:8px;"><div class="field"><label for="cd_kind">Tür</label><select id="cd_kind"><option value="percent">Yüzde (%)</option><option value="amount">Tutar (₺)</option></select></div><div class="field"><label for="cd_val">Değer</label><input id="cd_val" inputmode="decimal"></div><div class="field"><label for="cd_from">Başlangıç (ops.)</label><input type="date" id="cd_from"></div><div class="field"><label for="cd_to">Bitiş (ops.)</label><input type="date" id="cd_to"></div></div><div class="field"><label for="cd_rs">Açıklama</label><input id="cd_rs" maxlength="60"></div><button class="btn primary" onclick="crdDc('${a.id}')">İndirimi kaydet</button></details>
+    <details style="margin-top:8px;"><summary style="cursor:pointer;font-weight:700;">Ders hakkını devret</summary>${pks.length?`<div style="font-size:12.5px;color:var(--muted);margin:6px 0;">Kalan özel ders haklarını başka bir sporcuya aktarır. Ücret yeniden alınmaz.</div><div class="field"><label for="ct_pkg">Paket</label><select id="ct_pkg">${pks.map(p=>`<option value="${p.id}">${escHtml(p.pool)} · kalan ${pkgRemaining(p)} / ${p.hours} saat</option>`).join('')}</select></div><div style="display:grid;grid-template-columns:1fr 2fr;gap:10px;"><div class="field"><label for="ct_h">Devir saati</label><input id="ct_h" inputmode="numeric" value="1"></div><div class="field"><label for="ct_to">Devir alacak sporcu</label><select id="ct_to"><option value="">Seçin</option>${others.map(x=>`<option value="${x.id}">${escHtml(x.name)}</option>`).join('')}</select></div></div><div class="field"><label for="ct_n">Not (ops.)</label><input id="ct_n" maxlength="100"></div><button class="btn primary" onclick="crdTr('${a.id}')">Devret</button>`:'<div style="font-size:13px;color:var(--muted);margin-top:6px;">Devredilebilecek kalan özel ders hakkı yok.</div>'}</details>
+    <div id="crd_msg" role="alert" style="font-size:12.5px;margin-top:8px;"></div></div>`;
+  }
+  if(trs.length){
+    h+=`<div class="section-title">Ders devri geçmişi</div><div class="card">`+trs.map(t=>{ const out=t.from===a.id;
+      const other=adm?' · '+escHtml(athleteName(out?t.to:t.from)):''; 
+      return `<div style="font-size:13px;padding:5px 0;border-bottom:1px solid var(--line);"><b>${escHtml(fmtDate(t.date))}</b> · ${out?'↗ Devredildi':'↙ Devir alındı'}: <b>${t.hours} saat</b> (${escHtml(t.pool)})${other}${t.note&&adm?' · '+escHtml(t.note):''}</div>`; }).join('')+`</div>`;
+  }
+  return h;
+}
+function crdInject(id){
+  try{ const a=DB.athletes.find(x=>x.id===id); const body=$('#atabBody'); if(!a||!body||!$('#drawer').classList.contains('open')) return;
+    const act=document.querySelector('#atabs button.active'); if(act&&act.dataset.t!=='genel') return;
+    if(body.querySelector('#crd_wrap')) return; const h=crdSection(a); if(!h) return;
+    body.insertAdjacentHTML('beforeend','<div id="crd_wrap">'+h+'</div>'); }catch(e){}
+}
+{ const _oa=openAthlete; openAthlete=function(id){ _oa(id); try{ crdInject(id); const t=document.getElementById('atabs'); if(t&&!t.dataset.crd){ t.dataset.crd='1'; t.addEventListener('click',()=>setTimeout(()=>crdInject(id),0)); } }catch(e){} }; }
+
 /* ============ INIT ============ */
 boot();
 </script>
