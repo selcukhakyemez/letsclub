@@ -6601,7 +6601,7 @@ renderNav=function(){
   let hideT=null; const sb=()=>document.getElementById('sidebar');
   const wide=()=>window.innerWidth>840;
   const show=()=>{ clearTimeout(hideT); const s=sb(); if(s&&wide()) s.classList.add('show'); };
-  const hide=(ms)=>{ clearTimeout(hideT); hideT=setTimeout(()=>{ const s=sb(); if(s&&!pinned()&&wide()&&!s.matches(':focus-within')) s.classList.remove('show'); },ms); };
+  const hide=(ms,force)=>{ clearTimeout(hideT); hideT=setTimeout(()=>{ const s=sb(); if(s&&!pinned()&&wide()&&(force||(!s.matches(':focus-within')&&!s.matches(':hover')))) s.classList.remove('show'); },ms); };
   function apply(){ document.body.classList.toggle('navauto',!pinned()); const s=sb(); if(!s) return; if(pinned()||!wide()) s.classList.remove('show'); }
   window.cNavPinToggle=function(){ try{ localStorage.setItem('navpin',pinned()?'0':'1'); }catch(e){} apply(); cNavPinLabel(); if(!pinned()) hide(300); };
   function cNavPinLabel(){ const b=document.getElementById('navpinbtn'); if(b) b.textContent=pinned()?'Menüyü otomatik gizle':'Menüyü sabitle'; }
@@ -6612,7 +6612,7 @@ renderNav=function(){
     hot.addEventListener('mouseenter',show); tab.addEventListener('mouseenter',show); tab.addEventListener('click',()=>{ const o=s.classList.contains('show'); if(o) s.classList.remove('show'); else show(); });
     s.addEventListener('mouseenter',()=>{ clearTimeout(hideT); }); s.addEventListener('mouseleave',()=>hide(500));
     s.addEventListener('focusin',show); s.addEventListener('focusout',()=>hide(600));
-    s.addEventListener('click',e=>{ if(e.target.closest('nav a')) hide(1200); });
+    s.addEventListener('click',e=>{ if(e.target.closest('nav a')) hide(900,true); else if(e.target.closest('nav .sect.grp')) show(); },true);
     const f=s.querySelector('.sidebar-foot'); if(f) f.insertAdjacentHTML('beforeend','<div style="margin-top:8px;"><button type="button" id="navpinbtn" class="navpinbtn" onclick="cNavPinToggle()"></button></div>');
     apply(); cNavPinLabel(); window.addEventListener('resize',apply);
     if(!pinned()&&wide()){ s.classList.add('show'); hide(2500); }
@@ -7811,6 +7811,16 @@ function crd2Inject(id){
 }
 { const _oa=openAthlete; openAthlete=function(id){ _oa(id); try{ crd2Inject(id); const t=document.getElementById('atabs'); if(t&&!t.dataset.crd2){ t.dataset.crd2='1'; t.addEventListener('click',()=>setTimeout(()=>crd2Inject(id),0)); } }catch(e){} }; }
 
+
+/* ---- Panel açıkken arka sayfa kaymasın; sol menü grup seçerken kapanmasın ---- */
+(function(){
+  const st=document.createElement('style');
+  st.textContent='html{scrollbar-gutter:stable}.drawer{overscroll-behavior:contain}body.dlock{overflow:hidden}';
+  document.head.appendChild(st);
+  function sync(){ const d=document.getElementById('drawer'); document.body.classList.toggle('dlock',!!(d&&d.classList.contains('open'))); }
+  function init(){ const d=document.getElementById('drawer'); if(!d) return; new MutationObserver(sync).observe(d,{attributes:true,attributeFilter:['class']}); sync(); }
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',init); else setTimeout(init,0);
+})();
 /* ============ INIT ============ */
 boot();
 </script>
