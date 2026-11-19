@@ -7396,7 +7396,7 @@ function gfSave(f){
   if(e.length) return {ok:false,errors:e};
   cEnsure(); const id=cUid('gf'); const rec={id,scope:f.kind==='p_ders'?'private':'group',unit:f.kind==='g_ay'?'ay':'ders',qty,reason,at:todayStr(),ref:{}}; let note='';
   if(f.kind==='g_ay'){
-    if(a.membership&&a.membership.end){ a.membership.end=addMonthsYmd(a.membership.end,qty); a.membership.gift=(a.membership.gift||0)+qty; rec.ref.mem=qty; note='Üyelik bitişi '+qty+' ay uzatıldı ('+fmtDate(a.membership.end)+').'; }
+    if(a.membership&&a.membership.end){ a.membership.end=addMonthsYmd(a.membership.end,qty); if(a.membership.ext) a.membership.ext.base=addMonthsYmd(a.membership.ext.base,qty); a.membership.gift=(a.membership.gift||0)+qty; rec.ref.mem=qty; note='Üyelik bitişi '+qty+' ay uzatıldı ('+fmtDate(a.membership.end)+').'; }
     else { const price=Number((DB.poolPrices[g.pool]||{}).group)||0;
       if(price>0){ rec.ref.credits=[]; for(let i=0;i<qty;i++){ const cid=cUid('ds'); DB.discounts.push({id:cid,athlete:a.id,type:'credit',kind:'amount',value:r2(price),reason:'Hediye ay'+(reason?' — '+reason:''),used:false,gift:id,created:todayStr()}); rec.ref.credits.push(cid); } note=qty+' ay için '+money(price)+'’lik alacak tanımlandı; sonraki aidat ödemelerinde otomatik düşer.'; }
       else note='Kaydedildi; '+g.pool+' için aylık grup fiyatı girilmediğinden otomatik alacak oluşmadı.'; }
@@ -7411,7 +7411,7 @@ function gfRemove(athId,gid){
   const a=DB.athletes.find(x=>x.id===athId); const g=a&&(a.gifts||[]).find(x=>x.id===gid); if(!g) return {ok:false,errors:['Kayıt bulunamadı.']};
   if(g.ref.pkg){ const pk=(DB.plPackages||[]).find(x=>x.id===g.ref.pkg); if(pk){ if(pkgUsed(pk)>0) return {ok:false,errors:['Bu hediye saatlerden kullanılmış; kaldırılamaz.']}; DB.plPackages=DB.plPackages.filter(x=>x.id!==pk.id); } }
   if(g.ref.credits){ const used=g.ref.credits.some(c=>{ const d=DB.discounts.find(x=>x.id===c); return d&&d.used; }); if(used) return {ok:false,errors:['Bu hediye alacak kullanılmış; kaldırılamaz.']}; DB.discounts=DB.discounts.filter(d=>g.ref.credits.indexOf(d.id)<0); }
-  if(g.ref.mem&&a.membership){ a.membership.end=addMonthsYmd(a.membership.end,-g.ref.mem); a.membership.gift=Math.max(0,(a.membership.gift||0)-g.ref.mem); }
+  if(g.ref.mem&&a.membership){ a.membership.end=addMonthsYmd(a.membership.end,-g.ref.mem); if(a.membership.ext) a.membership.ext.base=addMonthsYmd(a.membership.ext.base,-g.ref.mem); a.membership.gift=Math.max(0,(a.membership.gift||0)-g.ref.mem); }
   a.gifts=a.gifts.filter(x=>x.id!==gid); save(); return {ok:true,errors:[]};
 }
 function gfUi(){
@@ -7821,6 +7821,69 @@ function crd2Inject(id){
   function init(){ const d=document.getElementById('drawer'); if(!d) return; new MutationObserver(sync).observe(d,{attributes:true,attributeFilter:['class']}); sync(); }
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',init); else setTimeout(init,0);
 })();
+/* ============ İZİNLİ/HASTA GÜNLERİ ÜYELİK SONUNA EKLE + DENEME YOKLAMALARINI TEMİZLE ============ */
+function memNthSessionAfter(a,base,n){
+  const g=DB.groups.find(x=>x.id===a.group); if(!g||n<=0) return base; let ds=base,c=0;
+  for(let i=0;i<900&&c<n;i++){ ds=fbAddDays(ds,1); if(groupOnDay(g,ds)&&!gCancelled(g,ds)&&!cFrozenOn(a,ds)) c++; }
+  return c<n?base:ds;
+}
+function memExcusedIndex(){
+  const idx={}; Object.keys(DB.attendanceLog||{}).forEach(k=>{ const p=k.split('|'); const ds=p[1]; if(!ds) return; const rec=DB.attendanceLog[k]||{};
+    Object.keys(rec).forEach(aid=>{ if(rec[aid]==='İzinli'||rec[aid]==='Hastalık') (idx[aid]=idx[aid]||[]).push(ds); }); });
+  return idx;
+}
+function memSync(a,idx){
+  const m=a.membership; if(!m||!m.end||m.pending||a.status!=='active') return false;
+  const st=m.start||a.joined||'0000-00-00'; const ex=((idx||memExcusedIndex())[a.id]||[]).filter(d=>d>=st).length;
+  const base=m.ext?m.ext.base:m.end;
+  if(!ex&&!m.ext) return false;
+  const eff=ex?memNthSessionAfter(a,base,ex):base;
+  if(m.ext&&m.ext.n===ex&&m.end===eff) return false;
+  if(!ex){ m.end=base; delete m.ext; return true; }
+  m.ext={base,n:ex,eff}; m.end=eff; return true;
+}
+function memSyncAll(){
+  if(role!=='admin') return 0; const idx=memExcusedIndex(); let n=0;
+  DB.athletes.forEach(a=>{ if(a.membership&&memSync(a,idx)) n++; }); if(n) save(); return n;
+}
+const _saveAttendance7=saveAttendance;
+saveAttendance=function(){ const r=_saveAttendance7.apply(this,arguments); try{ memSyncAll(); }catch(e){} return r; };
+const _renderDashboard7=renderDashboard;
+renderDashboard=function(c){ try{ memSyncAll(); }catch(e){} return _renderDashboard7(c); };
+/* hediye/extra ile üyelik uzatma: telafi uzatmasının tabanını da kaydır */
+/* --- üyelik bilgisi (kartta) --- */
+const _crd2Section8=crd2Section;
+crd2Section=function(a){
+  let h=_crd2Section8(a); const m=a.membership;
+  if(m&&m.ext&&m.ext.n){ h=`<div class="card" style="margin-top:14px;font-size:13px;"><b>Üyelik bitişi:</b> ${escHtml(fmtDate(m.end))} <span style="color:var(--muted);">(asıl bitiş ${escHtml(fmtDate(m.ext.base))} + izinli/hasta ${m.ext.n} ders eklendi)</span></div>`+h; }
+  return h;
+};
+/* --- deneme yoklamalarını temizle (başlangıç tarihinden önceki kayıtlar) --- */
+function tcStart(a){ return (a.membership&&a.membership.start)||a.joined||''; }
+function tcPlan(){
+  const byId={}; DB.athletes.forEach(a=>byId[a.id]=a); const del=[]; const per={};
+  Object.keys(DB.attendanceLog||{}).forEach(k=>{ const p=k.split('|'); const gid=p[0], ds=p[1]; const rec=DB.attendanceLog[k]||{};
+    Object.keys(rec).forEach(aid=>{ const a=byId[aid]; if(!a) return; const st=tcStart(a); if(!st||!ds||ds>=st) return; del.push({k,gid,aid,ds,st,v:rec[aid]}); per[aid]=(per[aid]||0)+1; }); });
+  const noStart=DB.athletes.filter(a=>a.status==='active'&&!tcStart(a)).length;
+  return {del,per,noStart};
+}
+function tcPreview(){
+  const p=tcPlan(); const e=document.getElementById('tc_out'); if(!e) return;
+  const rows=Object.keys(p.per).sort((x,y)=>p.per[y]-p.per[x]).slice(0,15).map(id=>{ const a=DB.athletes.find(x=>x.id===id); return `<tr><td>${escHtml(a.name)}</td><td>${escHtml(fmtDate(tcStart(a)))}</td><td>${p.per[id]}</td></tr>`; }).join('');
+  e.innerHTML=p.del.length?`<div style="font-size:13px;margin:8px 0;"><b>${p.del.length}</b> yoklama kaydı (${Object.keys(p.per).length} sporcu) başlangıç tarihinden önce yazılmış.${p.noStart?` ${p.noStart} sporcunun başlangıç tarihi yok; bunlara dokunulmaz.`:''}</div><div style="overflow-x:auto;"><table><thead><tr><th>Sporcu</th><th>Başlangıç</th><th>Silinecek kayıt</th></tr></thead><tbody>${rows}</tbody></table></div><button class="btn danger" style="margin-top:10px;" onclick="tcRun()">Bu kayıtları sil (yedeği iner)</button>`:`<div style="font-size:13px;margin-top:8px;color:var(--green);">Başlangıç tarihinden önce yazılmış yoklama yok.${p.noStart?` (${p.noStart} sporcunun başlangıç tarihi yok.)`:''}</div>`;
+}
+function tcRun(){
+  if(role!=='admin') return; const p=tcPlan(); if(!p.del.length) return;
+  if(!confirm(p.del.length+' yoklama kaydı kalıcı olarak silinsin mi? Yedek dosyası indirilecek.')) return;
+  try{ const blob=new Blob([JSON.stringify(p.del,null,1)],{type:'application/json'}); const u=URL.createObjectURL(blob); const l=document.createElement('a'); l.href=u; l.download='silinen-yoklamalar-'+todayStr()+'.json'; document.body.appendChild(l); l.click(); setTimeout(()=>{ URL.revokeObjectURL(u); l.remove(); },500); }catch(e){}
+  p.del.forEach(x=>{ const rec=DB.attendanceLog[x.k]; if(!rec) return; delete rec[x.aid]; if(!Object.keys(rec).length) delete DB.attendanceLog[x.k];
+    DB.makeups=(DB.makeups||[]).filter(m=>!(m.athlete===x.aid&&m.group===x.gid&&m.absDate===x.ds&&!m.cancel&&m.status==='Hak')); });
+  memSyncAll(); save(); const e=document.getElementById('tc_out'); if(e) e.innerHTML='<div style="font-size:13px;color:var(--green);margin-top:8px;">'+p.del.length+' kayıt silindi.</div>';
+}
+const _renderSettings8=renderSettings;
+renderSettings=function(c){ _renderSettings8(c); if(role!=='admin') return;
+  c.insertAdjacentHTML('beforeend',`<div class="section-title">Deneme yoklamalarını temizle</div><div class="card"><div style="font-size:13px;color:var(--muted);">Sporcunun başlangıç tarihinden (üyelik başlangıcı, yoksa katılım tarihi) <b>önce</b> yazılmış yoklamalar silinir. Başlangıç tarihinden itibaren alınan yoklamalara dokunulmaz. Silmeden önce liste gösterilir ve yedek dosyası iner.</div><button class="btn" style="margin-top:8px;" onclick="tcPreview()">Önizle</button><div id="tc_out"></div></div>`); };
+
 /* ============ INIT ============ */
 boot();
 </script>
