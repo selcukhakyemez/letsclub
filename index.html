@@ -7884,6 +7884,64 @@ const _renderSettings8=renderSettings;
 renderSettings=function(c){ _renderSettings8(c); if(role!=='admin') return;
   c.insertAdjacentHTML('beforeend',`<div class="section-title">Deneme yoklamalarını temizle</div><div class="card"><div style="font-size:13px;color:var(--muted);">Sporcunun başlangıç tarihinden (üyelik başlangıcı, yoksa katılım tarihi) <b>önce</b> yazılmış yoklamalar silinir. Başlangıç tarihinden itibaren alınan yoklamalara dokunulmaz. Silmeden önce liste gösterilir ve yedek dosyası iner.</div><button class="btn" style="margin-top:8px;" onclick="tcPreview()">Önizle</button><div id="tc_out"></div></div>`); };
 
+/* ============ YAPAY ZEKÂ ÖNERİLERİ → YÖNETİM > ONAYLAR (karar seçenekleriyle) ============ */
+const _navBadge9=navBadge;
+navBadge=function(id){ let n=_navBadge9(id); if(id==='approvals'&&role==='admin') n+=(DB.aiQueue||[]).filter(x=>x.status==='Onay bekliyor').length; return n; };
+function aqOpenTarget(q){
+  if(q.athlete&&DB.athletes.some(a=>a.id===q.athlete)) return {label:'Sporcu kartını aç',fn:`aqGo('ath','${q.athlete}')`};
+  if(q.group&&DB.groups.some(g=>g.id===q.group)) return {label:'Grupları aç',fn:`aqGo('route','groups')`};
+  const t=q.type||''; if(/ödeme/i.test(q.title)) return {label:'Ödemeleri aç',fn:`aqGo('route','payments')`};
+  if(/lisans/i.test(q.title)) return {label:'Sporcuları aç',fn:`aqGo('route','athletes')`};
+  if(/risk|elde tutma/i.test(t+q.title)) return {label:'Analizi aç',fn:`aqGo('route','insights')`};
+  return null;
+}
+function aqGo(k,v){ if(k==='ath'){ openAthlete(v); } else { route=v; render(); } }
+function aqMsgDraft(q){
+  const a=DB.athletes.find(x=>x.id===q.athlete); const nm=a?a.name:'';
+  return {subject:String(q.title||'').replace(/\s*\(taslak\)\s*$/i,'').replace(/^[^:]+:\s*/,'').slice(0,80)||'Bilgilendirme',
+    body:`Merhaba, ${nm?nm+' ile ilgili ':''}bilgilendirme yapmak istiyoruz. ${q.detail||''} Detaylar için bizimle iletişime geçebilirsiniz. Sh Swim Club`};
+}
+function aqDecide(id,status,extra){
+  if(role!=='admin') return {ok:false,errors:['Yetkiniz yok.']};
+  const q=(DB.aiQueue||[]).find(x=>x.id===id); if(!q||q.status!=='Onay bekliyor') return {ok:false,errors:['Öneri bulunamadı.']};
+  extra=extra||{}; let sent=0;
+  if(status==='Onaylandı'&&extra.send){
+    const a=DB.athletes.find(x=>x.id===q.athlete); const ps=a?(a.parents||[]).filter(p=>DB.parents.some(x=>x.id===p)):[];
+    if(!ps.length) return {ok:false,errors:['Bu sporcunun kayıtlı velisi yok; mesaj gönderilemedi.']};
+    for(const p of ps){ const r=msgSend({kind:'parent',id:p,subject:extra.subject,body:extra.body}); if(!r.ok) return r; sent++; }
+  }
+  q.status=status; q.decidedAt=todayStr(); q.decisionNote=String(extra.note||'').slice(0,200); if(sent) q.decision='Veliye mesaj gönderildi'; else if(status==='Onaylandı') q.decision=extra.task?'Yapılacak olarak onaylandı':'Onaylandı';
+  save(); return {ok:true,errors:[],sent};
+}
+function aqUi(id,kind){
+  const n=(document.getElementById('aq_n_'+id)||{}).value||''; const err=document.getElementById('aq_e_'+id); let r;
+  if(kind==='send') r=aqDecide(id,'Onaylandı',{send:true,subject:(document.getElementById('aq_s_'+id)||{}).value,body:(document.getElementById('aq_b_'+id)||{}).value,note:n});
+  else if(kind==='task') r=aqDecide(id,'Onaylandı',{task:true,note:n});
+  else if(kind==='ok') r=aqDecide(id,'Onaylandı',{note:n});
+  else r=aqDecide(id,'Reddedildi',{note:n});
+  if(!r.ok){ if(err) err.textContent=r.errors.join(' '); return; }
+  mgmtMsg=kind==='send'?'Mesaj veliye gönderildi ve öneri onaylandı.':kind==='no'?'Öneri reddedildi.':'Öneri onaylandı.';
+  renderApprovals($('#content')); renderNav();
+}
+function aqCard(q){
+  const d=q.athlete&&/mesaj/i.test(q.type||'')?aqMsgDraft(q):null; const go=aqOpenTarget(q);
+  return `<div class="card" style="margin-bottom:10px;"><div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;"><div><span class="badge aqua" style="font-size:11px;">${escHtml(q.type||'Öneri')}</span> <b>${escHtml(q.title)}</b>${q.detail?`<div style="font-size:12.5px;color:var(--muted);margin-top:4px;">${escHtml(q.detail)}</div>`:''}</div><span class="badge amber">Onay bekliyor</span></div>
+  <div style="font-size:12px;color:var(--muted);margin-top:6px;">Öneren: ${escHtml(aiProposerName(q))} · ${escHtml(fmtDate(q.createdAt))}</div>
+  ${d?`<details style="margin-top:8px;"><summary style="cursor:pointer;font-weight:700;font-size:13px;">Mesajı düzenle ve veliye gönder</summary><div class="field" style="margin-top:8px;"><label for="aq_s_${q.id}">Konu</label><input id="aq_s_${q.id}" maxlength="80" value="${escHtml(d.subject)}"></div><div class="field"><label for="aq_b_${q.id}">Mesaj</label><textarea id="aq_b_${q.id}" rows="4" maxlength="1500">${escHtml(d.body)}</textarea></div><button class="btn sm primary" onclick="aqUi('${q.id}','send')">Veliye gönder ve onayla</button></details>`:''}
+  <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;align-items:center;"><input id="aq_n_${q.id}" placeholder="Not / ret nedeni (isteğe bağlı)" maxlength="200" style="flex:1;min-width:160px;border:1px solid var(--line);border-radius:8px;padding:6px 9px;font-size:12.5px;background:var(--bg);color:var(--ink);">
+  ${go?`<button class="btn sm" onclick="${go.fn}">${escHtml(go.label)}</button>`:''}
+  <button class="btn sm primary" onclick="aqUi('${q.id}','task')" title="Öneriyi geçerli sayar; işlemi siz kendiniz yaparsınız">Onayla (yapılacak)</button>
+  <button class="btn sm danger" onclick="aqUi('${q.id}','no')">Reddet</button></div><div id="aq_e_${q.id}" role="alert" style="font-size:12.5px;color:var(--red);margin-top:6px;"></div></div>`;
+}
+const _renderApprovals9=renderApprovals;
+renderApprovals=function(c){
+  _renderApprovals9(c); if(role!=='admin') return;
+  const Q=(DB.aiQueue||[]).slice().reverse(); const pend=Q.filter(x=>x.status==='Onay bekliyor'), done=Q.filter(x=>x.status!=='Onay bekliyor').slice(0,10);
+  let h=`<div class="section-title" style="margin-top:0;">Yapay zekâ önerileri (${pend.length})</div>${pend.map(aqCard).join('')||'<div class="empty">Bekleyen öneri yok</div>'}`;
+  if(done.length) h+=`<div class="section-title">Önerilerde son kararlar</div>`+done.map(q=>`<div class="card" style="margin-bottom:8px;font-size:13px;display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;"><div>${escHtml(q.title)}${q.decisionNote?`<div style="font-size:12px;color:var(--muted);">Not: ${escHtml(q.decisionNote)}</div>`:''}</div><div><span class="badge ${q.status==='Onaylandı'?'green':'red'}">${escHtml(q.status)}</span><div style="font-size:11.5px;color:var(--muted);text-align:right;">${escHtml(q.decision||'')}</div></div></div>`).join('');
+  const first=c.querySelector('.section-title'); if(first) first.insertAdjacentHTML('beforebegin',h); else c.insertAdjacentHTML('beforeend',h);
+};
+
 /* ============ INIT ============ */
 boot();
 </script>
