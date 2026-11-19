@@ -941,7 +941,7 @@ function groupOnDay(g,ds){
 }
 /* --- öğretmen meşguliyeti: grup dersi (ana veya yardımcı) ya da onaylı özel ders; dakika hassasiyetinde --- */
 function coachBusyInfo(coachId,ds,s,e,ignoreGroupId,ignoreLessonId){
-  const g=DB.groups.find(x=>x.id!==ignoreGroupId&&(effCoach(x,ds)===coachId||x.assistant===coachId)&&groupOnDay(x,ds)&&plOverlap(groupMinutes(x,ds),[s,e]));
+  const g=DB.groups.find(x=>x.id!==ignoreGroupId&&(effCoach(x,ds)===coachId||x.assistant===coachId)&&groupOnDay(x,ds)&&!gCancelled(x,ds)&&plOverlap(groupMinutes(x,ds),[s,e]));
   if(g) return {type:'group',ref:g.id};
   const p=(DB.privateLessons||[]).find(x=>x.id!==ignoreLessonId&&x.coach===coachId&&x.status==='Onaylandı'&&x.date===ds&&plOverlap([x.hour*60,x.hour*60+60],[s,e]));
   if(p) return {type:'private',ref:p.id};
@@ -1232,7 +1232,7 @@ function athleteBusyReason(athId,ds,h,ignoreId){
   const a=DB.athletes.find(x=>x.id===athId); if(!a) return 'unknown';
   const r=[h*60,h*60+60];
   const g=DB.groups.find(x=>x.id===a.group);
-  if(g&&groupOnDay(g,ds)&&plOverlap(groupMinutes(g,ds),r)) return 'group';
+  if(g&&groupOnDay(g,ds)&&!gCancelled(g,ds)&&plOverlap(groupMinutes(g,ds),r)) return 'group';
   if((DB.privateLessons||[]).some(p=>p.id!==ignoreId&&p.athlete===athId&&p.status==='Onaylandı'&&p.date===ds&&p.hour===h)) return 'private';
   return null;
 }
@@ -5531,7 +5531,7 @@ function cPlCapInfo(poolName,ds,h,ignoreId){
   const dow=parseYmd(ds).getDay(), s=h*60, e=h*60+60;
   let free=Infinity, blocked=false;
   const lanesUsed=new Set(); let anyGroup=0;
-  DB.groups.filter(g=>gPoolOn(g,ds)===poolName&&groupOnDay(g,ds)&&plOverlap(groupMinutes(g,ds),[s,e])).forEach(g=>{ anyGroup++; laneList(gLaneOn(g,ds)).forEach(l=>lanesUsed.add(l)); });
+  DB.groups.filter(g=>gPoolOn(g,ds)===poolName&&groupOnDay(g,ds)&&!gCancelled(g,ds)&&plOverlap(groupMinutes(g,ds),[s,e])).forEach(g=>{ anyGroup++; laneList(gLaneOn(g,ds)).forEach(l=>lanesUsed.add(l)); });
   let rent=0, anyRent=0;
   (pool.plRentals||[]).forEach(r=>{ if(r.d.indexOf(dow)>-1&&(!r.a||ds>=r.a)&&(!r.b||ds<=r.b)&&plOverlap([r.s,r.e],[s,e])){ rent+=r.u; anyRent++; } });
   if(pool.lanes>0){ free=pool.lanes-lanesUsed.size-rent; if(free<=0) blocked=true; }
