@@ -629,7 +629,7 @@ function render(){
   const fns={dashboard:renderDashboard,athletes:renderAthletes,parents:renderParents,groups:renderGroups,
     schedule:renderSchedule,trainplan:renderTrainPlan,weekly:renderWeekly,makeups:renderMakeups,times:renderTimes,levels:renderLevels,attendance:renderAttendance,development:renderDevelopment,competitions:renderCompetitions,
     crm:renderCRM,coaches:renderCoaches,payments:renderPayments,announcements:renderAnnouncements,tickets:renderTickets,
-    reports:renderReports,settings:renderSettings,ai:renderAI,approvals:renderApprovals,insights:renderInsights,rentals:renderRentals,finance:renderFinance,poolreport:renderPoolReport,messages:renderMessages,surveys:renderSurveys,leaves:renderLeaves,discounts:renderDiscounts,devreport:renderDevReport,audit:renderAudit,payroll:renderPayroll,atthist:renderAttHistory,newitems:renderNewItems,privlesson:renderPrivLessons};
+    reports:renderReports,settings:renderSettings,ai:renderAI,approvals:renderApprovals,insights:renderInsights,rentals:renderRentals,finance:renderFinance,poolreport:renderPoolReport,dailylessons:renderDailyLessons,messages:renderMessages,surveys:renderSurveys,leaves:renderLeaves,discounts:renderDiscounts,devreport:renderDevReport,audit:renderAudit,payroll:renderPayroll,atthist:renderAttHistory,newitems:renderNewItems,privlesson:renderPrivLessons};
   c.innerHTML='';
   (fns[route]||renderDashboard)(c);
 }
@@ -8168,6 +8168,50 @@ function mkAutoRun(){ if(role!=='admin') return; const p=mkAutoPlan(); const ids
 const _renderSettings11=renderSettings;
 renderSettings=function(c){ _renderSettings11(c); if(role!=='admin') return; const n=mkAutoPlan().length;
   c.insertAdjacentHTML('beforeend',`<div class="section-title">Çift telafi temizliği</div><div class="card"><div style="font-size:13px;color:var(--muted);">İzinli/Hastalık telafisi artık yalnızca paket bitişinin uzatılmasıyla yapılır. Eskiden yoklamadan otomatik açılmış, planlanmamış <b>${n}</b> telafi hakkı var.</div><button class="btn sm" style="margin-top:8px;" onclick="mkAutoRun()"${n?'':' disabled'}>Bunları sil</button></div>`); };
+
+/* ============ MUHASEBE: GÜNLÜK DERSLER (özel ders paket sırası + grup katılımı) ============ */
+NAV.accountant.splice(3,0,{id:'dailylessons',label:'Günlük Dersler',ic:'📅'}); TITLES.dailylessons='Günlük Dersler';
+let dlSel={ds:'',pool:''};
+function dlPkgIndex(l){
+  const pk=(DB.plPackages||[]).find(x=>x.id===l.pkg); if(!pk) return null;
+  const all=(DB.privateLessons||[]).filter(p=>!p._stub&&p.pkg===pk.id&&p.status==='Onaylandı').sort((a,b)=>String(a.date).localeCompare(String(b.date))||(a.hour-b.hour)||String(a.id).localeCompare(String(b.id)));
+  const i=all.findIndex(p=>p.id===l.id); return {n:i+1,total:pk.hours,pk};
+}
+function dlPrivate(ds,pools){
+  const L=(DB.privateLessons||[]).filter(p=>!p._stub&&p.date===ds&&p.status==='Onaylandı'&&pools.indexOf(lessonPool(p))>-1);
+  const by={}; L.forEach(p=>{ const k=p.sid||p.id; (by[k]=by[k]||[]).push(p); });
+  return Object.keys(by).map(k=>{ const a=by[k]; const f=a[0];
+    return {hour:f.hour,coach:f.coach,pool:lessonPool(f),size:a.length,aths:a.map(p=>{ const x=dlPkgIndex(p); return {name:athleteName(p.athlete),idx:x}; })}; }).sort((a,b)=>a.hour-b.hour||coachName(a.coach).localeCompare(coachName(b.coach),'tr'));
+}
+function dlGroups(ds,pools){
+  const out=[]; const t=todayStr();
+  DB.groups.forEach(g=>{ if(!groupOnDay(g,ds)) return; const pn=gPoolOn(g,ds); if(pools.indexOf(pn)<0) return;
+    const canc=gCancelled(g,ds), roster=cRoster(g.id,ds), log=(DB.attendanceLog||{})[g.id+'|'+ds];
+    let present=null; if(log){ present=roster.filter(a=>['Katıldı','Geç geldi','Telafi'].indexOf(log[a.id])>-1).length; }
+    const m=mergeOf(g,ds);
+    out.push({g,pool:pn,time:gTimeOn(g,ds),coach:effCoach(g,ds),canc,roster:roster.length,present,logged:!!log,future:ds>t,merged:!!m,second:m?mergeSkip(g,ds):false}); });
+  return out.sort((a,b)=>a.time.localeCompare(b.time)||a.g.name.localeCompare(b.g.name,'tr'));
+}
+function renderDailyLessons(c){
+  const t=todayStr(); if(!dlSel.ds) dlSel.ds=t; const m=accMe(); if(m.from&&dlSel.ds<m.from) dlSel.ds=m.from;
+  const all=accPoolNames(); if(dlSel.pool&&all.indexOf(dlSel.pool)<0) dlSel.pool=''; const pools=dlSel.pool?[dlSel.pool]:all;
+  const pv=dlPrivate(dlSel.ds,pools), gr=dlGroups(dlSel.ds,pools);
+  const doneG=gr.filter(x=>!x.canc), part=doneG.reduce((s,x)=>s+(x.present||0),0);
+  const mv=n=>{ dlSel.ds=fbAddDays(dlSel.ds,n); renderDailyLessons($('#content')); }; window.dlMove=mv;
+  const kpi=(l,v)=>`<div class="card"><div class="label">${l}</div><div class="val">${v}</div></div>`;
+  c.innerHTML=`<div class="card" style="margin-bottom:16px;display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;">
+   <button class="btn" onclick="dlMove(-1)" aria-label="Önceki gün">‹</button>
+   <div class="field" style="margin:0;"><label for="dl_d">Tarih</label><input type="date" id="dl_d" min="${escHtml(m.from||'')}" value="${dlSel.ds}" onchange="dlSel.ds=this.value||dlSel.ds;renderDailyLessons($('#content'))"></div>
+   <button class="btn" onclick="dlMove(1)" aria-label="Sonraki gün">›</button>
+   <button class="btn" onclick="dlSel.ds=todayStr();renderDailyLessons($('#content'))">Bugün</button>
+   <div class="field" style="margin:0;"><label for="dl_p">Havuz</label><select id="dl_p" onchange="dlSel.pool=this.value;renderDailyLessons($('#content'))"><option value="">Tüm havuzlar</option>${all.map(pn=>`<option value="${escHtml(pn)}"${pn===dlSel.pool?' selected':''}>${escHtml(pn)}</option>`).join('')}</select></div></div>
+  <div class="grid kpi">${kpi('Özel ders',pv.length)}${kpi('Grup dersi',doneG.length)}${kpi('Grup katılımı',part+' öğrenci')}${kpi('İptal edilen',gr.length-doneG.length)}</div>
+  <div class="section-title">Özel dersler</div><div class="card" style="padding:0;overflow-x:auto;"><table><thead><tr><th>Saat</th><th>Eğitmen</th><th>Öğrenci</th><th>Tür</th><th>Paket sırası</th><th>Havuz</th></tr></thead><tbody>
+  ${pv.map(x=>`<tr><td>${String(x.hour).padStart(2,'0')}:00</td><td><b>${escHtml(coachName(x.coach))}</b></td><td>${x.aths.map(a=>escHtml(a.name)).join('<br>')}</td><td>${escHtml(PL_SIZE_LABEL[x.size]||'')}</td><td>${x.aths.map(a=>a.idx?`<b>${a.idx.n}</b> / ${a.idx.total} <span style="color:var(--muted);font-size:12px;">${a.idx.total}'lik paket</span>`:'<span style="color:var(--muted);">Paketsiz</span>').join('<br>')}</td><td>${escHtml(x.pool)}</td></tr>`).join('')||'<tr><td colspan="6"><div class="empty">Bu gün özel ders yok</div></td></tr>'}</tbody></table></div>
+  <div class="section-title">Grup dersleri</div><div class="card" style="padding:0;overflow-x:auto;"><table><thead><tr><th>Saat</th><th>Grup</th><th>Havuz</th><th>Eğitmen</th><th>Katılan / Kayıtlı</th></tr></thead><tbody>
+  ${gr.map(x=>`<tr${x.canc?' style="opacity:.6;"':''}><td>${escHtml(x.time)}</td><td>${escHtml(x.g.name)}${gIsTeam(x.g)?' <span class="badge">Takım</span>':''}${x.merged?' <span class="badge">Birleşik</span>':''}</td><td>${escHtml(x.pool)}</td><td>${escHtml(coachName(x.coach))}${x.second?' <span style="color:var(--muted);font-size:12px;">(tek ücret)</span>':''}</td><td>${x.canc?'<span class="badge amber">İptal</span>':x.logged?`<b>${x.present}</b> / ${x.roster}`:(x.future?'<span style="color:var(--muted);">Henüz yapılmadı</span>':`<span style="color:var(--red);">Yoklama alınmadı</span> (${x.roster} kayıtlı)`)}</td></tr>`).join('')||'<tr><td colspan="5"><div class="empty">Bu gün grup dersi yok</div></td></tr>'}</tbody></table></div>
+  <div class="note-banner" style="margin-top:14px;font-size:12.5px;">Katılan sayısı: yoklamada Katıldı, Geç geldi ve Telafi işaretlenenler. Paket sırası, paketin onaylı dersleri tarih sırasına göre sayılarak bulunur.</div>`;
+}
 
 /* ============ INIT ============ */
 boot();
