@@ -629,7 +629,7 @@ function render(){
   const fns={dashboard:renderDashboard,athletes:renderAthletes,parents:renderParents,groups:renderGroups,
     schedule:renderSchedule,trainplan:renderTrainPlan,weekly:renderWeekly,makeups:renderMakeups,times:renderTimes,levels:renderLevels,attendance:renderAttendance,development:renderDevelopment,competitions:renderCompetitions,
     crm:renderCRM,coaches:renderCoaches,payments:renderPayments,announcements:renderAnnouncements,tickets:renderTickets,
-    reports:renderReports,settings:renderSettings,ai:renderAI,approvals:renderApprovals,insights:renderInsights,rentals:renderRentals,finance:renderFinance,poolreport:renderPoolReport,dailylessons:renderDailyLessons,monthlylessons:renderMonthlyLessons,messages:renderMessages,surveys:renderSurveys,leaves:renderLeaves,discounts:renderDiscounts,devreport:renderDevReport,audit:renderAudit,payroll:renderPayroll,atthist:renderAttHistory,newitems:renderNewItems,privlesson:renderPrivLessons};
+    reports:renderReports,settings:renderSettings,ai:renderAI,approvals:renderApprovals,insights:renderInsights,rentals:renderRentals,finance:renderFinance,poolreport:renderPoolReport,dailylessons:renderDailyLessons,monthlylessons:renderMonthlyLessons,ratings:renderRatings,myratings:renderMyRatings,rate:renderRate,messages:renderMessages,surveys:renderSurveys,leaves:renderLeaves,discounts:renderDiscounts,devreport:renderDevReport,audit:renderAudit,payroll:renderPayroll,atthist:renderAttHistory,newitems:renderNewItems,privlesson:renderPrivLessons};
   c.innerHTML='';
   (fns[route]||renderDashboard)(c);
 }
@@ -8264,6 +8264,108 @@ function renderMonthlyLessons(c){
   <div class="section-title">Grup ders listesi (gün gün)</div><div class="card" style="padding:0;overflow-x:auto;"><table><thead><tr><th>Tarih</th><th>Saat</th><th>Grup</th><th>Havuz</th><th>Eğitmen</th><th>Katılan / Kayıtlı</th></tr></thead><tbody>
   ${d.grp.map(x=>`<tr${x.canc?' style="opacity:.6;"':''}><td>${escHtml(fmtDate(x.ds))}</td><td>${escHtml(x.time)}</td><td>${escHtml(x.g.name)}${gIsTeam(x.g)?' <span class="badge">Takım</span>':''}${x.merged?' <span class="badge">Birleşik</span>':''}</td><td>${escHtml(x.pool)}</td><td>${escHtml(coachName(x.coach))}${x.second?' <span style="color:var(--muted);font-size:12px;">(tek ücret)</span>':''}</td><td>${x.canc?'<span class="badge amber">İptal</span>':x.logged?`<b>${x.present}</b> / ${x.roster}`:(x.future?'<span style="color:var(--muted);">Planlı</span>':'<span style="color:var(--red);">Yoklama yok</span>')}</td></tr>`).join('')||'<tr><td colspan="6"><div class="empty">Bu ay grup dersi yok</div></td></tr>'}</tbody></table></div>`;
 }
+
+/* ============ DERS PUANLAMA (veli / yetişkin sporcu → ders ve eğitmen) ============ */
+['lessonRatings','lessonRatingsPub'].forEach(k=>{ if(C_COLLS.indexOf(k)<0) C_COLLS.push(k); if(!SB_SPECS.some(s=>s.c===k)) SB_SPECS.push({c:k,t:'arr'}); });
+SB_WRITE.parent=SB_WRITE.parent.concat(['lessonRatings']); SB_WRITE.athlete=SB_WRITE.athlete.concat(['lessonRatings']);
+if(typeof AU_COLL==='object') AU_COLL.lessonRatings='Ders puanı';
+TITLES.ratings='Ders Puanları'; TITLES.myratings='Puanlarım'; TITLES.rate='Dersi Puanla';
+{ const i=NAV.admin.findIndex(x=>x.id==='payroll'); NAV.admin.splice(i>=0?i+1:NAV.admin.length,0,{id:'ratings',label:'Ders Puanları',ic:'⭐'});
+  const g=NAV_GROUPS.admin.find(x=>x[0]==='Antrenörler'); if(g&&g[1].indexOf('ratings')<0) g[1].push('ratings');
+  NAV.coach.push({id:'myratings',label:'Puanlarım',ic:'⭐'}); const gc=NAV_GROUPS.coach.find(x=>x[0]==='Benim İşlerim'); if(gc) gc[1].push('myratings');
+  ['parent','athlete'].forEach(r=>{ const j=NAV[r].findIndex(x=>x.sect==='Sistem'); NAV[r].splice(j>=0?j:NAV[r].length,0,{id:'rate',label:'Dersi Puanla',ic:'⭐'}); }); }
+const LR_DAYS=7;
+function lrMe(){ const u=DB.currentUser||{}; return role==='parent'?u.parentId:role==='athlete'?u.athleteId:null; }
+function lrNowMin(){ const d=new Date(); return d.getHours()*60+d.getMinutes(); }
+function lrPending(){
+  if(role!=='parent'&&role!=='athlete') return []; cEnsure(); const me=lrMe(); if(!me) return [];
+  const t=todayStr(), from=fbAddDays(t,-LR_DAYS), ath=visibleAthletes().filter(a=>a.status==='active'); const aid=ath.map(a=>a.id);
+  const done=new Set((DB.lessonRatings||[]).filter(r=>r.by===me).map(r=>r.id)); const out=[];
+  const seen={};
+  (DB.privateLessons||[]).filter(p=>!p._stub&&p.status==='Onaylandı'&&aid.indexOf(p.athlete)>-1&&p.date>=from&&p.date<=t&&(p.date<t||(p.hour+1)*60<=lrNowMin())).forEach(p=>{
+    const ref=p.sid||p.id, id='lr_'+p.athlete+'_p_'+ref; if(done.has(id)||seen[id]) return; seen[id]=1;
+    out.push({id,kind:'private',ref,athlete:p.athlete,date:p.date,when:String(p.hour).padStart(2,'0')+':00',coach:p.coach,pool:lessonPool(p),group:'',title:'Özel ders'}); });
+  ath.forEach(a=>{ for(let n=0;n<=LR_DAYS;n++){ const ds=fbAddDays(t,-n); const gid=cGrpAt(a,ds); const g=DB.groups.find(x=>x.id===gid); if(!g||!groupOnDay(g,ds)||gCancelled(g,ds)||cFrozenOn(a,ds)) continue;
+      if(ds===t){ const m=groupMinutes(g,ds); if(m[1]>lrNowMin()) continue; }
+      const st=((DB.attendanceLog||{})[g.id+'|'+ds]||{})[a.id]; if(['Gelmedi','İzinli','Hastalık'].indexOf(st)>-1) continue;
+      const id='lr_'+a.id+'_g_'+g.id+'_'+ds; if(done.has(id)) continue;
+      out.push({id,kind:'group',ref:g.id+'_'+ds,athlete:a.id,date:ds,when:gTimeOn(g,ds),coach:effCoach(g,ds),pool:gPoolOn(g,ds),group:g.id,title:g.name}); } });
+  return out.sort((x,y)=>y.date.localeCompare(x.date)||String(y.when).localeCompare(String(x.when)));
+}
+let lrDraft={};
+function lrStarsHtml(key,field,val,big){ return `<div class="lr-stars" role="radiogroup" aria-label="${field}" style="display:flex;gap:4px;">${[1,2,3,4,5].map(n=>`<button type="button" role="radio" aria-checked="${val===n}" aria-label="${n} yıldız" onclick="lrSet('${key}','${field}',${n})" style="font-size:${big?30:20}px;line-height:1;border:0;background:none;cursor:pointer;color:${n<=val?'#f5a623':'var(--border,#ccc)'};padding:2px;">★</button>`).join('')}</div>`; }
+function lrSet(key,field,n){ const d=lrDraft[key]=lrDraft[key]||{}; d[field]=n; const c=$('#content'); const y=window.scrollY; renderRate(c); window.scrollTo(0,y); }
+function lrSubmit(i){
+  const it=(window.__lrItems||[])[i]; if(!it) return; const d=lrDraft[it.id]||{}; const msg=document.getElementById('lrm_'+i);
+  if(!(d.stars>=1)){ if(msg){ msg.style.color='var(--red)'; msg.textContent='Lütfen yıldız seçin.'; } return; }
+  const cm=document.getElementById('lrc_'+i); const comment=String((cm&&cm.value)||'').trim().slice(0,300);
+  const me=lrMe(); if(!me) return; cEnsure();
+  if(DB.lessonRatings.some(r=>r.id===it.id)) return;
+  const rec={id:it.id,role,by:me,athlete:it.athlete,kind:it.kind,ref:it.ref,group:it.group,coach:it.coach,pool:it.pool,date:it.date,stars:d.stars,createdAt:todayStr()};
+  if(d.q1>=1) rec.q1=d.q1; if(d.q2>=1) rec.q2=d.q2; if(comment) rec.comment=comment;
+  DB.lessonRatings.push(rec); delete lrDraft[it.id]; save(); renderRate($('#content')); 
+}
+function renderRate(c){
+  const list=lrPending(); window.__lrItems=list;
+  const mine=(DB.lessonRatings||[]).filter(r=>r.by===lrMe()).length;
+  c.innerHTML=`<div class="note-banner" style="margin-bottom:14px;font-size:13px;">Son ${LR_DAYS} gündeki derslerinizi puanlayabilirsiniz. Puanlamak isteğe bağlıdır; yorumunuzu yalnızca kulüp yönetimi görür, eğitmen görmez.</div>
+  ${list.map((it,i)=>{ const d=lrDraft[it.id]||{}; return `<div class="card" style="margin-bottom:12px;"><div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;"><div><b>${escHtml(athleteName(it.athlete))}</b> · ${escHtml(it.title)}<div style="font-size:12.5px;color:var(--muted);">${escHtml(fmtDate(it.date))} · ${escHtml(it.when)} · ${escHtml(it.pool||'')} · Eğitmen: ${escHtml(coachName(it.coach))}</div></div></div>
+   <div style="margin-top:8px;font-size:13px;">Genel puan</div>${lrStarsHtml(it.id,'stars',d.stars||0,true)}
+   <details style="margin-top:6px;"><summary style="cursor:pointer;font-size:13px;">Ayrıntı ekle (isteğe bağlı)</summary>
+    <div style="font-size:13px;margin-top:6px;">Eğitmenin ilgisi</div>${lrStarsHtml(it.id,'q1',d.q1||0,false)}
+    <div style="font-size:13px;margin-top:6px;">Ders içeriği</div>${lrStarsHtml(it.id,'q2',d.q2||0,false)}
+    <div class="field" style="margin:8px 0 0;"><label for="lrc_${i}">Yorum (yalnızca yönetim görür)</label><textarea id="lrc_${i}" maxlength="300" rows="2"></textarea></div></details>
+   <div style="margin-top:10px;display:flex;gap:10px;align-items:center;"><button class="btn primary" onclick="lrSubmit(${i})">Gönder</button><span id="lrm_${i}" role="alert" style="font-size:12.5px;"></span></div></div>`; }).join('')||'<div class="card"><div class="empty">Puanlanacak ders yok. Teşekkürler!</div></div>'}
+  <div style="font-size:12.5px;color:var(--muted);">Şimdiye kadar ${mine} ders puanladınız.</div>`;
+}
+/* --- yönetici raporu --- */
+function lrAdminRows(){ cEnsure(); return DB.lessonRatings||[]; }
+function lrAvg(a){ return a.length?(a.reduce((s,r)=>s+Number(r.stars),0)/a.length):0; }
+function lrFmt(v){ return v?v.toFixed(2).replace('.',','):'—'; }
+let lrSel={ym:'',pool:''};
+function lrSeen(id){ if(role!=='admin') return; const r=(DB.lessonRatings||[]).find(x=>x.id===id); if(!r) return; r.seen=true; save(); renderRatings($('#content')); }
+function lrLowUnseen(){ return role==='admin'?lrAdminRows().filter(r=>Number(r.stars)<=2&&!r.seen):[]; }
+function renderRatings(c){
+  if(role!=='admin') return; if(!lrSel.ym) lrSel.ym=todayStr().slice(0,7);
+  const all=lrAdminRows(); const pools=DB.pools.map(p=>p.name);
+  const mon=all.filter(r=>ymOf(r.date)===lrSel.ym&&(!lrSel.pool||r.pool===lrSel.pool));
+  const stars=(v)=>v?`<b>${lrFmt(v)}</b> <span style="color:#f5a623;">★</span>`:'—';
+  const kpi=(l,v)=>`<div class="card"><div class="label">${l}</div><div class="val">${v}</div></div>`;
+  const poolRows=pools.filter(pn=>!lrSel.pool||pn===lrSel.pool).map(pn=>{ const a=mon.filter(r=>r.pool===pn); return `<tr><td>${escHtml(pn)}</td><td>${a.length}</td><td>${stars(lrAvg(a))}</td><td>${stars(lrAvg(a.filter(r=>r.kind==='private')))} <span style="color:var(--muted);font-size:12px;">(${a.filter(r=>r.kind==='private').length})</span></td><td>${stars(lrAvg(a.filter(r=>r.kind==='group')))} <span style="color:var(--muted);font-size:12px;">(${a.filter(r=>r.kind==='group').length})</span></td></tr>`; }).join('');
+  const key={}; mon.forEach(r=>{ const k=r.coach+'|'+r.pool; (key[k]=key[k]||[]).push(r); });
+  const coachRows=Object.keys(key).map(k=>{ const a=key[k]; return {c:coachName(a[0].coach),p:a[0].pool,n:a.length,avg:lrAvg(a),q1:lrAvg(a.filter(r=>r.q1).map(r=>({stars:r.q1}))),q2:lrAvg(a.filter(r=>r.q2).map(r=>({stars:r.q2}))),low:a.filter(r=>Number(r.stars)<=2).length}; }).sort((x,y)=>x.p.localeCompare(y.p,'tr')||x.c.localeCompare(y.c,'tr'));
+  const gk={}; mon.filter(r=>r.kind==='group').forEach(r=>{ (gk[r.group]=gk[r.group]||[]).push(r); });
+  const low=all.filter(r=>Number(r.stars)<=2).sort((x,y)=>(x.seen?1:0)-(y.seen?1:0)||String(y.date).localeCompare(String(x.date))).slice(0,30);
+  const who=r=>{ const a=athleteName(r.athlete); if(r.role==='parent'){ const p=DB.parents.find(x=>x.id===r.by); return escHtml(a)+' <span style="color:var(--muted);font-size:12px;">(veli: '+escHtml(p?p.name:'—')+')</span>'; } return escHtml(a)+' <span style="color:var(--muted);font-size:12px;">(kendisi)</span>'; };
+  const cm=all.filter(r=>r.comment&&ymOf(r.date)===lrSel.ym&&(!lrSel.pool||r.pool===lrSel.pool)).sort((x,y)=>String(y.date).localeCompare(String(x.date))).slice(0,40);
+  c.innerHTML=`<div class="card" style="margin-bottom:16px;display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end;">
+   <div class="field" style="margin:0;"><label for="lr_ym">Ay</label><input type="month" id="lr_ym" value="${lrSel.ym}" onchange="lrSel.ym=this.value||lrSel.ym;renderRatings($('#content'))"></div>
+   <div class="field" style="margin:0;"><label for="lr_p">Havuz</label><select id="lr_p" onchange="lrSel.pool=this.value;renderRatings($('#content'))"><option value="">Tüm havuzlar</option>${pools.map(pn=>`<option value="${escHtml(pn)}"${pn===lrSel.pool?' selected':''}>${escHtml(pn)}</option>`).join('')}</select></div></div>
+  <div class="grid kpi">${kpi('Ortalama puan',lrFmt(lrAvg(mon)))}${kpi('Puan sayısı',mon.length)}${kpi('Düşük puan (1-2)',mon.filter(r=>Number(r.stars)<=2).length)}${kpi('Yorum',mon.filter(r=>r.comment).length)}</div>
+  <div class="section-title">Havuz bazında</div><div class="card" style="padding:0;overflow-x:auto;"><table><thead><tr><th>Havuz</th><th>Puan sayısı</th><th>Ortalama</th><th>Özel ders</th><th>Grup dersi</th></tr></thead><tbody>${poolRows||'<tr><td colspan="5"><div class="empty">Havuz yok</div></td></tr>'}</tbody></table></div>
+  <div class="section-title">Eğitmen bazında (havuza göre)</div><div class="card" style="padding:0;overflow-x:auto;"><table><thead><tr><th>Havuz</th><th>Eğitmen</th><th>Puan sayısı</th><th>Ortalama</th><th>İlgi</th><th>İçerik</th><th>Düşük</th></tr></thead><tbody>${coachRows.map(r=>`<tr><td>${escHtml(r.p)}</td><td><b>${escHtml(r.c)}</b></td><td>${r.n}</td><td>${stars(r.avg)}</td><td>${lrFmt(r.q1)}</td><td>${lrFmt(r.q2)}</td><td>${r.low||''}</td></tr>`).join('')||'<tr><td colspan="7"><div class="empty">Bu ay puan yok</div></td></tr>'}</tbody></table></div>
+  <div class="section-title">Grup bazında</div><div class="card" style="padding:0;overflow-x:auto;"><table><thead><tr><th>Grup</th><th>Havuz</th><th>Puan sayısı</th><th>Ortalama</th></tr></thead><tbody>${Object.keys(gk).map(id=>{ const a=gk[id]; return `<tr><td>${escHtml(groupName(id))}</td><td>${escHtml(a[0].pool)}</td><td>${a.length}</td><td>${stars(lrAvg(a))}</td></tr>`; }).join('')||'<tr><td colspan="4"><div class="empty">Grup puanı yok</div></td></tr>'}</tbody></table></div>
+  <div class="section-title">Düşük puanlar (1-2 yıldız)</div><div class="card" style="padding:0;overflow-x:auto;"><table><thead><tr><th>Tarih</th><th>Kim</th><th>Eğitmen</th><th>Havuz</th><th>Puan</th><th>Yorum</th><th></th></tr></thead><tbody>${low.map(r=>`<tr${r.seen?' style="opacity:.6;"':''}><td>${escHtml(fmtDate(r.date))}</td><td>${who(r)}</td><td>${escHtml(coachName(r.coach))}</td><td>${escHtml(r.pool||'')}</td><td>${r.stars} ★</td><td>${escHtml(r.comment||'')}</td><td>${r.seen?'Görüldü':`<button class="btn sm" onclick="lrSeen('${r.id}')">Görüldü</button>`}</td></tr>`).join('')||'<tr><td colspan="7"><div class="empty">Düşük puan yok</div></td></tr>'}</tbody></table></div>
+  <div class="section-title">Yorumlar</div>${cm.map(r=>`<div class="card" style="margin-bottom:8px;"><div style="font-size:12.5px;color:var(--muted);">${escHtml(fmtDate(r.date))} · ${escHtml(r.pool||'')} · ${escHtml(coachName(r.coach))} · ${r.stars} ★ · ${who(r)}</div><div style="margin-top:4px;">${escHtml(r.comment)}</div></div>`).join('')||'<div class="empty">Bu ay yorum yok</div>'}`;
+}
+/* --- eğitmen: kendi puanları (yorum yok) --- */
+function renderMyRatings(c){
+  const me=DB.currentUser&&DB.currentUser.coachId; cEnsure();
+  const rows=(DB.lessonRatings||[]).concat(DB.lessonRatingsPub||[]).filter(r=>r.coach===me); const ym=todayStr().slice(0,7);
+  const pools=[...new Set(rows.map(r=>r.pool).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'tr'));
+  const months=[...new Set(rows.map(r=>ymOf(r.date)))].sort().reverse().slice(0,6);
+  const star=v=>v?`<b>${lrFmt(v)}</b> <span style="color:#f5a623;">★</span>`:'—';
+  c.innerHTML=`<div class="note-banner" style="margin-bottom:14px;font-size:13px;">Veli ve sporcuların derslerinize verdiği puanların ortalaması. Yorumları yalnızca yönetim görür.</div>
+  <div class="grid kpi"><div class="card"><div class="label">Bu ay ortalama</div><div class="val">${lrFmt(lrAvg(rows.filter(r=>ymOf(r.date)===ym)))}</div></div><div class="card"><div class="label">Bu ay puan sayısı</div><div class="val">${rows.filter(r=>ymOf(r.date)===ym).length}</div></div><div class="card"><div class="label">Tüm zamanlar</div><div class="val">${lrFmt(lrAvg(rows))}</div></div></div>
+  <div class="section-title">Havuza göre</div><div class="card" style="padding:0;overflow-x:auto;"><table><thead><tr><th>Havuz</th><th>Puan sayısı</th><th>Ortalama</th><th>Özel ders</th><th>Grup dersi</th></tr></thead><tbody>${pools.map(pn=>{ const a=rows.filter(r=>r.pool===pn); return `<tr><td>${escHtml(pn)}</td><td>${a.length}</td><td>${star(lrAvg(a))}</td><td>${star(lrAvg(a.filter(r=>r.kind==='private')))}</td><td>${star(lrAvg(a.filter(r=>r.kind==='group')))}</td></tr>`; }).join('')||'<tr><td colspan="5"><div class="empty">Henüz puan yok</div></td></tr>'}</tbody></table></div>
+  <div class="section-title">Aylara göre</div><div class="card" style="padding:0;overflow-x:auto;"><table><thead><tr><th>Ay</th><th>Puan sayısı</th><th>Ortalama</th></tr></thead><tbody>${months.map(m=>{ const a=rows.filter(r=>ymOf(r.date)===m); return `<tr><td>${escHtml(monthLabel(m))}</td><td>${a.length}</td><td>${star(lrAvg(a))}</td></tr>`; }).join('')||'<tr><td colspan="3"><div class="empty">Henüz puan yok</div></td></tr>'}</tbody></table></div>`;
+}
+/* --- rozet, ana sayfa uyarıları --- */
+{ const _nb=navBadge; navBadge=function(id){ if(id==='ratings') return lrLowUnseen().length; if(id==='rate') return lrPending().length; return _nb(id); }; }
+{ const _d=renderDashboard; renderDashboard=function(c){ _d(c);
+  try{ if(role==='admin'){ const n=lrLowUnseen().length; if(n) c.insertAdjacentHTML('afterbegin',`<div class="attn-item" style="cursor:pointer;margin-bottom:12px;" onclick="route='ratings';render();">⭐ <b>${n}</b> düşük ders puanı (1-2 yıldız) inceleme bekliyor</div>`); }
+    else if(role==='parent'||role==='athlete'){ const n=lrPending().length; if(n) c.insertAdjacentHTML('afterbegin',`<div class="attn-item" style="cursor:pointer;margin-bottom:12px;" onclick="route='rate';render();">⭐ Puanlanmayı bekleyen <b>${n}</b> ders var — dersi puanlayın</div>`); }
+  }catch(e){ console.error(e); } }; }
 
 /* ============ INIT ============ */
 boot();
