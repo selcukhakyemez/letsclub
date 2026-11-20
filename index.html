@@ -629,7 +629,7 @@ function render(){
   const fns={dashboard:renderDashboard,athletes:renderAthletes,parents:renderParents,groups:renderGroups,
     schedule:renderSchedule,trainplan:renderTrainPlan,weekly:renderWeekly,makeups:renderMakeups,times:renderTimes,levels:renderLevels,attendance:renderAttendance,development:renderDevelopment,competitions:renderCompetitions,
     crm:renderCRM,coaches:renderCoaches,payments:renderPayments,announcements:renderAnnouncements,tickets:renderTickets,
-    reports:renderReports,settings:renderSettings,ai:renderAI,approvals:renderApprovals,insights:renderInsights,rentals:renderRentals,finance:renderFinance,poolreport:renderPoolReport,dailylessons:renderDailyLessons,messages:renderMessages,surveys:renderSurveys,leaves:renderLeaves,discounts:renderDiscounts,devreport:renderDevReport,audit:renderAudit,payroll:renderPayroll,atthist:renderAttHistory,newitems:renderNewItems,privlesson:renderPrivLessons};
+    reports:renderReports,settings:renderSettings,ai:renderAI,approvals:renderApprovals,insights:renderInsights,rentals:renderRentals,finance:renderFinance,poolreport:renderPoolReport,dailylessons:renderDailyLessons,monthlylessons:renderMonthlyLessons,messages:renderMessages,surveys:renderSurveys,leaves:renderLeaves,discounts:renderDiscounts,devreport:renderDevReport,audit:renderAudit,payroll:renderPayroll,atthist:renderAttHistory,newitems:renderNewItems,privlesson:renderPrivLessons};
   c.innerHTML='';
   (fns[route]||renderDashboard)(c);
 }
@@ -8211,6 +8211,58 @@ function renderDailyLessons(c){
   <div class="section-title">Grup dersleri</div><div class="card" style="padding:0;overflow-x:auto;"><table><thead><tr><th>Saat</th><th>Grup</th><th>Havuz</th><th>Eğitmen</th><th>Katılan / Kayıtlı</th></tr></thead><tbody>
   ${gr.map(x=>`<tr${x.canc?' style="opacity:.6;"':''}><td>${escHtml(x.time)}</td><td>${escHtml(x.g.name)}${gIsTeam(x.g)?' <span class="badge">Takım</span>':''}${x.merged?' <span class="badge">Birleşik</span>':''}</td><td>${escHtml(x.pool)}</td><td>${escHtml(coachName(x.coach))}${x.second?' <span style="color:var(--muted);font-size:12px;">(tek ücret)</span>':''}</td><td>${x.canc?'<span class="badge amber">İptal</span>':x.logged?`<b>${x.present}</b> / ${x.roster}`:(x.future?'<span style="color:var(--muted);">Henüz yapılmadı</span>':`<span style="color:var(--red);">Yoklama alınmadı</span> (${x.roster} kayıtlı)`)}</td></tr>`).join('')||'<tr><td colspan="5"><div class="empty">Bu gün grup dersi yok</div></td></tr>'}</tbody></table></div>
   <div class="note-banner" style="margin-top:14px;font-size:12.5px;">Katılan sayısı: yoklamada Katıldı, Geç geldi ve Telafi işaretlenenler. Paket sırası, paketin onaylı dersleri tarih sırasına göre sayılarak bulunur.</div>`;
+}
+
+/* ============ MUHASEBE: AYLIK DETAYLI DERS RAPORU (özel + grup) ============ */
+NAV.accountant.splice(4,0,{id:'monthlylessons',label:'Aylık Ders Raporu',ic:'🗓️'}); TITLES.monthlylessons='Aylık Ders Raporu';
+let mlSel={ym:'',pool:''};
+function mlData(ym,pools){
+  const t=todayStr(); const priv=[], grp=[];
+  monthDays(ym).forEach(ds=>{
+    dlPrivate(ds,pools).forEach(x=>priv.push({ds,hour:x.hour,coach:x.coach,pool:x.pool,size:x.size,aths:x.aths,done:ds<=t}));
+    dlGroups(ds,pools).forEach(x=>grp.push({ds,time:x.time,g:x.g,pool:x.pool,coach:x.coach,canc:x.canc,roster:x.roster,present:x.present,logged:x.logged,future:x.future,merged:x.merged,second:x.second}));
+  });
+  return {priv,grp};
+}
+function mlCsvCell(v){ v=String(v==null?'':v); return /[";\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v; }
+function mlCsv(){
+  const m=accMe(); const all=accPoolNames(); const pools=mlSel.pool?[mlSel.pool]:all; const d=mlData(mlSel.ym,pools);
+  const rows=[['Tür','Tarih','Saat','Havuz','Eğitmen','Grup / Öğrenci','Ders türü','Paket sırası','Katılan','Kayıtlı','Durum']];
+  d.priv.forEach(x=>x.aths.forEach(a=>rows.push(['Özel',x.ds,String(x.hour).padStart(2,'0')+':00',x.pool,coachName(x.coach),a.name,PL_SIZE_LABEL[x.size]||'',a.idx?a.idx.n+'/'+a.idx.total:'Paketsiz','','',x.done?'Yapıldı':'Planlı'])));
+  d.grp.forEach(x=>rows.push(['Grup',x.ds,x.time,x.pool,coachName(x.coach),x.g.name,gIsTeam(x.g)?'Takım':'Grup','',x.canc||!x.logged?'':x.present,x.roster,x.canc?'İptal':x.logged?'Yapıldı':(x.future?'Planlı':'Yoklama yok')+(x.second?' (birleşik, tek ücret)':'')]));
+  const csv='﻿'+rows.map(r=>r.map(mlCsvCell).join(';')).join('\r\n');
+  try{ const u=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'})); const l=document.createElement('a'); l.href=u; l.download='ders-raporu-'+mlSel.ym+'.csv'; document.body.appendChild(l); l.click(); setTimeout(()=>{ URL.revokeObjectURL(u); l.remove(); },500); }catch(e){ alert('İndirilemedi.'); }
+  return csv;
+}
+function renderMonthlyLessons(c){
+  const m=accMe(); const minYm=accFromYm(); if(!mlSel.ym) mlSel.ym=todayStr().slice(0,7); if(mlSel.ym<minYm) mlSel.ym=minYm;
+  const all=accPoolNames(); if(mlSel.pool&&all.indexOf(mlSel.pool)<0) mlSel.pool=''; const pools=mlSel.pool?[mlSel.pool]:all;
+  const d=mlData(mlSel.ym,pools); const t=todayStr();
+  const doneG=d.grp.filter(x=>!x.canc), cancG=d.grp.length-doneG.length, heldG=doneG.filter(x=>!x.future);
+  /* eğitmen özeti */
+  const co={}; const get=id=>co[id]||(co[id]={name:coachName(id),p1:0,p2:0,p3:0,pPlan:0,g:0,gHeld:0,team:0,stud:0});
+  d.priv.forEach(x=>{ const r=get(x.coach); if(x.size>=3) r.p3++; else if(x.size===2) r.p2++; else r.p1++; if(!x.done) r.pPlan++; });
+  doneG.forEach(x=>{ if(x.second) return; const r=get(x.coach); if(gIsTeam(x.g)) r.team++; else r.g++; if(!x.future){ r.gHeld++; r.stud+=x.present||0; } });
+  const cr=Object.keys(co).map(k=>co[k]).sort((a,b)=>a.name.localeCompare(b.name,'tr'));
+  /* grup özeti */
+  const gs={}; d.grp.forEach(x=>{ const r=gs[x.g.id]||(gs[x.g.id]={g:x.g,pool:x.pool,plan:0,held:0,canc:0,stud:0,roster:x.roster,logged:0}); if(x.canc){ r.canc++; return; } r.plan++; if(!x.future){ r.held++; if(x.logged){ r.logged++; r.stud+=x.present||0; } } });
+  const gr=Object.keys(gs).map(k=>gs[k]).sort((a,b)=>a.pool.localeCompare(b.pool,'tr')||a.g.name.localeCompare(b.g.name,'tr'));
+  const kpi=(l,v)=>`<div class="card"><div class="label">${l}</div><div class="val">${v}</div></div>`;
+  const doneP=d.priv.filter(x=>x.done).length;
+  c.innerHTML=`<div class="card" style="margin-bottom:16px;display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end;">
+   <div class="field" style="margin:0;"><label for="ml_ym">Ay</label><input type="month" id="ml_ym" min="${minYm}" value="${mlSel.ym}" onchange="mlSel.ym=this.value||mlSel.ym;renderMonthlyLessons($('#content'))"></div>
+   <div class="field" style="margin:0;"><label for="ml_p">Havuz</label><select id="ml_p" onchange="mlSel.pool=this.value;renderMonthlyLessons($('#content'))"><option value="">Tüm havuzlar</option>${all.map(pn=>`<option value="${escHtml(pn)}"${pn===mlSel.pool?' selected':''}>${escHtml(pn)}</option>`).join('')}</select></div>
+   <button class="btn primary" onclick="mlCsv()">Excel (CSV) indir</button><button class="btn" onclick="window.print()">Yazdır</button>
+   <div style="font-size:12px;color:var(--muted);">${escHtml(monthLabel(mlSel.ym))}</div></div>
+  <div class="grid kpi">${kpi('Özel ders (yapılan / toplam)',doneP+' / '+d.priv.length)}${kpi('Grup dersi (yapılan / planlanan)',heldG.length+' / '+doneG.length)}${kpi('İptal edilen grup dersi',cancG)}${kpi('Grup katılımı (toplam)',heldG.reduce((s,x)=>s+(x.present||0),0))}</div>
+  <div class="section-title">Eğitmen özeti</div><div class="card" style="padding:0;overflow-x:auto;"><table><thead><tr><th>Eğitmen</th><th>Özel (bireysel)</th><th>Özel (ikili)</th><th>Özel (üçlü)</th><th>Grup (planlanan)</th><th>Takım (planlanan)</th><th>Yapılan grup+takım</th><th>Katılan öğrenci</th></tr></thead><tbody>
+  ${cr.map(r=>`<tr><td><b>${escHtml(r.name)}</b></td><td>${r.p1}</td><td>${r.p2}</td><td>${r.p3}</td><td>${r.g}</td><td>${r.team}</td><td>${r.gHeld}</td><td>${r.stud}</td></tr>`).join('')||'<tr><td colspan="8"><div class="empty">Bu ay ders yok</div></td></tr>'}</tbody></table></div>
+  <div class="section-title">Grup özeti</div><div class="card" style="padding:0;overflow-x:auto;"><table><thead><tr><th>Grup</th><th>Havuz</th><th>Planlanan</th><th>Yapılan</th><th>İptal</th><th>Kayıtlı</th><th>Ortalama katılım</th></tr></thead><tbody>
+  ${gr.map(r=>`<tr><td>${escHtml(r.g.name)}</td><td>${escHtml(r.pool)}</td><td>${r.plan}</td><td>${r.held}</td><td>${r.canc}</td><td>${r.roster}</td><td>${r.logged?(r.stud/r.logged).toFixed(1):'—'}</td></tr>`).join('')||'<tr><td colspan="7"><div class="empty">Grup dersi yok</div></td></tr>'}</tbody></table></div>
+  <div class="section-title">Özel ders listesi (gün gün)</div><div class="card" style="padding:0;overflow-x:auto;"><table><thead><tr><th>Tarih</th><th>Saat</th><th>Eğitmen</th><th>Öğrenci</th><th>Tür</th><th>Paket sırası</th><th>Havuz</th><th>Durum</th></tr></thead><tbody>
+  ${d.priv.map(x=>`<tr><td>${escHtml(fmtDate(x.ds))}</td><td>${String(x.hour).padStart(2,'0')}:00</td><td>${escHtml(coachName(x.coach))}</td><td>${x.aths.map(a=>escHtml(a.name)).join('<br>')}</td><td>${escHtml(PL_SIZE_LABEL[x.size]||'')}</td><td>${x.aths.map(a=>a.idx?`${a.idx.n} / ${a.idx.total}`:'Paketsiz').join('<br>')}</td><td>${escHtml(x.pool)}</td><td>${x.done?'Yapıldı':'Planlı'}</td></tr>`).join('')||'<tr><td colspan="8"><div class="empty">Bu ay özel ders yok</div></td></tr>'}</tbody></table></div>
+  <div class="section-title">Grup ders listesi (gün gün)</div><div class="card" style="padding:0;overflow-x:auto;"><table><thead><tr><th>Tarih</th><th>Saat</th><th>Grup</th><th>Havuz</th><th>Eğitmen</th><th>Katılan / Kayıtlı</th></tr></thead><tbody>
+  ${d.grp.map(x=>`<tr${x.canc?' style="opacity:.6;"':''}><td>${escHtml(fmtDate(x.ds))}</td><td>${escHtml(x.time)}</td><td>${escHtml(x.g.name)}${gIsTeam(x.g)?' <span class="badge">Takım</span>':''}${x.merged?' <span class="badge">Birleşik</span>':''}</td><td>${escHtml(x.pool)}</td><td>${escHtml(coachName(x.coach))}${x.second?' <span style="color:var(--muted);font-size:12px;">(tek ücret)</span>':''}</td><td>${x.canc?'<span class="badge amber">İptal</span>':x.logged?`<b>${x.present}</b> / ${x.roster}`:(x.future?'<span style="color:var(--muted);">Planlı</span>':'<span style="color:var(--red);">Yoklama yok</span>')}</td></tr>`).join('')||'<tr><td colspan="6"><div class="empty">Bu ay grup dersi yok</div></td></tr>'}</tbody></table></div>`;
 }
 
 /* ============ INIT ============ */
