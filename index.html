@@ -7481,6 +7481,7 @@ coachPayFor=function(cid,ym,pool){
   const per={}; DB.pools.forEach(p=>{per[p.name]={groupCount:0,teamCount:0,asstCount:0,privateCount:0,private2Count:0,private3Count:0,otherCount:0};});
   const bump=(pn,k,n)=>{ if(per[pn]) per[pn][k]+=n; };
   DB.groups.forEach(g=>{ monthDays(ym).forEach(ds=>{ if(!groupOnDay(g,ds)||gCancelled(g,ds)) return; const pn=gPoolOn(g,ds);
+    if(mergeSkip(g,ds)) return;
     if(effCoach(g,ds)===cid) bump(pn,gIsTeam(g)?'teamCount':'groupCount',1);
     else if(g.assistant===cid) bump(pn,'asstCount',1); }); });
   const sess={}; (DB.privateLessons||[]).filter(p=>!p._stub&&p.coach===cid&&p.status==='Onaylandı'&&ymOf(p.date)===ym).forEach(p=>{ const k=p.sid||p.id; (sess[k]=sess[k]||{pool:lessonPool(p),n:0}).n++; });
@@ -8086,6 +8087,68 @@ const _renderSettings10=renderSettings;
 renderSettings=function(c){ _renderSettings10(c); if(role!=='admin') return; cEnsure();
   c.insertAdjacentHTML('beforeend',`<div class="section-title">Muhasebe hesapları</div><div style="font-size:12.5px;color:var(--muted);margin-bottom:8px;">Her muhasebe için görebileceği havuzları ve görmeye başlama tarihini belirleyin. Sonra “Kullanıcı Hesapları”ndan Muhasebe rolüyle e-posta tanımlayıp buradaki kaydı seçin. Muhasebe tahsilat ve gider girer; silme, iptal, fiyat ve ücret oranlarını yalnızca siz değiştirirsiniz.</div>
    ${DB.accountants.map(a=>accForm(a,false)).join('')}${accForm({id:'new',name:'',pools:[],from:'',general:false},true)}<div id="acc_msg" role="alert" style="font-size:12.5px;"></div>`); };
+
+/* ============ SEVİYE BİRLEŞTİRME (iki/üç grup tek hocayla, tek ders ücreti) ============ */
+if(C_COLLS.indexOf('groupMerges')<0) C_COLLS.push('groupMerges');
+if(!SB_SPECS.some(s=>s.c==='groupMerges')) SB_SPECS.push({c:'groupMerges',t:'arr'});
+if(typeof AU_COLL==='object') AU_COLL.groupMerges='Grup birleştirme';
+function mergeOf(g,ds){ const id=g&&g.id||g; return (DB.groupMerges||[]).find(m=>(m.groups||[]).indexOf(id)>-1&&ds>=m.from&&ds<=m.to)||null; }
+function mergePrimary(m,ds){ return (m.groups||[]).map(id=>DB.groups.find(g=>g.id===id)).find(g=>g&&groupOnDay(g,ds)&&!gCancelled(g,ds))||null; }
+function mergeSkip(g,ds){ const m=mergeOf(g,ds); if(!m) return false; const p=mergePrimary(m,ds); return !!p&&p.id!==g.id; }
+const _effCoach9=effCoach;
+effCoach=function(g,ds){ const m=mergeOf(g,ds); if(m&&groupOnDay(g,ds)&&DB.coaches.some(c=>c.id===m.coach)) return m.coach; return _effCoach9(g,ds); };
+const _cEffName9=cEffName;
+cEffName=function(g,ds){ const m=mergeOf(g,ds); if(m&&groupOnDay(g,ds)) return coachName(m.coach)+' (birleşik ders)'; return _cEffName9(g,ds); };
+const _subGroupIds9=subGroupIds;
+subGroupIds=function(coachId,ds){ ds=ds||todayStr(); const out=_subGroupIds9(coachId,ds); (DB.groupMerges||[]).forEach(m=>{ if(m.coach===coachId&&ds>=m.from&&ds<=m.to) (m.groups||[]).forEach(id=>{ if(out.indexOf(id)<0) out.push(id); }); }); return out; };
+function mgAdd(groupIds,from,to,coachId,note){
+  if(role!=='admin') return {ok:false,errors:['Birleştirmeyi yalnızca yönetici yapar.']};
+  cEnsure(); groupIds=[...new Set((groupIds||[]).filter(Boolean))];
+  if(groupIds.length<2||groupIds.length>4) return {ok:false,errors:['2 ile 4 arasında grup seçin.']};
+  const gs=groupIds.map(id=>DB.groups.find(g=>g.id===id)); if(gs.some(g=>!g)) return {ok:false,errors:['Grup bulunamadı.']};
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(from||'')||!/^\d{4}-\d{2}-\d{2}$/.test(to||'')) return {ok:false,errors:['Başlangıç ve bitiş tarihini seçin.']};
+  if(from>to) return {ok:false,errors:['Bitiş tarihi başlangıçtan önce olamaz.']};
+  const days=lcRange(from,to); if(days.length>92) return {ok:false,errors:['En fazla 3 aylık aralık seçilebilir.']};
+  const co=DB.coaches.find(x=>x.id===coachId); if(!co) return {ok:false,errors:['Dersi verecek antrenörü seçin.']};
+  const shared=days.filter(ds=>gs.filter(g=>groupOnDay(g,ds)).length>=2);
+  if(!shared.length) return {ok:false,errors:['Seçilen gruplar bu aralıkta aynı gün ders yapmıyor.']};
+  if((DB.groupMerges||[]).some(m=>m.groups.some(id=>groupIds.indexOf(id)>-1)&&!(m.to<from||m.from>to))) return {ok:false,errors:['Gruplardan biri bu aralıkta başka bir birleştirmede; önce onu kaldırın.']};
+  for(const ds of shared){
+    if((DB.coachLeaves||[]).some(l=>l.coach===coachId&&lcCovers(l,ds))) return {ok:false,errors:[co.name+' '+fmtDate(ds)+' tarihinde izinli.']};
+    const p=gs.find(g=>groupOnDay(g,ds)); const m=groupMinutes(p,ds); const info=coachBusyInfo(coachId,ds,m[0],m[1],p.id,null);
+    if(info&&!(info.type==='group'&&groupIds.indexOf(info.ref)>-1)){ const og=info.type==='group'?DB.groups.find(x=>x.id===info.ref):null; return {ok:false,errors:[co.name+' '+fmtDate(ds)+' günü bu saatte '+(og?'"'+og.name+'" grubunda':'özel derste')+' görevli.']}; }
+  }
+  const rec={id:cUid('gm'),groups:groupIds,from,to,coach:coachId,note:String(note||'').slice(0,200),createdAt:todayStr()};
+  DB.groupMerges.push(rec); save(); return {ok:true,errors:[],id:rec.id,days:shared.length};
+}
+function mgRemove(id){ if(role!=='admin') return; DB.groupMerges=(DB.groupMerges||[]).filter(x=>x.id!==id); save(); }
+function mgAddUi(){
+  const ids=$$('#mg_groups input:checked').map(x=>x.value); const r=mgAdd(ids,cV('mg_f'),cV('mg_t'),cV('mg_c'),cV('mg_n'));
+  const e=document.getElementById('mg_res'); if(!r.ok){ if(e){ e.style.color='var(--red)'; e.textContent=r.errors.join(' '); } return; }
+  renderLeaves($('#content')); const e2=document.getElementById('mg_res'); if(e2){ e2.style.color='var(--green)'; e2.textContent='Birleştirme kaydedildi ('+r.days+' ders günü).'; }
+}
+function mgRemoveUi(id){ if(!confirm('Birleştirme kaldırılsın mı? Dersler eski antrenörlerine döner.')) return; mgRemove(id); renderLeaves($('#content')); }
+const _renderLeaves9=renderLeaves;
+renderLeaves=function(c){
+  _renderLeaves9(c); cEnsure(); const adm=role==='admin'; const me=DB.currentUser&&DB.currentUser.coachId; const today=todayStr();
+  const list=(DB.groupMerges||[]).filter(m=>adm||m.coach===me).sort((a,b)=>String(b.from).localeCompare(String(a.from)));
+  if(!adm&&!list.length) return;
+  let h='<div class="section-title">Seviye / grup birleştirme</div>';
+  if(adm){ const gs=DB.groups.slice().sort((a,b)=>a.name.localeCompare(b.name,'tr'));
+    h+=`<div class="card" style="margin-bottom:12px;"><div style="font-size:12.5px;color:var(--muted);margin-bottom:8px;">Örneğin 3. ve 4. seviye aynı gün tek hocayla ders yapıyorsa gruplarını seçin. Seçilen tarih aralığında aynı gün dersi olan günlerde hocaya tek ders ücreti yazılır; iki grubun yoklaması da o hocanın listesinde görünür.</div>
+    <div class="field" style="margin:0 0 8px;"><label>Birleşecek gruplar</label><div id="mg_groups" style="max-height:160px;overflow:auto;border:1px solid var(--border);border-radius:8px;padding:6px 10px;">${gs.map(g=>`<label class="chk" style="display:flex;gap:6px;font-size:13px;padding:2px 0;"><input type="checkbox" value="${escHtml(g.id)}"> ${escHtml(g.name)} <span style="color:var(--muted);">(${escHtml(gSchedText(g))} · ${escHtml(coachName(g.coach))})</span></label>`).join('')}</div></div>
+    <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;">
+    <div class="field" style="margin:0;"><label for="mg_f">Başlangıç</label><input type="date" id="mg_f" value="${today}"></div>
+    <div class="field" style="margin:0;"><label for="mg_t">Bitiş</label><input type="date" id="mg_t" value="${today}"></div>
+    <div class="field" style="margin:0;min-width:170px;"><label for="mg_c">Dersi verecek antrenör</label><select id="mg_c"><option value="">Seçin</option>${DB.coaches.map(x=>`<option value="${escHtml(x.id)}">${escHtml(x.name)}</option>`).join('')}</select></div>
+    <div class="field" style="margin:0;flex:1;min-width:140px;"><label for="mg_n">Not</label><input id="mg_n" maxlength="200"></div>
+    <button class="btn primary" onclick="mgAddUi()">Birleştir</button></div><div id="mg_res" role="alert" style="font-size:12.5px;margin-top:6px;"></div></div>`; }
+  h+=list.map(m=>`<div class="card" style="margin-bottom:8px;display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center;"><div><b>${escHtml(fmtDate(m.from))}${m.to!==m.from?' – '+escHtml(fmtDate(m.to)):''}</b> · ${m.groups.map(id=>escHtml(groupName(id))).join(' + ')}<div style="font-size:12.5px;color:var(--muted);">Hoca: ${escHtml(coachName(m.coach))} · tek ders ücreti${m.note?' · '+escHtml(m.note):''}</div></div>${adm?`<button class="btn sm danger" onclick="mgRemoveUi('${m.id}')">Kaldır</button>`:''}</div>`).join('')||'<div class="empty">Birleştirme yok</div>';
+  c.insertAdjacentHTML('beforeend',h);
+};
+{ const _att9=renderAttendance; renderAttendance=function(c){ _att9(c);
+  try{ const tag=()=>{ const ds=cV('attDate'); const s=document.getElementById('attGroup'); if(!s) return; Array.from(s.options).forEach(o=>{ const g=DB.groups.find(x=>x.id===o.value); o.textContent=o.textContent.replace(/ \(birleşik ders\)$/,''); if(g&&mergeOf(g,ds)) o.textContent+=' (birleşik ders)'; }); };
+    const d=document.getElementById('attDate'); if(d){ const old=d.onchange; d.onchange=function(ev){ if(old) old.call(this,ev); tag(); }; } tag(); }catch(e){ console.error(e); } }; }
 
 /* ============ INIT ============ */
 boot();
