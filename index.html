@@ -6721,7 +6721,7 @@ function cPkgPrice(id){
 { const _sl=sbShowLogin; sbShowLogin=function(){ cNavReset(); return _sl.apply(this,arguments); }; }
 document.addEventListener('click',function(e){
   const s=document.getElementById('sidebar'); if(!s) return;
-  if(e.target.closest('#sidebar,.navtab,.navhot,.hamburger')) return;
+  if(e.target.closest('#sidebar,.navtab,.navhot,.hamburger,#btabs,#qsheet')) return;
   if(window.innerWidth<=840){ s.classList.remove('open'); }
   else if(document.body.classList.contains('navauto')){ s.classList.remove('show'); }
 },true);
@@ -8366,6 +8366,99 @@ function renderMyRatings(c){
   try{ if(role==='admin'){ const n=lrLowUnseen().length; if(n) c.insertAdjacentHTML('afterbegin',`<div class="attn-item" style="cursor:pointer;margin-bottom:12px;" onclick="route='ratings';render();">⭐ <b>${n}</b> düşük ders puanı (1-2 yıldız) inceleme bekliyor</div>`); }
     else if(role==='parent'||role==='athlete'){ const n=lrPending().length; if(n) c.insertAdjacentHTML('afterbegin',`<div class="attn-item" style="cursor:pointer;margin-bottom:12px;" onclick="route='rate';render();">⭐ Puanlanmayı bekleyen <b>${n}</b> ders var — dersi puanlayın</div>`); }
   }catch(e){ console.error(e); } }; }
+
+/* ============ TELEFON: ALT ÇUBUK (5 kutu) + KISA YOL PANELİ ============ */
+(function(){
+  const st=document.createElement('style');
+  st.textContent=`
+  #btabs,#qsheet,#qback{display:none;}
+  @media(max-width:840px){
+    .hamburger{display:none!important;}
+    #btabs{display:grid;grid-template-columns:repeat(5,1fr);position:fixed;left:0;right:0;bottom:0;z-index:60;background:var(--card,#fff);border-top:1px solid var(--line,#dde);padding:6px 4px calc(6px + env(safe-area-inset-bottom));box-shadow:0 -4px 18px rgba(0,0,0,.08);align-items:end;}
+    #btabs button{border:0;background:none;color:var(--muted,#667);font:inherit;font-size:11px;display:flex;flex-direction:column;align-items:center;gap:2px;padding:4px 2px;min-height:48px;cursor:pointer;position:relative;border-radius:10px;}
+    #btabs button .ic{font-size:21px;line-height:1;}
+    #btabs button.on{color:var(--aqua,#0c7c79);font-weight:700;}
+    #btabs button.qs{margin-top:-18px;}
+    #btabs button.qs .ic{width:52px;height:52px;border-radius:50%;background:linear-gradient(135deg,var(--aqua,#14b8a6),#0C7C79);color:#fff;display:flex;align-items:center;justify-content:center;font-size:24px;box-shadow:0 4px 12px rgba(12,124,121,.4);}
+    #btabs .bdg{position:absolute;top:0;right:calc(50% - 22px);background:#e5484d;color:#fff;border-radius:9px;font-size:10px;min-width:17px;height:17px;display:flex;align-items:center;justify-content:center;padding:0 4px;font-weight:700;}
+    .content{padding-bottom:96px!important;}
+    .sidebar{padding-bottom:92px;overflow-y:auto;}
+    body.dlock #btabs{display:none;}
+    #qback{position:fixed;inset:0;z-index:65;background:rgba(6,20,20,.45);}
+    #qsheet{position:fixed;left:0;right:0;bottom:0;z-index:70;background:var(--card,#fff);border-radius:18px 18px 0 0;padding:16px 16px calc(84px + env(safe-area-inset-bottom));max-height:82vh;overflow-y:auto;box-shadow:0 -8px 30px rgba(0,0,0,.25);}
+    #qback.open,#qsheet.open{display:block;}
+    #qsheet .qg{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;}
+    #qsheet .qb{border:1px solid var(--line,#dde);background:var(--bg,#f6f8f8);border-radius:14px;padding:14px 6px;display:flex;flex-direction:column;align-items:center;gap:6px;font:inherit;font-size:12.5px;color:inherit;cursor:pointer;min-height:84px;text-align:center;}
+    #qsheet .qb .ic{font-size:26px;line-height:1;}
+    #qsheet .qrow{display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--line,#eee);font-size:14px;}
+    #qsheet .qrow .nm{flex:1;}
+    #qsheet .qrow button{border:1px solid var(--line,#dde);background:none;border-radius:8px;padding:6px 10px;font:inherit;cursor:pointer;color:inherit;}
+  }
+  @media print{#btabs,#qsheet,#qback{display:none!important;}}`;
+  document.head.appendChild(st);
+  const bar=document.createElement('div'); bar.id='btabs'; bar.setAttribute('role','navigation'); bar.setAttribute('aria-label','Alt menü'); document.body.appendChild(bar);
+  const back=document.createElement('div'); back.id='qback'; back.onclick=function(){ qsClose(); }; document.body.appendChild(back);
+  const sh=document.createElement('div'); sh.id='qsheet'; sh.setAttribute('role','dialog'); sh.setAttribute('aria-label','Kısa yollar'); document.body.appendChild(sh);
+})();
+const QS_DEFAULT={
+  admin:['attendance','payments','leaves','athletes','announcements','approvals'],
+  coach:['attendance','privlesson','schedule','myratings','approvals','leaves'],
+  parent:['rate','makeups','payments','announcements','tickets','times'],
+  athlete:['rate','makeups','schedule','announcements','times','development'],
+  accountant:['payments','finance','dailylessons','monthlylessons','poolreport','payroll']
+};
+const QS_MAX=9; let qsEdit=false;
+function qsKey(){ const u=DB&&DB.currentUser||{}; return 'lc_qs_'+role+'_'+(u.parentId||u.coachId||u.athleteId||u.accountantId||'x'); }
+function qsNavItem(id){ return (NAV[role]||[]).find(x=>x.id===id); }
+function qsList(){
+  let ids=null; try{ const raw=localStorage.getItem(qsKey()); if(raw){ const a=JSON.parse(raw); if(Array.isArray(a)) ids=a.filter(x=>typeof x==='string'); } }catch(e){}
+  if(!ids) ids=QS_DEFAULT[role]||[];
+  return ids.filter((id,i,a)=>a.indexOf(id)===i&&qsNavItem(id)).slice(0,QS_MAX);
+}
+function qsSave(ids){ try{ localStorage.setItem(qsKey(),JSON.stringify(ids)); }catch(e){} }
+function qsReset(){ try{ localStorage.removeItem(qsKey()); }catch(e){} qsDraw(); }
+function qsOpen(){ qsEdit=false; qsDraw(); document.getElementById('qback').classList.add('open'); document.getElementById('qsheet').classList.add('open'); document.getElementById('sidebar').classList.remove('open'); }
+function qsClose(){ document.getElementById('qback').classList.remove('open'); document.getElementById('qsheet').classList.remove('open'); }
+function qsGo(id){ qsClose(); if(!qsNavItem(id)) return; route=id; render(); window.scrollTo&&0; }
+function qsMove(i,d){ const a=qsList(), j=i+d; if(j<0||j>=a.length) return; const t=a[i]; a[i]=a[j]; a[j]=t; qsSave(a); qsDraw(); }
+function qsDel(i){ const a=qsList(); a.splice(i,1); qsSave(a); qsDraw(); }
+function qsAdd(id){ const a=qsList(); if(a.length>=QS_MAX||a.indexOf(id)>-1||!qsNavItem(id)) return; a.push(id); qsSave(a); qsDraw(); }
+function qsToggleEdit(){ qsEdit=!qsEdit; qsDraw(); }
+function qsDraw(){
+  const sh=document.getElementById('qsheet'); if(!sh) return; const ids=qsList();
+  const lab=id=>{ const n=qsNavItem(id); return n?n:{label:id,ic:'•'}; };
+  if(!qsEdit){
+    sh.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;"><b style="font-size:16px;">⚡ Kısa yollar</b><button class="btn sm" onclick="qsToggleEdit()">Düzenle</button></div>
+    <div class="qg">${ids.map(id=>`<button class="qb" onclick="qsGo('${id}')"><span class="ic">${lab(id).ic||''}</span>${escHtml(lab(id).label)}</button>`).join('')||'<div class="empty" style="grid-column:1/-1;">Kısa yol yok. Düzenle ile ekleyin.</div>'}</div>`;
+  } else {
+    const rest=(NAV[role]||[]).filter(x=>x.id&&ids.indexOf(x.id)<0);
+    sh.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;"><b style="font-size:16px;">Kısa yolları düzenle</b><button class="btn sm primary" onclick="qsToggleEdit()">Bitti</button></div>
+    ${ids.map((id,i)=>`<div class="qrow"><span>${lab(id).ic||''}</span><span class="nm">${escHtml(lab(id).label)}</span><button aria-label="Yukarı" onclick="qsMove(${i},-1)"${i?'':' disabled'}>↑</button><button aria-label="Aşağı" onclick="qsMove(${i},1)"${i<ids.length-1?'':' disabled'}>↓</button><button aria-label="Kaldır" onclick="qsDel(${i})">✕</button></div>`).join('')}
+    <div style="font-size:12.5px;color:var(--muted);margin:12px 0 4px;">Eklenebilecek sayfalar${ids.length>=QS_MAX?' (en fazla '+QS_MAX+' kısa yol)':''}</div>
+    <div style="display:flex;flex-wrap:wrap;gap:6px;">${rest.map(x=>`<button class="btn sm" onclick="qsAdd('${x.id}')"${ids.length>=QS_MAX?' disabled':''}>${x.ic||''} ${escHtml(x.label)}</button>`).join('')}</div>
+    <div style="margin-top:14px;"><button class="btn sm" onclick="qsReset()">Varsayılana dön</button></div>`;
+  }
+}
+function btTabs(){
+  const t4={admin:'approvals',coach:'messages',parent:'messages',athlete:'messages',accountant:'payments'}[role]||'messages';
+  const second=role==='accountant'?'dailylessons':'schedule';
+  const mk=id=>{ const n=qsNavItem(id); if(!n) return null; const short={dashboard:'Ana sayfa',schedule:'Program',dailylessons:'Günlük',approvals:'Onaylar',messages:'Mesajlar',payments:'Ödemeler'}[id]||n.label; return {id,ic:n.ic||'•',label:short}; };
+  return [mk('dashboard'),mk(second),'qs',mk(t4),'menu'];
+}
+function btUpdate(){
+  const bar=document.getElementById('btabs'); if(!bar||!NAV[role]) return;
+  const open=document.getElementById('sidebar').classList.contains('open');
+  bar.innerHTML=btTabs().map(t=>{
+    if(t==='qs') return `<button class="qs" onclick="qsOpen()" aria-label="Kısa yollar"><span class="ic">⚡</span><span>Kısa yol</span></button>`;
+    if(t==='menu') return `<button class="${open?'on':''}" onclick="btMenu()" aria-label="Menü"><span class="ic">☰</span><span>Menü</span></button>`;
+    if(!t) return '<span></span>';
+    let n=0; try{ n=navBadge(t.id)||0; }catch(e){}
+    return `<button class="${route===t.id?'on':''}" onclick="btGo('${t.id}')"><span class="ic">${t.ic}</span><span>${escHtml(t.label)}</span>${n?`<span class="bdg">${n>99?'99+':n}</span>`:''}</button>`; }).join('');
+}
+function btGo(id){ qsClose(); document.getElementById('sidebar').classList.remove('open'); route=id; render(); }
+function btMenu(){ qsClose(); document.getElementById('sidebar').classList.toggle('open'); btUpdate(); }
+{ const _r=render; render=function(){ const r=_r.apply(this,arguments); try{ btUpdate(); }catch(e){ console.error(e); } return r; }; }
+document.addEventListener('click',function(e){ if(e.target.closest('#btabs,#qsheet')) return; if(window.innerWidth<=840&&!e.target.closest('#sidebar')) setTimeout(btUpdate,0); },true);
 
 /* ============ INIT ============ */
 boot();
