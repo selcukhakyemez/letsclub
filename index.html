@@ -4264,7 +4264,7 @@ function renderMakeups(c){
   c.innerHTML=`${fbBanner(fbTake('mk'),fbTake('mkErr'))}
   <div class="grid kpi"><div class="card"><div class="label">Açık hak</div><div class="val">${cnt.Hak}</div></div><div class="card"><div class="label">Planlı telafi</div><div class="val">${cnt['Planlandı']}</div></div>
    <div class="card"><div class="label">Kullanılan</div><div class="val">${cnt['Kullanıldı']}</div></div><div class="card"><div class="label">Süresi dolan</div><div class="val">${cnt['Süresi doldu']}</div></div></div>
-  <div class="note-banner" style="margin-top:12px;">Yoklamada <b>İzinli</b> veya <b>Hastalık</b> işaretlenen her devamsızlık için ${MK_EXPIRE_DAYS} gün geçerli bir telafi hakkı otomatik oluşur. Telafi, sporcunun kendi grubundan farklı ve o tarihte ders yapan bir grupta planlanır.</div>
+  <div class="note-banner" style="margin-top:12px;"><b>İzinli</b> veya <b>Hastalık</b> işaretlenen devamsızlıklar paket bitiş tarihine otomatik eklenir (ayrı telafi hakkı açılmaz). Buradaki haklar ders iptali veya elle eklenen devamsızlıklar içindir; ${MK_EXPIRE_DAYS} gün geçerlidir.</div>
   ${act?`<div class="card" style="margin-top:12px;"><b>Manuel telafi hakkı ekle</b><div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-top:8px;">
     <div class="field" style="margin:0;"><label for="mka_ath">Sporcu</label><select id="mka_ath">${visibleAthletes().filter(a=>a.status==='active').map(a=>`<option value="${escHtml(a.id)}">${escHtml(a.name)}</option>`).join('')}</select></div>
     <div class="field" style="margin:0;"><label for="mka_date">Devamsızlık tarihi</label><input type="date" id="mka_date" value="${fbTodayYmd()}" max="${fbTodayYmd()}"></div>
@@ -8014,8 +8014,8 @@ function prpCompute(ym,pools){
   DB.athletes.filter(a=>a.status==='active').forEach(a=>{ const g=DB.groups.find(x=>x.id===a.group); let pn=g?g.pool:''; if(!pn){ const pk=(DB.plPackages||[]).find(k=>k.athlete===a.id); pn=pk?pk.pool:''; } if(out.pools[pn]){ if(cFrozenOn(a,t)) out.pools[pn].frozen++; else out.pools[pn].active++; } });
   DB.groups.forEach(g=>{ const row={g,pool:'',athletes:DB.athletes.filter(a=>a.group===g.id&&a.status==='active').length,plan:0,held:0,canc:0,coach:g.coach};
     monthDays(ym).forEach(ds=>{ if(!groupOnDay(g,ds)) return; const pn=gPoolOn(g,ds); const P=out.pools[pn]; if(!P) return; row.pool=pn;
-      const canc=gCancelled(g,ds), held=!canc&&ds<=t; if(gIsTeam(g)){ P.teamPlan+=canc?0:1; if(held) P.teamHeld++; } else { P.grpPlan+=canc?0:1; if(held) P.grpHeld++; }
-      if(canc) P.grpCanc++; row.plan+=canc?0:1; if(held) row.held++; if(canc) row.canc++; });
+      const canc=gCancelled(g,ds), held=!canc&&ds<=t; if(!mergeSkip(g,ds)){ if(gIsTeam(g)){ P.teamPlan+=canc?0:1; if(held) P.teamHeld++; } else { P.grpPlan+=canc?0:1; if(held) P.grpHeld++; } }
+      if(canc&&!mergeSkip(g,ds)) P.grpCanc++; row.plan+=canc?0:1; if(held) row.held++; if(canc) row.canc++; });
     if(row.pool) out.groups.push(row); });
   (DB.privateLessons||[]).filter(p=>!p._stub&&ymOf(p.date)===ym).forEach(p=>{ const P=out.pools[lessonPool(p)]; if(!P) return; if(p.status==='Onaylandı'){ P.plPlan++; if(p.date<=t) P.plHeld++; } else if(p.status==='İptal') P.plCanc++; });
   (DB.payments||[]).forEach(p=>{ const P=out.pools[payPool(p)]; if(!P) return; if(p.status==='paid'){ if(String(p.paidDate||'').slice(0,7)===ym) P.paid+=Number(p.amount||0); } else P.open+=Number(p.amount||0); });
@@ -8149,6 +8149,25 @@ renderLeaves=function(c){
 { const _att9=renderAttendance; renderAttendance=function(c){ _att9(c);
   try{ const tag=()=>{ const ds=cV('attDate'); const s=document.getElementById('attGroup'); if(!s) return; Array.from(s.options).forEach(o=>{ const g=DB.groups.find(x=>x.id===o.value); o.textContent=o.textContent.replace(/ \(birleşik ders\)$/,''); if(g&&mergeOf(g,ds)) o.textContent+=' (birleşik ders)'; }); };
     const d=document.getElementById('attDate'); if(d){ const old=d.onchange; d.onchange=function(ev){ if(old) old.call(this,ev); tag(); }; } tag(); }catch(e){ console.error(e); } }; }
+
+/* ============ İzinli/Hastalık: telafi paket sonuna eklendiği için ayrı telafi hakkı açılmaz ============ */
+{ const _ms=makeupSync; makeupSync=function(gid,date,rec){
+    if(!rec) return _ms(gid,date,rec);
+    const r2={}; Object.keys(rec).forEach(k=>{ r2[k]=(rec[k]==='İzinli'||rec[k]==='Hastalık')?'Katıldı':rec[k]; }); /* hak üretme; yalnız diğer durumlar senkronlanır */
+    /* mevcut hak kayıtlarını silmesin: yalnızca İzinli/Hastalık dışı durumlar için çalıştır */
+    const keep=(DB.makeups||[]).slice(); _ms(gid,date,r2);
+    const ids={}; Object.keys(rec).forEach(k=>{ if(rec[k]==='İzinli'||rec[k]==='Hastalık') ids[mkId(k,gid,date)]=1; });
+    DB.makeups=(DB.makeups||[]).filter(m=>true); keep.forEach(m=>{ if(ids[m.id]&&!DB.makeups.some(x=>x.id===m.id)) DB.makeups.push(m); });
+  }; }
+function mkAutoPlan(){
+  return (DB.makeups||[]).filter(m=>m.status==='Hak'&&!m.cancel&&(m.reason==='İzinli'||m.reason==='Hastalık')&&!m.planDate&&((DB.attendanceLog||{})[m.group+'|'+m.absDate]||{})[m.athlete]===m.reason);
+}
+function mkAutoRun(){ if(role!=='admin') return; const p=mkAutoPlan(); const ids={}; p.forEach(m=>ids[m.id]=1);
+  if(!p.length||!confirm(p.length+' otomatik telafi hakkı silinsin mi? (Telafi zaten paket sonuna eklendi.)')) return;
+  DB.makeups=DB.makeups.filter(m=>!ids[m.id]); save(); renderSettings($('#content')); }
+const _renderSettings11=renderSettings;
+renderSettings=function(c){ _renderSettings11(c); if(role!=='admin') return; const n=mkAutoPlan().length;
+  c.insertAdjacentHTML('beforeend',`<div class="section-title">Çift telafi temizliği</div><div class="card"><div style="font-size:13px;color:var(--muted);">İzinli/Hastalık telafisi artık yalnızca paket bitişinin uzatılmasıyla yapılır. Eskiden yoklamadan otomatik açılmış, planlanmamış <b>${n}</b> telafi hakkı var.</div><button class="btn sm" style="margin-top:8px;" onclick="mkAutoRun()"${n?'':' disabled'}>Bunları sil</button></div>`); };
 
 /* ============ INIT ============ */
 boot();
