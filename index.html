@@ -257,7 +257,7 @@ body.srv .role-pill:not(#userPill){display:none;}
         <option value="admin">Yönetici</option>
         <option value="coach">Antrenör</option>
         <option value="parent">Veli</option>
-        <option value="athlete">Sporcu</option>
+        <option value="athlete">Sporcu</option><option value="accountant">Muhasebe</option>
       </select>
     </div>
     <div class="role-pill" id="userPill" style="display:none;"></div>
@@ -629,7 +629,7 @@ function render(){
   const fns={dashboard:renderDashboard,athletes:renderAthletes,parents:renderParents,groups:renderGroups,
     schedule:renderSchedule,trainplan:renderTrainPlan,weekly:renderWeekly,makeups:renderMakeups,times:renderTimes,levels:renderLevels,attendance:renderAttendance,development:renderDevelopment,competitions:renderCompetitions,
     crm:renderCRM,coaches:renderCoaches,payments:renderPayments,announcements:renderAnnouncements,tickets:renderTickets,
-    reports:renderReports,settings:renderSettings,ai:renderAI,approvals:renderApprovals,insights:renderInsights,rentals:renderRentals,finance:renderFinance,messages:renderMessages,surveys:renderSurveys,leaves:renderLeaves,discounts:renderDiscounts,devreport:renderDevReport,audit:renderAudit,payroll:renderPayroll,atthist:renderAttHistory,newitems:renderNewItems,privlesson:renderPrivLessons};
+    reports:renderReports,settings:renderSettings,ai:renderAI,approvals:renderApprovals,insights:renderInsights,rentals:renderRentals,finance:renderFinance,poolreport:renderPoolReport,messages:renderMessages,surveys:renderSurveys,leaves:renderLeaves,discounts:renderDiscounts,devreport:renderDevReport,audit:renderAudit,payroll:renderPayroll,atthist:renderAttHistory,newitems:renderNewItems,privlesson:renderPrivLessons};
   c.innerHTML='';
   (fns[route]||renderDashboard)(c);
 }
@@ -2550,7 +2550,7 @@ function validatePayment(c){
   return e;
 }
 function savePayment(c,editId){
-  if(role!=='admin') return {ok:false,errors:['Ödemeleri yalnızca yönetici girebilir veya değiştirebilir.']};
+  if(role!=='admin'&&!accPayOk(c,editId)) return {ok:false,errors:['Ödemeleri yalnızca yönetici girebilir veya değiştirebilir.']};
   const old=editId?DB.payments.find(p=>p.id===editId):null; if(editId&&!old) return {ok:false,errors:['Ödeme bulunamadı.']};
   const e=validatePayment(c); if(e.length) return {ok:false,errors:e};
   const paid=c.status==='paid';
@@ -2564,7 +2564,7 @@ function removePayment(id){
   DB.payments=DB.payments.filter(x=>x.id!==id); recalcBalances(); save(); return {ok:true,errors:[]};
 }
 function markPaid(id){
-  if(role!=='admin') return;
+  if(role!=='admin'&&role!=='accountant') return;
   const p=DB.payments.find(x=>x.id===id); if(!p) return;
   savePayment({athlete:p.athlete,amount:p.amount,due:p.due,status:'paid',type:p.type||'Aidat',method:'Elden/Manuel',paidDate:todayStr(),pool:payPool(p)},id); render();
 }
@@ -2584,7 +2584,7 @@ function renderPayments(c){
   </tbody></table></div>`;
 }
 function payOpen(editId){
-  if(role!=='admin') return;
+  if(role!=='admin'&&!(role==='accountant'&&!editId)) return;
   const p=editId?DB.payments.find(x=>x.id===editId):null; if(editId&&!p) return;
   window.__payEdit=editId||null;
   const opt=(arr,sel)=>arr.map(o=>`<option value="${escHtml(o[0])}" ${o[0]===sel?'selected':''}>${escHtml(o[1])}</option>`).join('');
@@ -2716,7 +2716,7 @@ function coachPayFor(cid,ym,pool){
 
 /* ---------- GİDERLER ---------- */
 function saveExpense(c,editId){
-  if(role!=='admin') return {ok:false,errors:['Giderleri yalnızca yönetici girebilir.']};
+  if(role!=='admin'&&!(role==='accountant'&&!editId&&accExpOk(c))) return {ok:false,errors:['Giderleri yalnızca yönetici girebilir.']};
   const e=[]; const a=Number(String(c.amount).replace(',','.')); const desc=String(c.desc||'').trim();
   if(!okDateS(c.date)) e.push('Tarihi girin.');
   if(EXP_CATS.indexOf(c.category)<0) e.push('Gider kategorisini seçin.');
@@ -3519,7 +3519,7 @@ function aiViewQueue(){
 }
 
 /* ============ SUNUCU BAĞLANTISI (Supabase): giriş, oturum, veri senkronu, hesaplar ============ */
-const SB_CFG={url:'https://btqpfudetvpldswafliw.supabase.co',key:'sb_publishable_Y8WJS6EzN-43ZXQS0CmZfA_ZlR49Poi'}; /*SBCFG*/ /*SBCFG*/
+const SB_CFG={url:'https://btqpfudetvpldswafliw.supabase.co',key:'sb_publishable_Y8WJS6EzN-43ZXQS0CmZfA_ZlR49Poi'}; /*SBCFG*/
 const SERVER=!!(SB_CFG.url&&SB_CFG.key);
 const SB_STORE='lc_session_v1';
 const SB={session:null,profile:null,synced:{},base:{},timer:null,syncing:false,again:false,lastLoad:0,retry:null,booted:false};
@@ -3738,7 +3738,7 @@ async function sbLoadAll(){
     const have=new Set(db.privateLessons.map(p=>p.id));
     slots.forEach(s=>{ if(!have.has(s.id)) db.privateLessons.push({id:s.id,sid:s.sid,pkg:null,pool:s.pool||'',athlete:'',coach:s.coach,date:s.date,hour:s.hour,status:s.status,note:'',_stub:true}); });
   }
-  const p=SB.profile; db.currentUser={parentId:p.role==='parent'?p.link_id:null,coachId:p.role==='coach'?p.link_id:null,athleteId:p.role==='athlete'?p.link_id:null};
+  const p=SB.profile; db.currentUser={parentId:p.role==='parent'?p.link_id:null,coachId:p.role==='coach'?p.link_id:null,athleteId:p.role==='athlete'?p.link_id:null,accountantId:p.role==='accountant'?p.link_id:null};
   DB=db; sbBaseline(); SB.lastLoad=Date.now();
   return {ok:true,count:rows.length};
 }
@@ -3898,7 +3898,7 @@ async function boot(){
 /* ---------- Kenar çubuğu: hesap kutusu ---------- */
 function sbPillHtml(){
   const p=SB.profile; if(!p) return '';
-  let who=''; if(p.role==='coach') who=coachName(p.link_id); else if(p.role==='parent') who=parentName(p.link_id); else if(p.role==='athlete') who=athleteName(p.link_id);
+  let who=''; if(p.role==='coach') who=coachName(p.link_id); else if(p.role==='parent') who=parentName(p.link_id); else if(p.role==='athlete') who=athleteName(p.link_id); else if(p.role==='accountant') who=accName(p.link_id);
   return `<div style="min-width:0;"><div style="font-weight:700;color:#fff;">${escHtml(SB_ROLE_TR[p.role]||p.role)}${who&&who!=='—'?' · '+escHtml(who):''}</div><div style="font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escHtml(p.email)}">${escHtml(p.email)}</div></div><div style="display:flex;gap:6px;"><button class="btn sm" style="padding:3px 8px;" title="Verileri yenile" onclick="sbManualRefresh()">↻</button><button class="btn sm" style="padding:3px 8px;" onclick="sbSignOut()">Çıkış</button></div>`;
 }
 async function sbManualRefresh(){ await sbIdle(); if(await sbReload(false)) render(); }
@@ -3914,10 +3914,10 @@ window.addEventListener('beforeunload',e=>{ if(SERVER&&(SB.timer||SB.syncing)){ 
 /* ---------- Yönetici: kullanıcı hesapları ---------- */
 let acctData={profiles:[],pending:[],loaded:false,msg:'',bad:false};
 function personOptions(r){
-  const list=r==='coach'?DB.coaches.map(x=>[x.id,x.name]):r==='parent'?DB.parents.map(x=>[x.id,x.name]):r==='athlete'?DB.athletes.filter(a=>a.status!=='trial').map(x=>[x.id,x.name]):[];
+  const list=r==='accountant'?(DB.accountants||[]).map(x=>[x.id,x.name]):r==='coach'?DB.coaches.map(x=>[x.id,x.name]):r==='parent'?DB.parents.map(x=>[x.id,x.name]):r==='athlete'?DB.athletes.filter(a=>a.status!=='trial').map(x=>[x.id,x.name]):[];
   return list.map(o=>`<option value="${escHtml(o[0])}">${escHtml(o[1])}</option>`).join('');
 }
-function personLabel(r,id){return r==='coach'?coachName(id):r==='parent'?parentName(id):r==='athlete'?athleteName(id):'—';}
+function personLabel(r,id){return r==='accountant'?accName(id):r==='coach'?coachName(id):r==='parent'?parentName(id):r==='athlete'?athleteName(id):'—';}
 async function acctLoad(){
   const a=await sbReq('GET','/rest/v1/profiles?select=id,email,role,link_id,created_at&order=created_at.asc');
   const b=await sbReq('GET','/rest/v1/pending_profiles?select=email,role,link_id,created_at&order=created_at.asc');
@@ -3935,7 +3935,7 @@ function acctHtml(){
    <div style="overflow-x:auto;"><table><thead><tr><th>E-posta</th><th>Rol</th><th>Bağlı kişi</th><th></th></tr></thead><tbody>${rows}${prow}${(!rows&&!prow)?'<tr><td colspan="4"><div class="empty">'+(acctData.loaded?'Hesap yok':'Yükleniyor…')+'</div></td></tr>':''}</tbody></table></div>
    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin-top:14px;align-items:end;">
     <div class="field" style="margin:0;"><label for="ac_email">E-posta</label><input id="ac_email" type="email" autocomplete="off"></div>
-    <div class="field" style="margin:0;"><label for="ac_role">Rol</label><select id="ac_role" onchange="acctRoleChanged()"><option value="coach">Antrenör</option><option value="parent">Veli</option><option value="athlete">Sporcu (yetişkin)</option><option value="admin">Yönetici</option></select></div>
+    <div class="field" style="margin:0;"><label for="ac_role">Rol</label><select id="ac_role" onchange="acctRoleChanged()"><option value="coach">Antrenör</option><option value="parent">Veli</option><option value="athlete">Sporcu (yetişkin)</option><option value="accountant">Muhasebe</option><option value="admin">Yönetici</option></select></div>
     <div class="field" style="margin:0;" id="ac_pwrap"><label for="ac_person">Bağlı kişi</label><select id="ac_person">${personOptions('coach')}</select></div>
     <button class="btn primary" onclick="acctAdd()">Hesap tanımla</button></div></div>`;
 }
@@ -3950,7 +3950,7 @@ async function acctAdd(){
   const r=document.getElementById('ac_role').value; const link=r==='admin'?null:(document.getElementById('ac_person').value||'');
   const fail=t=>{acctData.msg=t; acctData.bad=true; acctDraw();};
   if(!sbEmailOk(email)) return fail('Geçerli bir e-posta adresi yazın.');
-  if(['admin','coach','parent','athlete'].indexOf(r)<0) return fail('Rol seçin.');
+  if(['admin','coach','parent','athlete','accountant'].indexOf(r)<0) return fail('Rol seçin.');
   if(r!=='admin'){ if(!link||personLabel(r,link)==='—') return fail('Bağlı kişiyi seçin.'); }
   if(acctData.profiles.some(p=>String(p.email).toLowerCase()===email)||acctData.pending.some(p=>p.email===email)) return fail('Bu e-posta zaten tanımlı.');
   const res=await sbReq('POST','/rest/v1/pending_profiles',{email,role:r,link_id:link},{Prefer:'return=minimal'});
@@ -7941,6 +7941,151 @@ renderApprovals=function(c){
   if(done.length) h+=`<div class="section-title">Önerilerde son kararlar</div>`+done.map(q=>`<div class="card" style="margin-bottom:8px;font-size:13px;display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;"><div>${escHtml(q.title)}${q.decisionNote?`<div style="font-size:12px;color:var(--muted);">Not: ${escHtml(q.decisionNote)}</div>`:''}</div><div><span class="badge ${q.status==='Onaylandı'?'green':'red'}">${escHtml(q.status)}</span><div style="font-size:11.5px;color:var(--muted);text-align:right;">${escHtml(q.decision||'')}</div></div></div>`).join('');
   const first=c.querySelector('.section-title'); if(first) first.insertAdjacentHTML('beforebegin',h); else c.insertAdjacentHTML('beforeend',h);
 };
+
+/* ============ MUHASEBE ROLÜ (havuz kapsamlı, görmeye başlama tarihli) ============ */
+if(C_COLLS.indexOf('accountants')<0) C_COLLS.push('accountants');
+if(!SB_SPECS.some(s=>s.c==='accountants')) SB_SPECS.push({c:'accountants',t:'arr'});
+SB_WRITE.accountant=['payments','expenses'];
+SB_ROLE_TR.accountant='Muhasebe';
+if(typeof AU_COLL==='object') AU_COLL.accountants='Muhasebe hesabı';
+NAV.accountant=[
+  {sect:'Genel'},{id:'dashboard',label:'Dashboard',ic:'📊'},{id:'poolreport',label:'Havuz Raporu',ic:'🏊'},
+  {sect:'Finans'},{id:'payments',label:'Ödemeler / Tahsilat',ic:'💳'},{id:'finance',label:'Gelir / Gider',ic:'💰'},
+  {id:'payroll',label:'Antrenör Puantaj',ic:'🧮'},{id:'rentals',label:'Havuz Kiralama',ic:'🏟️'}
+];
+TITLES.poolreport='Havuz Raporu'; TITLES.payments=TITLES.payments||'Ödemeler';
+function accName(id){ const a=(DB.accountants||[]).find(x=>x.id===id); return a?a.name:'—'; }
+function accMe(){ cEnsure(); const id=DB.currentUser&&DB.currentUser.accountantId; return (DB.accountants||[]).find(a=>a.id===id)||{id:'',name:'Muhasebe',pools:[],from:'',general:false}; }
+function accFromYm(){ const f=accMe().from; return f?f.slice(0,7):'0000-00'; }
+function accPoolNames(){ return DB.pools.map(p=>p.name); }
+/* --- sayfa işlevlerini yönetici görünümüyle çiz, düzenleme düğmelerini kaldır --- */
+const ACC_STRIP=['payDelete','expDel','extraAdd','extraDel','pkgDel','pkgSell','cPkgPrice','priceSave','rateSave','rentDel','rentPaid','rentOpen','finResetItems_x'];
+function accCollect(id){
+  const p=DB.payments.find(x=>x.id===id); if(!p||p.status==='paid'){ return; }
+  if(!confirm(athleteName(p.athlete)+' — '+money(p.amount)+' tahsil edildi olarak işaretlensin mi?')) return; markPaid(id);
+}
+function accClean(c){
+  if(!c) return;
+  c.querySelectorAll('[onclick]').forEach(el=>{ const o=el.getAttribute('onclick')||'';
+    if(ACC_STRIP.some(f=>o.indexOf(f+'(')===0)){ el.remove(); return; }
+    const m=/^payOpen\('([^']+)'\)/.exec(o); if(m){ el.setAttribute('onclick',`accCollect('${m[1]}')`); } });
+  const ex=c.querySelector('#ex_pool'); if(ex&&!accMe().general){ Array.from(ex.options).forEach(o=>{ if(!o.value) o.remove(); }); }
+  const m=accMe(); const sc=(m.pools&&m.pools.length?m.pools.join(', '):'tüm havuzlar');
+  c.insertAdjacentHTML('afterbegin',`<div class="note-banner" style="margin-bottom:12px;font-size:12.5px;">Muhasebe görünümü: <b>${escHtml(sc)}</b> · ${m.from?escHtml(fmtDate(m.from))+' tarihinden itibaren':'tüm tarihler'}. Fiyat, ücret oranı, silme ve iptal işlemlerini yalnızca yönetici yapar.</div>`);
+}
+['renderPayments','renderFinance','renderRentals','renderPayroll'].forEach(n=>{ const f=window[n]; if(typeof f!=='function') return;
+  window[n]=function(c){ if(role!=='accountant') return f.apply(this,arguments);
+    if(n==='renderFinance'&&['report','expenses'].indexOf(finTab)<0) finTab='report';
+    role='admin'; window.__accView=true; try{ f.apply(this,arguments); } finally{ role='accountant'; window.__accView=false; }
+    accClean(c); }; });
+const _finTabs10=finTabs;
+finTabs=function(){ const h=_finTabs10(); if(!window.__accView) return h; return h.replace(/<div class="p [^"]*" onclick="finTab='(prices|rates|packages)'[^>]*>[^<]*<\/div>/g,''); };
+/* --- tahsilat ve gider girişi için muhasebe izni --- */
+function accPayOk(c,editId){
+  if(role!=='accountant') return false;
+  if(!editId){ const pool=(typeof resolvePayPool==='function')?resolvePayPool(c,null):c.pool; return !!pool&&DB.pools.some(p=>p.name===pool); }
+  const old=DB.payments.find(p=>p.id===editId); if(!old||old.status==='paid'||c.status!=='paid') return false;
+  return old.athlete===c.athlete&&Number(old.amount)===Number(String(c.amount).replace(',','.'))&&old.due===c.due&&(old.type||'Aidat')===(c.type||'Aidat');
+}
+function accExpOk(c){ if(role!=='accountant') return false; const m=accMe(); if(!c.pool) return !!m.general; return DB.pools.some(p=>p.name===c.pool); }
+/* --- muhasebe ana sayfası --- */
+function renderAccHome(c){
+  cEnsure(); const t=todayStr(), ym=ymOf(t); const pays=DB.payments||[];
+  const paid=pays.filter(p=>p.status==='paid'&&String(p.paidDate||'').slice(0,7)===ym), unpaid=pays.filter(p=>p.status!=='paid'), over=pays.filter(p=>p.status==='overdue');
+  const sum=a=>a.reduce((s,x)=>s+Number(x.amount||0),0); const exp=(DB.expenses||[]).filter(x=>ymOf(x.date)===ym);
+  const kpi=(l,v,s)=>`<div class="card"><div class="label">${l}</div><div class="val">${v}</div>${s?`<div class="delta">${s}</div>`:''}</div>`;
+  const rows=accPoolNames().map(pn=>{ const pp=pays.filter(p=>payPool(p)===pn);
+    return `<tr><td>${escHtml(pn)}</td><td>${money(sum(pp.filter(p=>p.status==='paid'&&String(p.paidDate||'').slice(0,7)===ym)))}</td><td>${money(sum(pp.filter(p=>p.status==='pending')))}</td><td>${money(sum(pp.filter(p=>p.status==='overdue')))}</td><td>${money(sum(exp.filter(x=>x.pool===pn)))}</td></tr>`; }).join('');
+  const od=over.slice().sort((a,b)=>String(a.due).localeCompare(String(b.due))).slice(0,10);
+  c.innerHTML=`<div class="grid kpi">${kpi('Bu Ay Tahsilat',money(sum(paid)),paid.length+' ödeme')}${kpi('Bekleyen',money(sum(pays.filter(p=>p.status==='pending'))),'vadesi gelmemiş')}${kpi('Gecikmiş',money(sum(over)),over.length+' ödeme')}${kpi('Bu Ay Gider',money(sum(exp)),exp.length+' kayıt')}</div>
+  <div class="section-title">Havuz bazında</div><div class="card" style="padding:0;overflow-x:auto;"><table><thead><tr><th>Havuz</th><th>Bu ay tahsilat</th><th>Bekleyen</th><th>Gecikmiş</th><th>Bu ay gider</th></tr></thead><tbody>${rows||'<tr><td colspan="5"><div class="empty">Havuz yok</div></td></tr>'}</tbody></table></div>
+  <div class="section-title">En eski gecikmiş ödemeler</div><div class="card" style="padding:0;overflow-x:auto;"><table><thead><tr><th>Sporcu</th><th>Havuz</th><th>Vade</th><th>Tutar</th><th></th></tr></thead><tbody>${od.map(p=>`<tr><td>${escHtml(athleteName(p.athlete))}</td><td>${escHtml(payPool(p)||'')}</td><td>${escHtml(fmtDate(p.due))}</td><td>${money(p.amount)}</td><td><button class="btn sm primary" onclick="accCollect('${p.id}')">Tahsil et</button></td></tr>`).join('')||'<tr><td colspan="5"><div class="empty">Gecikmiş ödeme yok</div></td></tr>'}</tbody></table></div>
+  <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap;"><button class="btn primary" onclick="route='poolreport';render();">Havuz raporu</button><button class="btn" onclick="route='payments';render();">Ödemeler</button><button class="btn" onclick="route='finance';render();">Gelir / Gider</button></div>`;
+  const m=accMe(); c.insertAdjacentHTML('afterbegin',`<div class="note-banner" style="margin-bottom:12px;font-size:12.5px;">${escHtml(m.name)} · Kapsam: <b>${escHtml(m.pools&&m.pools.length?m.pools.join(', '):'tüm havuzlar')}</b> · ${m.from?escHtml(fmtDate(m.from))+' tarihinden itibaren':'tüm tarihler'}</div>`);
+}
+const _renderDashboard10=renderDashboard;
+renderDashboard=function(c){ if(role==='accountant') return renderAccHome(c); return _renderDashboard10(c); };
+/* --- havuz detay raporu --- */
+let prpSel={ym:'',pool:''};
+function prpCompute(ym,pools){
+  const t=todayStr(); const out={pools:{},coaches:{},groups:[]};
+  pools.forEach(pn=>{ out.pools[pn]={active:0,frozen:0,grpPlan:0,grpHeld:0,grpCanc:0,teamPlan:0,teamHeld:0,plPlan:0,plHeld:0,plCanc:0,paid:0,open:0,exp:0,pay:0,payPlan:0}; });
+  DB.athletes.filter(a=>a.status==='active').forEach(a=>{ const g=DB.groups.find(x=>x.id===a.group); let pn=g?g.pool:''; if(!pn){ const pk=(DB.plPackages||[]).find(k=>k.athlete===a.id); pn=pk?pk.pool:''; } if(out.pools[pn]){ if(cFrozenOn(a,t)) out.pools[pn].frozen++; else out.pools[pn].active++; } });
+  DB.groups.forEach(g=>{ const row={g,pool:'',athletes:DB.athletes.filter(a=>a.group===g.id&&a.status==='active').length,plan:0,held:0,canc:0,coach:g.coach};
+    monthDays(ym).forEach(ds=>{ if(!groupOnDay(g,ds)) return; const pn=gPoolOn(g,ds); const P=out.pools[pn]; if(!P) return; row.pool=pn;
+      const canc=gCancelled(g,ds), held=!canc&&ds<=t; if(gIsTeam(g)){ P.teamPlan+=canc?0:1; if(held) P.teamHeld++; } else { P.grpPlan+=canc?0:1; if(held) P.grpHeld++; }
+      if(canc) P.grpCanc++; row.plan+=canc?0:1; if(held) row.held++; if(canc) row.canc++; });
+    if(row.pool) out.groups.push(row); });
+  (DB.privateLessons||[]).filter(p=>!p._stub&&ymOf(p.date)===ym).forEach(p=>{ const P=out.pools[lessonPool(p)]; if(!P) return; if(p.status==='Onaylandı'){ P.plPlan++; if(p.date<=t) P.plHeld++; } else if(p.status==='İptal') P.plCanc++; });
+  (DB.payments||[]).forEach(p=>{ const P=out.pools[payPool(p)]; if(!P) return; if(p.status==='paid'){ if(String(p.paidDate||'').slice(0,7)===ym) P.paid+=Number(p.amount||0); } else P.open+=Number(p.amount||0); });
+  (DB.expenses||[]).filter(x=>ymOf(x.date)===ym).forEach(x=>{ const P=out.pools[x.pool]; if(P) P.exp+=Number(x.amount||0); });
+  DB.coaches.forEach(co=>{ const now=coachPayToDate(co.id,ym), full=coachPayFor(co.id,ym); const r={name:co.name,grp:0,team:0,priv:0,asst:0,pay:0,plan:0};
+    pools.forEach(pn=>{ const b=now.byPool[pn], f=full.byPool[pn]; if(!b) return; r.grp+=b.groupCount-(b.teamCount||0); r.team+=b.teamCount||0; r.priv+=b.privateCount; r.asst+=b.asstCount; r.pay+=b.total; r.plan+=f?f.total:0; out.pools[pn].pay+=b.total; out.pools[pn].payPlan+=f?f.total:0; });
+    if(r.grp+r.team+r.priv+r.asst>0||r.plan>0) out.coaches[co.id]=r; });
+  return out;
+}
+function renderPoolReport(c){
+  const ym0=todayStr().slice(0,7); if(!prpSel.ym) prpSel.ym=ym0; const minYm=accFromYm(); if(prpSel.ym<minYm) prpSel.ym=minYm;
+  const all=accPoolNames(); const sel=prpSel.pool&&all.indexOf(prpSel.pool)>-1?[prpSel.pool]:all; if(prpSel.pool&&all.indexOf(prpSel.pool)<0) prpSel.pool='';
+  const d=prpCompute(prpSel.ym,sel); const P=sel.map(pn=>d.pools[pn]);
+  const tot=k=>P.reduce((s,x)=>s+x[k],0); const net=x=>x.paid-x.exp-x.pay;
+  const td=v=>`<td style="text-align:right;">${v}</td>`; const mo=v=>td(money(v));
+  const head=sel.map(pn=>`<th style="text-align:right;">${escHtml(pn)}</th>`).join('')+(sel.length>1?'<th style="text-align:right;">Toplam</th>':'');
+  const line=(label,k,f)=>`<tr><td>${label}</td>${sel.map(pn=>td((f||String)(d.pools[pn][k]))).join('')}${sel.length>1?td((f||String)(tot(k))):''}</tr>`;
+  const netRow=`<tr style="font-weight:700;"><td>Net (tahsilat − gider − hakediş)</td>${sel.map(pn=>td(money(net(d.pools[pn])))).join('')}${sel.length>1?td(money(P.reduce((s,x)=>s+net(x),0))):''}</tr>`;
+  const coachRows=Object.keys(d.coaches).map(id=>d.coaches[id]).sort((a,b)=>a.name.localeCompare(b.name,'tr'));
+  const grpRows=d.groups.slice().sort((a,b)=>a.pool.localeCompare(b.pool,'tr')||a.g.name.localeCompare(b.g.name,'tr'));
+  c.innerHTML=`<div class="card" style="margin-bottom:16px;display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end;">
+   <div class="field" style="margin:0;"><label for="prp_ym">Ay</label><input type="month" id="prp_ym" min="${minYm}" value="${prpSel.ym}" onchange="prpSel.ym=this.value;renderPoolReport($('#content'))"></div>
+   <div class="field" style="margin:0;"><label for="prp_pool">Havuz</label><select id="prp_pool" onchange="prpSel.pool=this.value;renderPoolReport($('#content'))"><option value="">Tüm havuzlar (toplam ve ayrı ayrı)</option>${all.map(pn=>`<option value="${escHtml(pn)}"${pn===prpSel.pool?' selected':''}>${escHtml(pn)}</option>`).join('')}</select></div>
+   <div style="font-size:12px;color:var(--muted);">${monthLabel(prpSel.ym)} · yapılan dersler bugüne kadar, planlanan tüm ay</div></div>
+  <div class="section-title" style="margin-top:0;">Özet</div><div class="card" style="padding:0;overflow-x:auto;"><table><thead><tr><th></th>${head}</tr></thead><tbody>
+   ${line('Aktif sporcu','active')}${line('Dondurulmuş sporcu','frozen')}
+   ${line('Grup dersi — yapılan','grpHeld')}${line('Grup dersi — planlanan','grpPlan')}${line('Takım dersi — yapılan','teamHeld')}${line('Takım dersi — planlanan','teamPlan')}${line('İptal edilen grup dersi','grpCanc')}
+   ${line('Özel ders — yapılan','plHeld')}${line('Özel ders — planlanan','plPlan')}${line('İptal edilen özel ders','plCanc')}
+   ${line('Tahsilat (bu ay)','paid',money)}${line('Bekleyen + gecikmiş (toplam)','open',money)}${line('Gider (bu ay)','exp',money)}${line('Hoca hakedişi (bugüne kadar)','pay',money)}${line('Hoca hakedişi (ay sonuna planlanan)','payPlan',money)}${netRow}</tbody></table></div>
+  <div class="section-title">Hoca bazında (grup / takım / özel)</div><div class="card" style="padding:0;overflow-x:auto;"><table><thead><tr><th>Antrenör</th><th>Grup</th><th>Takım</th><th>Özel</th><th>Yardımcı</th><th style="text-align:right;">Hakediş</th><th style="text-align:right;">Planlanan</th></tr></thead><tbody>
+   ${coachRows.map(r=>`<tr><td><b>${escHtml(r.name)}</b></td><td>${r.grp}</td><td>${r.team}</td><td>${r.priv}</td><td>${r.asst}</td>${mo(r.pay)}${mo(r.plan)}</tr>`).join('')||'<tr><td colspan="7"><div class="empty">Bu dönemde ders yok</div></td></tr>'}
+   ${coachRows.length?`<tr style="font-weight:700;"><td>Toplam</td><td>${coachRows.reduce((s,r)=>s+r.grp,0)}</td><td>${coachRows.reduce((s,r)=>s+r.team,0)}</td><td>${coachRows.reduce((s,r)=>s+r.priv,0)}</td><td>${coachRows.reduce((s,r)=>s+r.asst,0)}</td>${mo(coachRows.reduce((s,r)=>s+r.pay,0))}${mo(coachRows.reduce((s,r)=>s+r.plan,0))}</tr>`:''}</tbody></table></div>
+  <div class="section-title">Gruplar</div><div class="card" style="padding:0;overflow-x:auto;"><table><thead><tr><th>Grup</th><th>Havuz</th><th>Sporcu</th><th>Yapılan</th><th>Planlanan</th><th>İptal</th><th>Antrenör</th></tr></thead><tbody>
+   ${grpRows.map(r=>`<tr><td>${escHtml(r.g.name)}${gIsTeam(r.g)?' <span class="badge">Takım</span>':''}</td><td>${escHtml(r.pool)}</td><td>${r.athletes}</td><td>${r.held}</td><td>${r.plan}</td><td>${r.canc}</td><td>${escHtml(coachName(r.coach))}</td></tr>`).join('')||'<tr><td colspan="7"><div class="empty">Grup yok</div></td></tr>'}</tbody></table></div>
+  <div class="note-banner" style="margin-top:14px;font-size:12.5px;">Havuz kiralama gelirleri bu özete dahil değildir; “Gelir / Gider” raporunda görünür. Takım gruplarında dersler, yapıldığı havuza yazılır.</div>`;
+}
+/* --- sporcu kartı: muhasebe için yalnızca ücretle ilgili bilgiler --- */
+{ const _oa=openAthlete; openAthlete=function(id){
+  if(role!=='accountant') return _oa(id);
+  const a=DB.athletes.find(x=>x.id===id); if(!a) return; const g=DB.groups.find(x=>x.id===a.group);
+  const ps=(a.parents||[]).map(pid=>DB.parents.find(p=>p.id===pid)).filter(Boolean);
+  const pays=(DB.payments||[]).filter(p=>p.athlete===id).sort((x,y)=>String(y.due).localeCompare(String(x.due))).slice(0,8);
+  openDrawerHtml(`<div class="drawer-head"><div style="font-weight:800;font-size:16px;">${escHtml(a.name)}</div><button class="close-x" onclick="closeDrawer()">✕</button></div><div class="drawer-body" style="padding-top:16px;">
+   <div class="card" style="font-size:13px;"><div><b>Grup:</b> ${escHtml(g?g.name:'Özel ders')} · ${escHtml(g?g.pool:'')}</div><div><b>Durum:</b> ${escHtml(a.status)}</div><div><b>Bakiye (gecikmiş):</b> ${money(a.balance||0)}</div>${a.membership?`<div><b>Üyelik bitişi:</b> ${escHtml(fmtDate(a.membership.end))}</div>`:''}</div>
+   <div class="section-title">Veli</div><div class="card" style="font-size:13px;">${ps.map(p=>`<div><b>${escHtml(p.name)}</b> · ${escHtml(p.phone||'—')}${p.email?' · '+escHtml(p.email):''}</div>`).join('')||'Kayıtlı veli yok'}</div>
+   <div class="section-title">Son ödemeler</div><div class="card" style="font-size:13px;">${pays.map(p=>`<div style="display:flex;justify-content:space-between;gap:8px;padding:3px 0;"><span>${escHtml(fmtDate(p.due))} · ${escHtml(p.type||'')}</span><span>${money(p.amount)} · ${p.status==='paid'?'Ödendi':p.status==='overdue'?'Gecikmiş':'Bekliyor'}${p.status!=='paid'?` <button class="btn sm primary" onclick="accCollect('${p.id}')">Tahsil et</button>`:''}</span></div>`).join('')||'Ödeme yok'}</div></div>`);
+}; }
+/* --- yönetici: muhasebe hesapları (Ayarlar) --- */
+function accSave(id,isNew){
+  if(role!=='admin') return; cEnsure(); const q=s=>document.getElementById(s+'_'+id);
+  const name=String((q('an')||{}).value||'').trim(); const pools=DB.pools.filter((p,i)=>(document.getElementById('apc_'+id+'_'+i)||{}).checked).map(p=>p.name);
+  const from=(q('af')||{}).value||''; const gen=!!(q('ag')||{}).checked; const e=document.getElementById('acc_msg'); const bad=t=>{ if(e){ e.style.color='var(--red)'; e.textContent=t; } };
+  if(name.length<2||name.length>40) return bad('Ad 2-40 karakter olmalı.'); if(!pools.length) return bad('En az bir havuz seçin.'); if(!/^\d{4}-\d{2}-\d{2}$/.test(from)) return bad('Görmeye başlama tarihini seçin.');
+  if(isNew) DB.accountants.push({id:'ac'+Date.now()+Math.floor(Math.random()*1000),name,pools,from,general:gen});
+  else { const a=DB.accountants.find(x=>x.id===id); if(!a) return; a.name=name; a.pools=pools; a.from=from; a.general=gen; }
+  save(); renderSettings($('#content'));
+}
+function accDel(id){ if(role!=='admin'||!confirm('Muhasebe tanımı silinsin mi? Bağlı hesabın erişimi de çalışmaz.')) return; DB.accountants=(DB.accountants||[]).filter(x=>x.id!==id); save(); renderSettings($('#content')); }
+function accForm(a,isNew){
+  const id=a.id; const first=todayStr().slice(0,8)+'01';
+  return `<div class="card" style="margin-bottom:10px;"><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;align-items:end;">
+   <div class="field" style="margin:0;"><label for="an_${id}">Ad</label><input id="an_${id}" maxlength="40" value="${escHtml(a.name||'')}"></div>
+   <div class="field" style="margin:0;"><label for="af_${id}">Görmeye başlama tarihi</label><input type="date" id="af_${id}" value="${escHtml(a.from||first)}"></div></div>
+   <div style="margin-top:8px;font-size:13px;"><b>Havuzlar:</b> ${DB.pools.map((p,i)=>`<label class="chk" style="display:inline-flex;margin-right:12px;"><input type="checkbox" id="apc_${id}_${i}"${(a.pools||[]).indexOf(p.name)>-1?' checked':''}> ${escHtml(p.name)}</label>`).join('')}</div>
+   <label class="chk" style="display:flex;margin-top:6px;font-size:13px;"><input type="checkbox" id="ag_${id}"${a.general?' checked':''}> Havuza atanmamış (ortak) giderleri de görsün ve girsin</label>
+   <div style="margin-top:8px;display:flex;gap:8px;"><button class="btn primary sm" onclick="accSave('${id}',${isNew?'true':'false'})">${isNew?'Muhasebe tanımla':'Kaydet'}</button>${isNew?'':`<button class="btn sm danger" onclick="accDel('${id}')">Sil</button>`}</div></div>`;
+}
+const _renderSettings10=renderSettings;
+renderSettings=function(c){ _renderSettings10(c); if(role!=='admin') return; cEnsure();
+  c.insertAdjacentHTML('beforeend',`<div class="section-title">Muhasebe hesapları</div><div style="font-size:12.5px;color:var(--muted);margin-bottom:8px;">Her muhasebe için görebileceği havuzları ve görmeye başlama tarihini belirleyin. Sonra “Kullanıcı Hesapları”ndan Muhasebe rolüyle e-posta tanımlayıp buradaki kaydı seçin. Muhasebe tahsilat ve gider girer; silme, iptal, fiyat ve ücret oranlarını yalnızca siz değiştirirsiniz.</div>
+   ${DB.accountants.map(a=>accForm(a,false)).join('')}${accForm({id:'new',name:'',pools:[],from:'',general:false},true)}<div id="acc_msg" role="alert" style="font-size:12.5px;"></div>`); };
 
 /* ============ INIT ============ */
 boot();
