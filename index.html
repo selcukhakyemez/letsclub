@@ -8530,6 +8530,15 @@ openParent=function(id){
 const _renderParents15=renderParents;
 renderParents=function(c){ _renderParents15(c); if(role==='admin') c.insertAdjacentHTML('afterbegin','<div style="margin-bottom:14px;"><button class="btn primary" onclick="prNewOpen()">+ Yeni Veli Kaydı</button></div>'); };
 
+/* ============ Sayfa değişince / kayıt sonrası en başa dön ============ */
+(function(){
+  let last=null, flag=0;
+  const top=()=>{ try{ window.scrollTo(0,0); document.documentElement.scrollTop=0; document.body.scrollTop=0; }catch(e){} };
+  document.addEventListener('click',function(e){ const b=e.target.closest&&e.target.closest('.btn.primary,button.primary'); if(b&&!b.closest('#btabs')) flag=Date.now(); },true);
+  const _r=render; render=function(){ const r=_r.apply(this,arguments); try{ if(last!==null&&(route!==last||Date.now()-flag<1500)){ top(); } last=route; flag=0; }catch(e){} return r; };
+  const d=document.getElementById('drawer'); if(d&&window.MutationObserver) new MutationObserver(()=>{ d.scrollTop=0; const b=d.querySelector('.drawer-body'); if(b) b.scrollTop=0; }).observe(d,{childList:true});
+})();
+
 /* ============ INIT ============ */
 boot();
 </script>
