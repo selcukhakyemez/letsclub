@@ -2066,12 +2066,12 @@ function applyAthleteAdd(c,extra){
   if(c.status==='passive') e=e.concat(validateLeave(extra.leave));
   if(extra.adult&&okDateStr(c.dob)&&age(c.dob)<18) e.push('Yetişkin kaydı için sporcu 18 yaşında veya daha büyük olmalı.');
   if(extra.adult&&!/^[0-9 +()\-]{7,20}$/.test(String(c.phone||'').trim())) e.push('Yetişkin sporcu için telefon numarası girin.');
-  if(isPriv&&!DB.coaches.some(x=>x.id===(extra.pcoach||extra.byCoach))) e.push('Özel ders sporcusu için antrenör seçin.');
+  if(isPriv&&(extra.pcoach||extra.byCoach)&&!DB.coaches.some(x=>x.id===(extra.pcoach||extra.byCoach))) e.push('Geçersiz antrenör seçimi.');
   if(e.length) return {ok:false,errors:e};
   const g=(isTrial||isPriv)?null:DB.groups.find(x=>x.id===c.group);
   const t=isTrial?cleanTrial(extra.trial):null;
   const ig=t&&t.interest?DB.groups.find(x=>x.id===t.interest):null;
-  const coach=isPriv?(extra.pcoach||extra.byCoach):isTrial?((extra.byCoach&&DB.coaches.some(x=>x.id===extra.byCoach))?extra.byCoach:(ig?ig.coach:'')):g.coach;
+  const coach=isPriv?(extra.pcoach||extra.byCoach||''):isTrial?((extra.byCoach&&DB.coaches.some(x=>x.id===extra.byCoach))?extra.byCoach:(ig?ig.coach:'')):g.coach;
   const id='a'+Date.now()+Math.floor(Math.random()*1000); const fn=c.first.trim(), ln=c.last.trim(); const nm=fn+' '+ln;
   const a={id,name:nm,first:fn,last:ln,dob:c.dob,gender:c.gender,level:c.level,group:(isTrial||isPriv)?'':g.id,coach,parents:[],phone:String(c.phone||'').trim()||'-',license:c.license,balance:0,attendance:1,status:c.status,photo:initials(nm),joined:todayStr(),attTrend:[1]};
   if(isTrial) a.trial=Object.assign(t,{createdAt:todayStr(),convertedAt:null,convertedGroup:null,evaluation:'',evaluatedAt:null});
@@ -8663,6 +8663,38 @@ function capSave(gid){
   if(sel) Array.from(sel.options).forEach(o=>{ if(o.value===gid) o.textContent=g.name+' ('+g.enrolled+'/'+g.capacity+')'; });
   const box=document.getElementById('cap_box'); if(box) box.innerHTML='<span style="font-size:13px;color:var(--green);">Kontenjan '+g.capacity+' olarak güncellendi.</span>';
 }
+/* ============ Özel ders sporcusu: havuz, paket, boş eğitmen; yönetici atar / eğitmen üstlenir ============ */
+function unassignedPriv(){ return (DB.athletes||[]).filter(a=>a.kind==='private'&&a.status==='active'&&!a.coach); }
+{ const _af=afToggle; afToggle=function(){ _af(); const g=document.getElementById('af_group'); if(!g) return; const priv=g.value==='private';
+    const det=document.getElementById('af_pkgbox'); if(det){ if(priv&&!det.dataset.opened){ det.open=true; det.dataset.opened='1'; }
+      const sm=det.querySelector('summary'); if(sm) sm.textContent=priv?'Özel ders: havuz ve paket':'Özel ders paketi tanımla (isteğe bağlı)'; }
+    const pc=document.getElementById('af_pcoachBox'); if(pc&&priv&&role==='admin'){ const l=pc.querySelector('label'); if(l) l.textContent='Özel ders antrenörü (boş bırakılabilir)'; } }; }
+{ const _sa=submitAthlete; submitAthlete=function(c,editId,extra){ const r=_sa(c,editId,extra);
+    try{ if(r&&r.ok&&!editId&&r.id&&c.group==='private'){ const a=DB.athletes.find(x=>x.id===r.id); const p=(document.getElementById('af_pkpool')||{}).value; if(a&&p&&DB.pools.some(x=>x.name===p)){ a.privPool=p; save(); } if(a&&!a.coach) r.pkgMsg=((r.pkgMsg||'')+' Eğitmen atanmadı; yönetici atayabilir veya bir eğitmen üstlenebilir.').trim(); } }catch(e){ console.error(e); }
+    return r; }; }
+/* kayıt formu: boş eğitmen */
+{ const _ao=athOpen; athOpen=function(editId,pre){ _ao(editId,pre); try{ const sel=document.getElementById('af_pcoach'); if(sel&&!sel.querySelector('option[value=""]')){ const a=editId?DB.athletes.find(x=>x.id===editId):null; const o=document.createElement('option'); o.value=''; o.textContent='— Sonra atanacak —'; sel.insertBefore(o,sel.firstChild); sel.value=(a&&a.coach)||''; } }catch(e){ console.error(e); } }; }
+/* yönetici: sporcu kartında eğitmen atama */
+function apcSet(id){ if(role!=='admin') return; const a=DB.athletes.find(x=>x.id===id); if(!a) return; const v=(document.getElementById('apc_c')||{}).value||''; if(v&&!DB.coaches.some(x=>x.id===v)) return; a.coach=v; save(); render(); setTimeout(()=>openAthlete(id),50); }
+{ const _oa=openAthlete; openAthlete=function(id){ _oa(id); if(role!=='admin') return; const a=DB.athletes.find(x=>x.id===id); const body=document.querySelector('#drawer .drawer-body'); if(!a||a.kind!=='private'||!body||!$('#drawer').classList.contains('open')) return;
+    body.insertAdjacentHTML('afterbegin',`<div class="card" style="margin-bottom:12px;"><div style="font-size:13px;margin-bottom:6px;"><b>Özel ders eğitmeni:</b> ${a.coach?escHtml(coachName(a.coach)):'<span style="color:var(--red);">Atanmadı</span>'}${a.privPool?' · Havuz: <b>'+escHtml(a.privPool)+'</b>':''}</div>
+     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;"><select id="apc_c" style="flex:1;min-width:160px;"><option value="">— Atanmadı —</option>${DB.coaches.map(x=>`<option value="${escHtml(x.id)}"${x.id===a.coach?' selected':''}>${escHtml(x.name)}</option>`).join('')}</select><button class="btn sm primary" onclick="apcSet('${id}')">Ata</button></div></div>`); }; }
+/* antrenör: atanmamış özel ders sporcularını üstlenir */
+function coachClaim(id){
+  if(role!=='coach') return; const me=(DB.currentUser||{}).coachId; const a=DB.athletes.find(x=>x.id===id); if(!me||!a||a.kind!=='private'||a.coach||a.status!=='active') return;
+  if(!confirm(a.name+' sporcusunu üstlenmek istiyor musunuz? Sonra özel ders ekleyebilirsiniz.')) return;
+  a.coach=me; save(); render();
+}
+function unassignedCardHtml(){
+  const L=unassignedPriv(); if(!L.length||(role!=='coach'&&role!=='admin')) return '';
+  return `<div class="card" style="margin-bottom:14px;"><b>Eğitmeni atanmamış özel ders sporcuları (${L.length})</b>
+   <div style="font-size:12.5px;color:var(--muted);margin:4px 0 8px;">${role==='coach'?'Ders vermek istediğiniz sporcuyu “Üstlen” ile kendinize alın.':'Sporcu kartından “Ata” ile eğitmen atayın; eğitmenler de kendileri üstlenebilir.'}</div>
+   <table style="width:100%;font-size:13px;"><tbody>${L.map(a=>{ const pk=(DB.plPackages||[]).filter(p=>p.athlete===a.id); return `<tr><td>${role==='admin'?`<a href="#" class="lk" onclick="event.preventDefault();openAthlete('${a.id}')">${escHtml(a.name)}</a>`:escHtml(a.name)}</td><td>${escHtml(a.privPool||(pk[0]&&pk[0].pool)||'—')}</td><td>${pk.length?pk.map(p=>p.hours+' ders'+(p.size>1?' ('+escHtml(PL_SIZE_LABEL[p.size]||'')+')':'')).join(', '):'paket yok'}</td><td style="text-align:right;">${role==='coach'?`<button class="btn sm primary" onclick="coachClaim('${a.id}')">Üstlen</button>`:''}</td></tr>`; }).join('')}</tbody></table></div>`;
+}
+{ const _rp=renderPrivLessons; renderPrivLessons=function(c){ _rp(c); const h=unassignedCardHtml(); if(h) c.insertAdjacentHTML('afterbegin',h); }; }
+{ const _d=renderDashboard; renderDashboard=function(c){ _d(c); try{ if(role!=='admin'&&role!=='coach') return; const n=unassignedPriv().length; if(!n) return;
+    c.insertAdjacentHTML('afterbegin',`<div class="attn-item" style="cursor:pointer;margin-bottom:12px;" onclick="route='privlesson';render();">👤 Eğitmeni atanmamış <b>${n}</b> özel ders sporcusu var${role==='coach'?' — üstlenebilirsiniz':''}</div>`); }catch(e){ console.error(e); } }; }
+
 /* ============ INIT ============ */
 boot();
 </script>
