@@ -8460,6 +8460,76 @@ function btMenu(){ qsClose(); document.getElementById('sidebar').classList.toggl
 { const _r=render; render=function(){ const r=_r.apply(this,arguments); try{ btUpdate(); }catch(e){ console.error(e); } return r; }; }
 document.addEventListener('click',function(e){ if(e.target.closest('#btabs,#qsheet')) return; if(window.innerWidth<=840&&!e.target.closest('#sidebar')) setTimeout(btUpdate,0); },true);
 
+/* ============ VELİ SEKMESİ: yeni veli kaydı + sporcu eşleştirme ============ */
+const PR_REL=['Anne','Baba','Vasi','Diğer'];
+function prLink(pid,aid){ const p=DB.parents.find(x=>x.id===pid), a=DB.athletes.find(x=>x.id===aid); if(!p||!a) return; p.children=p.children||[]; a.parents=a.parents||[]; if(p.children.indexOf(aid)<0) p.children.push(aid); if(a.parents.indexOf(pid)<0) a.parents.push(pid); }
+function prUnlink(pid,aid){ const p=DB.parents.find(x=>x.id===pid), a=DB.athletes.find(x=>x.id===aid); if(p) p.children=(p.children||[]).filter(x=>x!==aid); if(a) a.parents=(a.parents||[]).filter(x=>x!==pid); }
+function prValidate(f,editId){
+  const e=[]; const nm=s=>NAME_RE.test(String(s||'').trim());
+  if(!nm(f.first)) e.push('Ad 2-30 karakter olmalı ve yalnızca harf içermeli.');
+  if(!nm(f.last)) e.push('Soyad 2-30 karakter olmalı ve yalnızca harf içermeli.');
+  if(PR_REL.indexOf(f.relation)<0) e.push('İlişki seçin.');
+  const ph=String(f.phone||'').trim(); if(!/^[0-9 +()\-]{7,20}$/.test(ph)) e.push('Telefon geçersiz.');
+  const em=String(f.email||'').trim(); if(em&&!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(em)) e.push('E-posta geçersiz.');
+  const dg=s=>String(s||'').replace(/\D/g,'').slice(-10);
+  const dup=DB.parents.find(p=>p.id!==editId&&dg(p.phone)&&dg(p.phone)===dg(ph)); if(dup) e.push('Bu telefonla kayıtlı veli var: '+dup.name+'. Yeni kayıt yerine onu sporcuyla eşleştirin.');
+  return e;
+}
+function prSave(f,kids){
+  if(role!=='admin') return {ok:false,errors:['Veli kaydını yalnızca yönetici yapar.']};
+  const e=prValidate(f,null); if(e.length) return {ok:false,errors:e};
+  const first=f.first.trim(), last=f.last.trim(); const id='p'+Date.now()+Math.floor(Math.random()*1000);
+  DB.parents.push({id,name:first+' '+last,first,last,phone:f.phone.trim(),email:String(f.email||'').trim(),relation:f.relation,children:[]});
+  (kids||[]).filter(k=>DB.athletes.some(a=>a.id===k)).forEach(k=>prLink(id,k));
+  save(); return {ok:true,id,errors:[]};
+}
+function prNewOpen(){
+  if(role!=='admin') return; const d=$('#drawer');
+  const opts=DB.athletes.slice().sort((a,b)=>a.name.localeCompare(b.name,'tr'));
+  d.innerHTML=`<div class="drawer-head"><div style="font-weight:800;font-size:16px;">Yeni Veli Kaydı</div><button class="close-x" onclick="closeDrawer()">✕</button></div><div class="drawer-body" style="padding-top:14px;">
+  <div class="field"><label for="pr_f">Ad *</label><input id="pr_f" maxlength="30" autocomplete="off"></div>
+  <div class="field"><label for="pr_l">Soyad *</label><input id="pr_l" maxlength="30" autocomplete="off"></div>
+  <div class="field"><label for="pr_r">İlişki *</label><select id="pr_r">${PR_REL.map(r=>`<option>${r}</option>`).join('')}</select></div>
+  <div class="field"><label for="pr_p">Telefon *</label><input id="pr_p" inputmode="tel" maxlength="20" placeholder="05xx xxx xx xx"></div>
+  <div class="field"><label for="pr_e">E-posta</label><input id="pr_e" type="email" maxlength="80"></div>
+  <div class="field"><label for="pr_s">Eşleştirilecek sporcular (isteğe bağlı)</label><input id="pr_q" placeholder="Sporcu ara…" oninput="prFilter()" style="margin-bottom:6px;">
+   <div id="pr_s" style="max-height:200px;overflow:auto;border:1px solid var(--line);border-radius:8px;padding:6px 10px;">${opts.map(a=>`<label class="chk" data-n="${escHtml(trLower(a.name))}" style="display:flex;gap:6px;font-size:13px;padding:3px 0;"><input type="checkbox" value="${escHtml(a.id)}"> ${escHtml(a.name)} <span style="color:var(--muted);">(${escHtml(groupName(a.group)||'—')})</span></label>`).join('')}</div></div>
+  <div id="pr_m" role="alert" style="font-size:12.5px;margin-bottom:8px;"></div>
+  <button class="btn primary" onclick="prNewSave()">Kaydet</button></div>`;
+  $('#overlay').classList.add('open'); d.classList.add('open');
+}
+function prFilter(){ const q=trLower(document.getElementById('pr_q').value.trim()); $$('#pr_s label').forEach(l=>{ l.style.display=(!q||l.getAttribute('data-n').indexOf(q)>-1)?'flex':'none'; }); }
+function prNewSave(){
+  const v=id=>(document.getElementById(id)||{}).value||''; const kids=$$('#pr_s input:checked').map(x=>x.value);
+  const r=prSave({first:v('pr_f'),last:v('pr_l'),relation:v('pr_r'),phone:v('pr_p'),email:v('pr_e')},kids);
+  const m=document.getElementById('pr_m'); if(!r.ok){ m.style.color='var(--red)'; m.textContent=r.errors.join(' '); return; }
+  closeDrawer(); render(); setTimeout(()=>openParent(r.id),50);
+}
+function prMatchAdd(pid){ if(role!=='admin') return; const s=document.getElementById('pr_add'); if(!s||!s.value) return; prLink(pid,s.value); save(); const keep=pid; closeDrawer(); render(); setTimeout(()=>openParent(keep),50); }
+function prMatchDel(pid,aid){ if(role!=='admin') return; if(!confirm(athleteName(aid)+' ile '+parentName(pid)+' eşleşmesi kaldırılsın mı?')) return; prUnlink(pid,aid); save(); closeDrawer(); render(); setTimeout(()=>openParent(pid),50); }
+function prEditSave(pid){
+  if(role!=='admin') return; const p=DB.parents.find(x=>x.id===pid); if(!p) return; const v=id=>(document.getElementById(id)||{}).value||'';
+  const f={first:v('pe_f'),last:v('pe_l'),relation:v('pe_r'),phone:v('pe_p'),email:v('pe_e')}; const e=prValidate(f,pid); const m=document.getElementById('pe_m');
+  if(e.length){ m.style.color='var(--red)'; m.textContent=e.join(' '); return; }
+  p.first=f.first.trim(); p.last=f.last.trim(); p.name=p.first+' '+p.last; p.relation=f.relation; p.phone=f.phone.trim(); p.email=f.email.trim(); save(); closeDrawer(); render(); setTimeout(()=>openParent(pid),50);
+}
+const _openParent15=openParent;
+openParent=function(id){
+  _openParent15(id); if(role!=='admin') return; const p=DB.parents.find(x=>x.id===id); if(!p) return; const body=document.querySelector('#drawer .drawer-body'); if(!body) return;
+  const free=DB.athletes.filter(a=>(p.children||[]).indexOf(a.id)<0).sort((a,b)=>a.name.localeCompare(b.name,'tr'));
+  body.querySelectorAll('.card.rowlink').forEach((el,i)=>{ const kid=(DB.athletes.filter(a=>(p.children||[]).includes(a.id)))[i]; if(!kid) return; el.insertAdjacentHTML('beforeend',`<div style="margin-top:8px;"><button class="btn sm danger" onclick="event.stopPropagation();prMatchDel('${p.id}','${kid.id}')">Eşleşmeyi kaldır</button></div>`); });
+  body.insertAdjacentHTML('beforeend',`<div class="section-title">Sporcu eşleştir</div><div style="display:flex;gap:8px;flex-wrap:wrap;"><select id="pr_add" style="flex:1;min-width:180px;"><option value="">Sporcu seçin</option>${free.map(a=>`<option value="${escHtml(a.id)}">${escHtml(a.name)} (${escHtml(groupName(a.group)||'—')})</option>`).join('')}</select><button class="btn primary" onclick="prMatchAdd('${p.id}')">Eşleştir</button></div>
+  <div class="section-title">Bilgileri düzenle</div>
+  <div class="field"><label for="pe_f">Ad</label><input id="pe_f" maxlength="30" value="${escHtml(p.first||String(p.name).split(' ')[0])}"></div>
+  <div class="field"><label for="pe_l">Soyad</label><input id="pe_l" maxlength="30" value="${escHtml(p.last||String(p.name).split(' ').slice(1).join(' '))}"></div>
+  <div class="field"><label for="pe_r">İlişki</label><select id="pe_r">${PR_REL.map(r=>`<option${r===p.relation?' selected':''}>${r}</option>`).join('')}</select></div>
+  <div class="field"><label for="pe_p">Telefon</label><input id="pe_p" maxlength="20" value="${escHtml(p.phone||'')}"></div>
+  <div class="field"><label for="pe_e">E-posta</label><input id="pe_e" maxlength="80" value="${escHtml(p.email||'')}"></div>
+  <div id="pe_m" role="alert" style="font-size:12.5px;margin-bottom:8px;"></div><button class="btn primary" onclick="prEditSave('${p.id}')">Kaydet</button>`);
+};
+const _renderParents15=renderParents;
+renderParents=function(c){ _renderParents15(c); if(role==='admin') c.insertAdjacentHTML('afterbegin','<div style="margin-bottom:14px;"><button class="btn primary" onclick="prNewOpen()">+ Yeni Veli Kaydı</button></div>'); };
+
 /* ============ INIT ============ */
 boot();
 </script>
