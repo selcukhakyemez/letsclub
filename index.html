@@ -8725,6 +8725,30 @@ function ptnRender(){
   };
 }
 
+/* ============ Kayıt türü seçimi: Grup dersi / Özel ders / Deneme ============ */
+function rtSet(t){ const g=document.getElementById('af_group'); if(!g||window.__athEdit) return; window.__rtType=t;
+  if(t==='private') g.value='private'; else if(t==='trial') g.value='trial'; else if(g.value==='private'||g.value==='trial') g.value='';
+  afToggle(); }
+function rtApply(){
+  const g=document.getElementById('af_group'), bar=document.getElementById('rt_bar'); if(!g||!bar) return;
+  const t=window.__rtType||'group';
+  bar.querySelectorAll('button').forEach(b=>{ const on=b.dataset.t===t; b.className='btn sm'+(on?' primary':''); b.setAttribute('aria-pressed',on?'true':'false'); });
+  [...g.options].forEach(o=>{ const sp=(o.value==='private'||o.value==='trial'); o.hidden=sp; o.disabled=sp; });
+  const show=(el,on)=>{ if(el) el.style.display=on?'':'none'; };
+  show(g.closest('.field'),t==='group');
+  const j=document.getElementById('af_joined'); show(j&&j.closest('.field'),t==='group');
+  const pk=document.getElementById('af_pkgbox'); if(pk&&t==='trial') pk.style.display='none'; else if(pk) pk.style.display='';
+  if(t!=='group') show(document.getElementById('af_termbox'),false);
+  const tr=document.getElementById('af_trial'); if(tr&&t!=='trial') tr.style.display='none';
+  const pc=document.getElementById('af_pcoachBox'); if(pc&&t!=='private') pc.style.display='none';
+}
+{ const _rt=afToggle; afToggle=function(){ const g=document.getElementById('af_group'); if(g&&document.getElementById('rt_bar')&&!window.__athEdit){ const t=window.__rtType||'group'; if(t==='private') g.value='private'; else if(t==='trial') g.value='trial'; else if(g.value==='private'||g.value==='trial') g.value=''; } _rt(); try{ rtApply(); }catch(e){ console.error(e); } }; }
+{ const _ro=athOpen; athOpen=function(editId,pre){ window.__rtType='group'; _ro(editId,pre);
+    try{ if(editId||!document.getElementById('af_group')) return; const g=document.getElementById('af_group'), body=document.querySelector('#drawer .drawer-body'); if(!body) return;
+      window.__rtType=g.value==='private'?'private':g.value==='trial'?'trial':'group';
+      body.insertAdjacentHTML('afterbegin','<div class="field" style="margin-bottom:6px;"><label>Kayıt türü</label><div id="rt_bar" style="display:flex;gap:8px;flex-wrap:wrap;"><button type="button" class="btn sm" data-t="group" onclick="rtSet(\'group\')">Grup dersi</button><button type="button" class="btn sm" data-t="private" onclick="rtSet(\'private\')">Özel ders</button><button type="button" class="btn sm" data-t="trial" onclick="rtSet(\'trial\')">Deneme</button></div></div>');
+      afToggle(); }catch(e){ console.error(e); } }; }
+
 /* ============ INIT ============ */
 boot();
 </script>
