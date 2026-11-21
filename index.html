@@ -4266,7 +4266,7 @@ function renderMakeups(c){
    <div class="card"><div class="label">Kullanılan</div><div class="val">${cnt['Kullanıldı']}</div></div><div class="card"><div class="label">Süresi dolan</div><div class="val">${cnt['Süresi doldu']}</div></div></div>
   <div class="note-banner" style="margin-top:12px;"><b>İzinli</b> veya <b>Hastalık</b> işaretlenen devamsızlıklar paket bitiş tarihine otomatik eklenir (ayrı telafi hakkı açılmaz). Buradaki haklar ders iptali veya elle eklenen devamsızlıklar içindir; ${MK_EXPIRE_DAYS} gün geçerlidir.</div>
   ${act?`<div class="card" style="margin-top:12px;"><b>Manuel telafi hakkı ekle</b><div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-top:8px;">
-    <div class="field" style="margin:0;"><label for="mka_ath">Sporcu</label><select id="mka_ath">${visibleAthletes().filter(a=>a.status==='active').map(a=>`<option value="${escHtml(a.id)}">${escHtml(a.name)}</option>`).join('')}</select></div>
+    <div class="field" style="margin:0;"><label for="mka_ath">Sporcu</label><select id="mka_ath"><option value="">— seçin —</option>${visibleAthletes().filter(a=>a.status==='active').map(a=>`<option value="${escHtml(a.id)}">${escHtml(a.name)}</option>`).join('')}</select></div>
     <div class="field" style="margin:0;"><label for="mka_date">Devamsızlık tarihi</label><input type="date" id="mka_date" value="${fbTodayYmd()}" max="${fbTodayYmd()}"></div>
     <div class="field" style="margin:0;"><label for="mka_reason">Sebep</label><select id="mka_reason">${MK_REASONS.map(r=>`<option>${escHtml(r)}</option>`).join('')}</select></div>
     <div class="field" style="margin:0;flex:1;min-width:160px;"><label for="mka_note">Not</label><input id="mka_note" maxlength="120"></div>
@@ -6449,7 +6449,7 @@ function cPlManualCard(){
   <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;">
   ${isAdmin?`<div class="field" style="margin:0;min-width:160px;"><label for="pm_coach">Antrenör</label><select id="pm_coach">${DB.coaches.map(c=>`<option value="${escHtml(c.id)}">${escHtml(c.name)}</option>`).join('')}</select></div>`:''}
   <div class="field" style="margin:0;"><label for="pm_type">Ders türü</label><select id="pm_type" onchange="cPlTypeChanged()"><option value="1">Bireysel</option><option value="2">İkili</option><option value="3">Üçlü</option></select></div>
-  <div class="field" style="margin:0;min-width:180px;"><label for="pm_ath">Sporcu</label><select id="pm_ath">${opt(false)}</select></div>
+  <div class="field" style="margin:0;min-width:180px;"><label for="pm_ath">Sporcu</label><select id="pm_ath">${opt(true)}</select></div>
   <div class="field" id="pm_w2" style="margin:0;min-width:180px;display:none;"><label for="pm_ath2">2. sporcu</label><select id="pm_ath2">${opt(true)}</select></div>
   <div class="field" id="pm_w3" style="margin:0;min-width:180px;display:none;"><label for="pm_ath3">3. sporcu</label><select id="pm_ath3">${opt(true)}</select></div>
   <div class="field" style="margin:0;"><label for="pm_pool">Havuz</label><select id="pm_pool"><option value="">Otomatik</option>${DB.pools.map(p=>`<option value="${escHtml(p.name)}">${escHtml(p.name)}</option>`).join('')}</select></div>
