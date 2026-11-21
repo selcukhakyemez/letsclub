@@ -2517,7 +2517,8 @@ function cfgToRec(c){
 
 /* ============ FİNANS, ÖZEL DERS PAKETLERİ, HAVUZ KİRALAMA, ARAMA ============ */
 const EXP_CATS=['Havuz kirası','Ekipman','Personel (sabit)','Fatura / Vergi','Bakım / Onarım','Pazarlama','Diğer'];
-const PAY_TYPES=['Aidat','Özel ders paketi','Diğer'];
+const PAY_TYPES=['Aidat','Yenileme','Yenileme (3 aylık)','Yenileme (6 aylık)','Yenileme (10 aylık)','Özel ders paketi','Diğer'];
+const RENEW_MONTHS={'Yenileme':1,'Yenileme (3 aylık)':3,'Yenileme (6 aylık)':6,'Yenileme (10 aylık)':10};
 const PAY_METHODS=['-','Nakit','Havale','Kredi Kartı','Online Ödeme','Elden/Manuel'];
 const PKG_SIZES=[6,8,10,20];
 const MONTHS_TR=['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran','Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'];
@@ -2606,9 +2607,10 @@ function payOpen(editId){
 function payAuto(){
   const v=id=>document.getElementById(id); const amt=v('py_amt'); if(!amt) return;
   let pool=v('py_pool').value; if(pool==='__auto') pool=derivePayPool(v('py_ath').value,window.__payEdit?((DB.payments.find(x=>x.id===window.__payEdit)||{}).pkg):null);
-  const hint=v('py_hint'); const pr=pool?poolPrice(pool,'group'):0;
-  if(hint) hint.textContent=v('py_type').value==='Aidat'&&pool?(pr?pool+' havuzu grup dersi aylık aidatı: '+money(pr):pool+' için grup dersi fiyatı girilmemiş (Finans > Havuz Fiyatları).'):'';
-  if(v('py_type').value!=='Aidat'||!pr){ if(amt.dataset.auto==='1'){amt.value='';amt.dataset.auto='';} return; }
+  const hint=v('py_hint'); const ty=v('py_type').value; const rm=RENEW_MONTHS[ty]; const m=rm||1; const isG=(ty==='Aidat'||!!rm);
+  const pr=(pool&&isG)?termPrice(pool,m):0;
+  if(hint) hint.textContent=isG&&pool?(pr?pool+' havuzu '+(m>1?m+' aylık üyelik fiyatı: ':'grup dersi aylık aidatı: ')+money(pr):pool+' için '+(m>1?m+' aylık':'grup dersi')+' fiyatı girilmemiş (Finans > Havuz Fiyatları).'):'';
+  if(!isG||!pr){ if(amt.dataset.auto==='1'){amt.value='';amt.dataset.auto='';} return; }
   if(amt.value===''||amt.dataset.auto==='1'){ amt.value=pr; amt.dataset.auto='1'; }
 }
 function paySubmit(){
@@ -2667,7 +2669,7 @@ function savePoolPrices(pool,p){
 /* ---------- ANTRENÖR DERS ÜCRETLERİ (havuza göre ayrı) ---------- */
 const RATE_TYPES=[['group','Grup dersi'],['private','Özel ders'],['other','Diğer antrenman'],['asst','Yardımcı antrenör']];
 const RATE_ALL=RATE_TYPES.concat([['private2','İkili özel ders'],['private3','Üçlü özel ders']]);
-const INC_ITEMS=[['Aidat','Aidat tahsilatı'],['Özel ders paketi','Özel ders paketi satışı'],['Diğer','Diğer tahsilat'],['Havuz kiralama','Havuz kiralama (tahsil edilen)']];
+const INC_ITEMS=[['Aidat','Aidat tahsilatı'],['Yenileme','Yenileme (aylık)'],['Yenileme (3 aylık)','Yenileme (3 aylık)'],['Yenileme (6 aylık)','Yenileme (6 aylık)'],['Yenileme (10 aylık)','Yenileme (10 aylık)'],['Özel ders paketi','Özel ders paketi satışı'],['Diğer','Diğer tahsilat'],['Havuz kiralama','Havuz kiralama (tahsil edilen)']];
 const EXP_ITEMS=RATE_TYPES.map(t=>['coach:'+t[0],'Antrenör ücreti – '+t[1]]).concat(EXP_CATS.map(c=>['cat:'+c,c]));
 function rateOf(cid,t,pool){const r=((((DB.coachRates||{})[cid])||{})[pool])||{}; return Number(r[t])||0;}
 function saveCoachRates(cid,pool,r){
