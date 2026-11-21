@@ -804,7 +804,7 @@ function openAthleteBase(id){
       body.innerHTML=`<div class="card" style="margin-top:16px;">
         <table>
         <tr><td style="color:var(--muted);">Doğum tarihi</td><td>${fmtDate(a.dob)}</td></tr>
-        <tr><td style="color:var(--muted);">Cinsiyet</td><td>${a.gender==='E'?'Erkek':'Kız'}</td></tr>
+        <tr><td style="color:var(--muted);">Cinsiyet</td><td>${a.gender==='E'?'Erkek':'Kadın'}</td></tr>
         <tr><td style="color:var(--muted);">Katılım tarihi</td><td>${fmtDate(a.joined)}</td></tr>
         <tr><td style="color:var(--muted);">Durum</td><td>${statusBadge(a.status)}</td></tr>
         <tr><td style="color:var(--muted);">Devam oranı</td><td>%${Math.round(a.attendance*100)}</td></tr>
@@ -2242,7 +2242,7 @@ function athFormHtml(a,pre){
     <div class="field"><label for="af_first">Ad</label><input id="af_first" maxlength="30" value="${escHtml(V('first',a?a.first:''))}"></div>
     <div class="field"><label for="af_last">Soyad</label><input id="af_last" maxlength="30" value="${escHtml(V('last',a?a.last:''))}"></div>
     <div class="field"><label for="af_dob">Doğum tarihi</label><input id="af_dob" type="date" max="${todayStr()}" value="${escHtml(V('dob',a?a.dob:''))}"></div>
-    <div class="field"><label for="af_gender">Cinsiyet</label><select id="af_gender"><option value="">Seçin</option>${opt([['E','Erkek'],['K','Kız']],V('gender',a?a.gender:''))}</select></div>
+    <div class="field"><label for="af_gender">Cinsiyet</label><select id="af_gender"><option value="">Seçin</option>${opt([['E','Erkek'],['K','Kadın']],V('gender',a?a.gender:''))}</select></div>
     <div class="field"><label for="af_level">Seviye</label><select id="af_level"><option value="">Seçin</option>${opt(levelAll().map(x=>[x,x]),V('level',a?a.level:''))}</select></div>
     <div class="field"><label for="af_group">Grup</label><select id="af_group" onchange="afToggle()"><option value="">Seçin</option>
       ${(!a||athGroupVal(a)==='private')?`<option value="private" ${curGroup==='private'?'selected':''}>Özel ders (grupsuz)</option>`:''}
@@ -2357,10 +2357,10 @@ function leaveSubmit(){
 function reqSummary(r){
   if(r.type==='athlete_add'){
     const p=r.payload, g=DB.groups.find(x=>x.id===p.group), t=r.extra&&r.extra.trial, l=r.extra&&r.extra.leave;
-    return `<b>Yeni sporcu kaydı: ${escHtml(p.first+' '+p.last)}</b><div style="font-size:12.5px;color:var(--muted);margin-top:4px;">${escHtml(p.dob)} · ${p.gender==='E'?'Erkek':'Kız'} · ${escHtml(p.level)} · ${p.group==='trial'?'<b>Deneme</b>':(g?escHtml(g.name):'-')} · Lisans: ${escHtml(p.license)}${r.extra&&r.extra.newFirst?` · Veli: ${escHtml(r.extra.newFirst+' '+r.extra.newLast)} ${escHtml(r.extra.newPhone)}`:''}${t?`<br>Kaynak: ${escHtml(t.source)}${t.sourceNote?' — '+escHtml(t.sourceNote):''}`:''}${l?`<br>Ayrılış sebebi: ${escHtml(l.category)}${l.note?' — '+escHtml(l.note):''}`:''}</div>`;
+    return `<b>Yeni sporcu kaydı: ${escHtml(p.first+' '+p.last)}</b><div style="font-size:12.5px;color:var(--muted);margin-top:4px;">${escHtml(p.dob)} · ${p.gender==='E'?'Erkek':'Kadın'} · ${escHtml(p.level)} · ${p.group==='trial'?'<b>Deneme</b>':(g?escHtml(g.name):'-')} · Lisans: ${escHtml(p.license)}${r.extra&&r.extra.newFirst?` · Veli: ${escHtml(r.extra.newFirst+' '+r.extra.newLast)} ${escHtml(r.extra.newPhone)}`:''}${t?`<br>Kaynak: ${escHtml(t.source)}${t.sourceNote?' — '+escHtml(t.sourceNote):''}`:''}${l?`<br>Ayrılış sebebi: ${escHtml(l.category)}${l.note?' — '+escHtml(l.note):''}`:''}</div>`;
   }
   const a=DB.athletes.find(x=>x.id===r.athlete);
-  const fmt=(f,val)=>f==='group'?(val==='trial'?'Deneme':groupName(val)):f==='gender'?(val==='E'?'Erkek':'Kız'):f==='status'?(val==='active'?'Aktif':val==='passive'?'Devam etmiyor':'Deneme'):val;
+  const fmt=(f,val)=>f==='group'?(val==='trial'?'Deneme':groupName(val)):f==='gender'?(val==='E'?'Erkek':'Kadın'):f==='status'?(val==='active'?'Aktif':val==='passive'?'Devam etmiyor':'Deneme'):val;
   return `<b>Bilgi değişikliği: ${a?escHtml(a.name):'—'}</b><div style="font-size:12.5px;margin-top:4px;">${Object.keys(r.payload).map(f=>f==='leave'?`${escHtml(ATH_LABELS.leave)}: <b>${escHtml(r.payload.leave.category)}</b>${r.payload.leave.note?' — '+escHtml(r.payload.leave.note):''}`:`${escHtml(ATH_LABELS[f]||f)}: <span style="color:var(--muted);">${a?escHtml(fmt(f,f==='group'?athGroupVal(a):a[f])):''}</span> → <b>${escHtml(fmt(f,r.payload[f]))}</b>`).join('<br>')}</div>`;
 }
 function renderApprovals(c){
