@@ -2248,7 +2248,7 @@ function athFormHtml(a,pre){
       ${(!a||athGroupVal(a)==='private')?`<option value="private" ${curGroup==='private'?'selected':''}>Özel ders (grupsuz)</option>`:''}
       ${canTrial?`<option value="trial" ${curGroup==='trial'?'selected':''}>Deneme (henüz kayıt olmadı)</option>`:''}
       ${groups.map(g=>`<option value="${g.id}" ${curGroup===g.id?'selected':''}>${escHtml(g.name)} (${g.enrolled}/${g.capacity})</option>`).join('')}</select>
-      ${role==='admin'?'<button type="button" class="btn sm ghost" style="padding-left:0;margin-top:4px;" onclick="athNewGroup()">+ Yeni grup ekle</button>':''}</div>
+      ${role==='admin'?'<button type="button" class="btn sm ghost" style="padding-left:0;margin-top:4px;" onclick="athNewGroup()">+ Yeni grup ekle</button> <button type="button" class="btn sm ghost" style="margin-top:4px;" onclick="capOpen()">Kontenjanı artır</button><div id="cap_box" style="display:none;margin-top:6px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;"></div>':''}</div>
     <div class="field"><label for="af_phone">Telefon</label><input id="af_phone" maxlength="20" value="${escHtml(V('phone',a&&a.phone!=='-'?a.phone:''))}"></div>
     <div class="field"><label for="af_license">Lisans</label><select id="af_license">${opt(LICENSES.map(x=>[x,x]),V('license',a?a.license:'Yok'))}</select></div>
     <div class="field" id="af_statusBox"><label for="af_status">Durum</label><select id="af_status" onchange="afToggle()">${opt([['active','Aktif'],['passive','Devam etmiyor']],V('status',a&&a.status!=='trial'?a.status:'active'))}</select></div>
@@ -8641,6 +8641,28 @@ openAthlete=function(id){
   apkgChanged();
 };
 
+
+/* ============ Sporcu kaydı: seçili grubun kontenjanını artır (yönetici) ============ */
+function capOpen(){
+  if(role!=='admin') return; const sel=document.getElementById('af_group'), box=document.getElementById('cap_box'); if(!sel||!box) return;
+  const g=DB.groups.find(x=>x.id===sel.value);
+  if(!g){ box.style.display='block'; box.innerHTML='<span style="font-size:12.5px;color:var(--red);">Önce yukarıdan bir grup seçin.</span>'; return; }
+  box.style.display='block';
+  box.innerHTML=`<div style="font-size:13px;margin-bottom:6px;"><b>${escHtml(g.name)}</b>: şu an ${g.enrolled} kayıtlı / kontenjan ${g.capacity}</div>
+   <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;"><label for="cap_n" style="font-size:13px;">Yeni kontenjan</label><input id="cap_n" type="number" min="${g.capacity+1}" max="200" step="1" value="${g.capacity+1}" style="width:90px;">
+   <button type="button" class="btn sm primary" onclick="capSave('${g.id}')">Kaydet</button><button type="button" class="btn sm" onclick="document.getElementById('cap_box').style.display='none'">Vazgeç</button></div><div id="cap_m" role="alert" style="font-size:12.5px;color:var(--red);min-height:16px;margin-top:4px;"></div>`;
+}
+function capSet(gid,n){
+  if(role!=='admin') return {ok:false,errors:['Kontenjanı yalnızca yönetici değiştirir.']}; const g=DB.groups.find(x=>x.id===gid); if(!g) return {ok:false,errors:['Grup bulunamadı.']};
+  n=Number(n); if(!(Number.isInteger(n)&&n>g.capacity&&n<=200)) return {ok:false,errors:['Yeni kontenjan, mevcut '+g.capacity+' sayısından büyük ve en fazla 200 olmalı.']};
+  g.capacity=n; save(); return {ok:true,errors:[]};
+}
+function capSave(gid){
+  const r=capSet(gid,(document.getElementById('cap_n')||{}).value); const m=document.getElementById('cap_m'); if(!r.ok){ if(m) m.textContent=r.errors.join(' '); return; }
+  const g=DB.groups.find(x=>x.id===gid); const sel=document.getElementById('af_group');
+  if(sel) Array.from(sel.options).forEach(o=>{ if(o.value===gid) o.textContent=g.name+' ('+g.enrolled+'/'+g.capacity+')'; });
+  const box=document.getElementById('cap_box'); if(box) box.innerHTML='<span style="font-size:13px;color:var(--green);">Kontenjan '+g.capacity+' olarak güncellendi.</span>';
+}
 /* ============ INIT ============ */
 boot();
 </script>
