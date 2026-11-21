@@ -8590,6 +8590,26 @@ plShow=function(id){
   tb.insertAdjacentHTML('beforeend',`<tr><td style="color:var(--muted);">Paket</td><td>${row}</td></tr>`);
 };
 
+/* ============ Ders penceresinde isimler → kişi kartı ============ */
+function lkAth(id){ const n=escHtml(athleteName(id)); return (id&&typeof canViewAthlete==='function'&&canViewAthlete(id))?`<a href="#" class="lk" onclick="event.preventDefault();closeDrawer();openAthlete('${escHtml(id)}')">${n}</a>`:n; }
+function lkCoach(id){ const n=escHtml(coachName(id)); return (id&&(role==='admin'||(role==='coach'&&(DB.currentUser||{}).coachId===id)))?`<a href="#" class="lk" onclick="event.preventDefault();closeDrawer();coachProfile('${escHtml(id)}')">${n}</a>`:n; }
+(function(){ const st=document.createElement('style'); st.textContent='a.lk{color:var(--aqua,#0c7c79);text-decoration:underline;text-underline-offset:2px;cursor:pointer;font-weight:600;}'; document.head.appendChild(st); })();
+const _gs18=showGroupSession;
+showGroupSession=function(gid,ds){
+  _gs18(gid,ds); const g=DB.groups.find(x=>x.id===gid); if(!g||!ds||!groupOnDay(g,ds)) return;
+  if(role==='parent'||role==='athlete') return;
+  const co=effCoach(g,ds), nm=escHtml(coachName(co)), tds=document.querySelectorAll('#drawer .drawer-body table td');
+  tds.forEach(td=>{ if(td.previousElementSibling&&td.previousElementSibling.textContent==='Antrenör'){ td.innerHTML=td.innerHTML.replace(nm,lkCoach(co)); } });
+};
+const _pl18=plShow;
+plShow=function(id){
+  _pl18(id); const p=(DB.privateLessons||[]).find(x=>x.id===id); if(!p) return;
+  document.querySelectorAll('#drawer .drawer-body table tr').forEach(tr=>{ const l=tr.children[0]&&tr.children[0].textContent, td=tr.children[1]; if(!td) return;
+    if(l==='Öğrenci'&&role!=='parent'&&role!=='athlete') td.innerHTML=lkAth(p.athlete);
+    else if(l==='Öğrenci') td.innerHTML=lkAth(p.athlete);
+    else if(l==='Öğretmen') td.innerHTML=lkCoach(p.coach); });
+};
+
 /* ============ INIT ============ */
 boot();
 </script>
