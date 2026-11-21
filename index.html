@@ -2517,8 +2517,8 @@ function cfgToRec(c){
 
 /* ============ FİNANS, ÖZEL DERS PAKETLERİ, HAVUZ KİRALAMA, ARAMA ============ */
 const EXP_CATS=['Havuz kirası','Ekipman','Personel (sabit)','Fatura / Vergi','Bakım / Onarım','Pazarlama','Diğer'];
-const PAY_TYPES=['Aidat','Yenileme','Yenileme (3 aylık)','Yenileme (6 aylık)','Yenileme (10 aylık)','Özel ders paketi','Diğer'];
-const RENEW_MONTHS={'Yenileme':1,'Yenileme (3 aylık)':3,'Yenileme (6 aylık)':6,'Yenileme (10 aylık)':10};
+const PAY_TYPES=['Aidat','Aidat (3 aylık)','Aidat (6 aylık)','Aidat (10 aylık)','Yenileme','Yenileme (3 aylık)','Yenileme (6 aylık)','Yenileme (10 aylık)','Özel ders paketi','Diğer'];
+const RENEW_MONTHS={'Aidat (3 aylık)':3,'Aidat (6 aylık)':6,'Aidat (10 aylık)':10,'Yenileme':1,'Yenileme (3 aylık)':3,'Yenileme (6 aylık)':6,'Yenileme (10 aylık)':10};
 const PAY_METHODS=['-','Nakit','Havale','Kredi Kartı','Online Ödeme','Elden/Manuel'];
 const PKG_SIZES=[6,8,10,20];
 const MONTHS_TR=['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran','Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'];
@@ -2570,16 +2570,28 @@ function markPaid(id){
   savePayment({athlete:p.athlete,amount:p.amount,due:p.due,status:'paid',type:p.type||'Aidat',method:'Elden/Manuel',paidDate:todayStr(),pool:payPool(p)},id); render();
 }
 function recalcBalances(){DB.athletes.forEach(a=>{a.balance=DB.payments.filter(p=>p.athlete===a.id&&(p.status==='overdue'))./*gecikmiş*/reduce((s,p)=>s+p.amount,0);});}
+let payView='open', payAthFilter='';
+function setPayView(v){ payView=v; renderPayments($('#content')); }
+function payClearFilter(){ payAthFilter=''; renderPayments($('#content')); }
 function renderPayments(c){
-  const list=visiblePayments(); const adm=role==='admin';
-  const totals={paid:0,pending:0,overdue:0}; list.forEach(p=>totals[p.status]+=p.amount);
+  const all0=visiblePayments(); const adm=role==='admin';
+  const totals={paid:0,pending:0,overdue:0}; all0.forEach(p=>totals[p.status]+=p.amount);
+  const rank={overdue:0,pending:1,paid:2}; const byAth=payAthFilter?all0.filter(p=>p.athlete===payAthFilter):all0;
+  const openList=byAth.filter(p=>p.status!=='paid').sort((a,b)=>(rank[a.status]-rank[b.status])||String(a.due).localeCompare(String(b.due)));
+  const paidList=byAth.filter(p=>p.status==='paid').sort((a,b)=>String(b.paidDate||b.due).localeCompare(String(a.paidDate||a.due)));
+  const list=payView==='all'?openList.concat(paidList):openList;
   c.innerHTML=`${msgBanner()}<div class="grid kpi">
     <div class="card"><div class="label">Tahsil Edildi</div><div class="val" style="color:var(--green);">${money(totals.paid)}</div></div>
     <div class="card"><div class="label">Bekleyen</div><div class="val" style="color:var(--amber);">${money(totals.pending)}</div></div>
     <div class="card"><div class="label">Gecikmiş</div><div class="val" style="color:var(--red);">${money(totals.overdue)}</div></div></div>
-  ${adm?'<div style="margin:14px 0;"><button class="btn primary" onclick="payOpen()">+ Ödeme Girişi</button></div>':''}
+  <div style="margin:14px 0;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">${adm?'<button class="btn primary" onclick="payOpen()">+ Ödeme Girişi</button>':''}
+   <button class="btn sm${payView==='open'?' primary':''}" onclick="setPayView('open')">Bekleyen / Gecikmiş (${openList.length})</button>
+   <button class="btn sm${payView==='all'?' primary':''}" onclick="setPayView('all')">Tüm ödemeler (${byAth.length})</button>
+   ${payAthFilter?`<span class="badge aqua">${escHtml(athleteName(payAthFilter))} <a href="#" onclick="payClearFilter();return false;" aria-label="Filtreyi kaldır">✕</a></span>`:''}</div>
+  ${payView==='open'?`<div style="font-size:12.5px;color:var(--muted);margin:-6px 0 8px;">Ödemesi tamamlananlar bu listede gösterilmez; görmek için “Tüm ödemeler”e basın.</div>`:''}
   <div class="card" style="padding:0;margin-top:16px;overflow-x:auto;">
   <table><thead><tr><th>Sporcu</th><th>Tür</th><th>Havuz</th><th>Tutar</th><th>Vade</th><th>Durum</th><th>Yöntem</th>${adm?'<th></th>':''}</tr></thead><tbody>
+  ${list.length?'':'<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:18px;">Bekleyen veya gecikmiş ödeme yok.</td></tr>'}
   ${list.map(p=>`<tr><td>${escHtml(athleteName(p.athlete))}</td><td>${escHtml(p.type||'Aidat')}</td><td>${escHtml(payPool(p)||'Ortak')}</td><td>${money(p.amount)}</td><td>${fmtDate(p.due)}</td><td>${statusBadge(p.status)}</td><td>${escHtml(p.method)}</td>
     ${adm?`<td style="white-space:nowrap;">${p.status!=='paid'?`<button class="btn sm" onclick="markPaid('${p.id}')">Ödendi</button> `:''}<button class="btn sm" onclick="payOpen('${p.id}')">Düzenle</button></td>`:''}</tr>`).join('')}
   </tbody></table></div>`;
@@ -2669,7 +2681,7 @@ function savePoolPrices(pool,p){
 /* ---------- ANTRENÖR DERS ÜCRETLERİ (havuza göre ayrı) ---------- */
 const RATE_TYPES=[['group','Grup dersi'],['private','Özel ders'],['other','Diğer antrenman'],['asst','Yardımcı antrenör']];
 const RATE_ALL=RATE_TYPES.concat([['private2','İkili özel ders'],['private3','Üçlü özel ders']]);
-const INC_ITEMS=[['Aidat','Aidat tahsilatı'],['Yenileme','Yenileme (aylık)'],['Yenileme (3 aylık)','Yenileme (3 aylık)'],['Yenileme (6 aylık)','Yenileme (6 aylık)'],['Yenileme (10 aylık)','Yenileme (10 aylık)'],['Özel ders paketi','Özel ders paketi satışı'],['Diğer','Diğer tahsilat'],['Havuz kiralama','Havuz kiralama (tahsil edilen)']];
+const INC_ITEMS=[['Aidat','Aidat tahsilatı'],['Aidat (3 aylık)','Aidat (3 aylık)'],['Aidat (6 aylık)','Aidat (6 aylık)'],['Aidat (10 aylık)','Aidat (10 aylık)'],['Yenileme','Yenileme (aylık)'],['Yenileme (3 aylık)','Yenileme (3 aylık)'],['Yenileme (6 aylık)','Yenileme (6 aylık)'],['Yenileme (10 aylık)','Yenileme (10 aylık)'],['Özel ders paketi','Özel ders paketi satışı'],['Diğer','Diğer tahsilat'],['Havuz kiralama','Havuz kiralama (tahsil edilen)']];
 const EXP_ITEMS=RATE_TYPES.map(t=>['coach:'+t[0],'Antrenör ücreti – '+t[1]]).concat(EXP_CATS.map(c=>['cat:'+c,c]));
 function rateOf(cid,t,pool){const r=((((DB.coachRates||{})[cid])||{})[pool])||{}; return Number(r[t])||0;}
 function saveCoachRates(cid,pool,r){
@@ -8750,6 +8762,12 @@ function rtApply(){
       window.__rtType=g.value==='private'?'private':g.value==='trial'?'trial':'group';
       body.insertAdjacentHTML('afterbegin','<div class="field" style="margin-bottom:6px;"><label>Kayıt türü</label><div id="rt_bar" style="display:flex;gap:8px;flex-wrap:wrap;"><button type="button" class="btn sm" data-t="group" onclick="rtSet(\'group\')">Grup dersi</button><button type="button" class="btn sm" data-t="private" onclick="rtSet(\'private\')">Özel ders</button><button type="button" class="btn sm" data-t="trial" onclick="rtSet(\'trial\')">Deneme</button></div></div>');
       afToggle(); }catch(e){ console.error(e); } }; }
+
+/* ============ Sporcu kartından ödemeye gidiş ============ */
+function athPayGo(id){ closeDrawer(); payAthFilter=id; payView='all'; route='payments'; render(); }
+function athPayNew(id){ payOpen(); setTimeout(()=>{ const e=document.getElementById('py_ath'); if(e){ e.value=id; payAuto(); } },30); }
+{ const _oa=openAthlete; openAthlete=function(id){ _oa(id); try{ if(role!=='admin') return; const body=document.querySelector('#drawer .drawer-body'); if(!body||!$('#drawer').classList.contains('open')||document.getElementById('apay_bar')) return;
+    body.insertAdjacentHTML('afterbegin',`<div id="apay_bar" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;"><button class="btn sm primary" onclick="athPayNew('${id}')">+ Ödeme gir</button><button class="btn sm" onclick="athPayGo('${id}')">Ödemeleri gör</button></div>`); }catch(e){ console.error(e); } }; }
 
 /* ============ INIT ============ */
 boot();
