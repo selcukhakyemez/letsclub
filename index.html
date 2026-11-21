@@ -6314,7 +6314,7 @@ pkgBanner=function(athId){
     (rows||[]).forEach((r,i)=>{ const hs=String(r.hours==null?'':r.hours).trim(), ps=String(r.price==null?'':r.price).trim(); if(!hs&&!ps) return;
       const h=Number(hs), p=Number(ps.replace(',','.'));
       if(!(Number.isInteger(h)&&h>=1&&h<=200)){ e.push(`${i+1}. satır: saat sayısı 1 ile 200 arasında tam sayı olmalı.`); return; }
-      if(!okAmt(p,1000000)){ e.push(`${i+1}. satır: kişi başı fiyat 0’dan büyük ve en çok 1.000.000 ₺ olmalı.`); return; }
+      if(!okAmt(p,1000000)){ e.push(`${i+1}. satır: paket fiyatı (toplam) 0’dan büyük ve en çok 1.000.000 ₺ olmalı.`); return; }
       if(seen.has(h)){ e.push(`${h} saatlik paket birden fazla kez girilmiş.`); return; }
       seen.add(h); out.push({hours:h,price:r2(p)}); });
     if(out.length>20) e.push('Bir havuz için en fazla 20 paket tanımlanabilir.');
@@ -6336,7 +6336,7 @@ function pcSizeAdd(pi,size){ const w=document.getElementById('pc_rows_'+pi+'_'+s
   if(role!=='admin'||finTab!=='prices') return;
   [2,3].forEach(size=>{
     c.insertAdjacentHTML('beforeend',`<div class="card" style="margin-top:16px;"><b>${PL_SIZE_LABEL[size]} özel ders paketleri</b>
-     <div style="font-size:12.5px;color:var(--muted);margin:4px 0 10px;">Her havuz için ${PL_SIZE_LABEL[size].toLowerCase()} ders paketlerini <b>kişi başı</b> toplam fiyatla girin (örn. 10 saat = 5.000 ₺, her sporcu için). Boş bırakılan havuzda ${PL_SIZE_LABEL[size].toLowerCase()} paket satılamaz.</div>
+     <div style="font-size:12.5px;color:var(--muted);margin:4px 0 10px;">Her havuz için ${PL_SIZE_LABEL[size].toLowerCase()} ders paketlerini <b>toplam</b> fiyatla girin (örn. 10 saat = 5.000 ₺). Paketi alan sporcular arasında bölünür: ${size} sporcuya tanımlanırken her birine tutarın 1/${size}’i yazılır. Boş bırakılan havuzda ${PL_SIZE_LABEL[size].toLowerCase()} paket satılamaz.</div>
      ${DB.pools.map((pl,pi)=>{ const cat=((DB.poolPrices||{})[pl.name]||{})['packages'+size]||[]; return `<div class="card" style="margin-bottom:10px;"><b>${escHtml(pl.name)}</b>
        <div id="pc_rows_${pi}_${size}" style="margin-top:8px;">${cat.slice().sort((a,b)=>a.hours-b.hours).map(x=>pcRowHtml(pi,x.hours,x.price)).join('')}</div>
        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px;"><button type="button" class="btn sm" onclick="pcSizeAdd(${pi},${size})">+ Paket ekle</button><button type="button" class="btn sm primary" onclick="pcSizeSave(${pi},${size})">Kaydet</button></div>
@@ -6364,7 +6364,7 @@ function pcSizeAdd(pi,size){ const w=document.getElementById('pc_rows_'+pi+'_'+s
 pkgPoolChanged=function(){
   const ps=document.getElementById('pk_pool'), hs=document.getElementById('pk_h'), sz=document.getElementById('pk_size'); if(!ps||!hs) return;
   const size=sz?Number(sz.value)||1:1; const prev=hs.value;
-  hs.innerHTML=poolPackages(ps.value,size).map(x=>`<option value="${x.hours}">${x.hours} saatlik paket${x.price?' — '+money(x.price)+(size>1?' (kişi başı)':''):' — fiyat girilmemiş'}</option>`).join('')||'<option value="">Bu havuz için paket tanımlı değil</option>';
+  hs.innerHTML=poolPackages(ps.value,size).map(x=>`<option value="${x.hours}">${x.hours} saatlik paket${x.price?' — '+money(x.price)+(size>1?' toplam · kişi başı '+money(x.price/size):''):' — fiyat girilmemiş'}</option>`).join('')||'<option value="">Bu havuz için paket tanımlı değil</option>';
   if(prev) hs.value=prev;
 };
 
@@ -6681,7 +6681,7 @@ function cAthPkgSection(){
 function cAthPkgCat(){
   const ps=document.getElementById('af_pkpool'), sz=document.getElementById('af_pksize'), hs=document.getElementById('af_pkh'); if(!ps||!hs||hs.tagName!=='SELECT') return;
   const size=Number(sz.value)||1, prev=hs.value;
-  hs.innerHTML='<option value="">Paket tanımlama</option>'+poolPackages(ps.value,size).map(x=>`<option value="${x.hours}">${x.hours} saatlik — ${money(x.price)}${size>1?' (kişi başı)':''}</option>`).join('');
+  hs.innerHTML='<option value="">Paket tanımlama</option>'+poolPackages(ps.value,size).map(x=>`<option value="${x.hours}">${x.hours} saatlik — ${money(x.price)}${size>1?' toplam · kişi başı '+money(x.price/size):''}</option>`).join('');
   if(prev) hs.value=prev;
 }
 function cPkgPending(athId,hours,pool,size){
@@ -6844,9 +6844,9 @@ function phSave(pi,size){ const pl=DB.pools[pi]; if(!pl) return; const r=savePoo
    <div style="overflow-x:auto;"><table><thead><tr><th>Havuz</th><th>Aylık</th>${TERM_MONTHS.map(m=>`<th>${m} aylık (toplam ₺)</th>`).join('')}<th></th></tr></thead><tbody>
    ${DB.pools.map((pl,pi)=>`<tr><td>${escHtml(pl.name)}</td><td>${money(poolPrice(pl.name,'group'))}</td>${TERM_MONTHS.map(m=>`<td><input id="pt_${pi}_${m}" inputmode="decimal" style="${inp}" value="${termPrice(pl.name,m)||''}"></td>`).join('')}<td><button class="btn sm primary" onclick="ptSave(${pi})">Kaydet</button></td></tr>`).join('')}</tbody></table></div>
    <div id="pt_res" style="font-size:12.5px;margin-top:6px;"></div></div>
-   <div class="card" style="margin-top:16px;"><b>İkili ve üçlü özel ders saat ücreti (kişi başı)</b>
-   <div style="font-size:12.5px;color:var(--muted);margin:4px 0 10px;">Buraya saat ücretini girerseniz 6, 8, 10 ve 20 derslik paketlerin fiyatı otomatik hesaplanır. İsterseniz aşağıdaki “paketleri” kartlarından kendi paket fiyatlarınızı da girebilirsiniz (onlar önceliklidir).</div>
-   <div style="overflow-x:auto;"><table><thead><tr><th>Havuz</th><th>İkili (₺/saat, kişi başı)</th><th></th><th>Üçlü (₺/saat, kişi başı)</th><th></th></tr></thead><tbody>
+   <div class="card" style="margin-top:16px;"><b>İkili ve üçlü özel ders saat ücreti (toplam)</b>
+   <div style="font-size:12.5px;color:var(--muted);margin:4px 0 10px;">Buraya dersin toplam saat ücretini girin; paketi alan sporcular arasında bölünür (ikili 2’ye, üçlü 3’e). 6, 8, 10 ve 20 derslik paketlerin toplam fiyatı otomatik hesaplanır. İsterseniz aşağıdaki “paketleri” kartlarından kendi paket fiyatlarınızı da girebilirsiniz (onlar önceliklidir).</div>
+   <div style="overflow-x:auto;"><table><thead><tr><th>Havuz</th><th>İkili (₺/saat, toplam)</th><th></th><th>Üçlü (₺/saat, toplam)</th><th></th></tr></thead><tbody>
    ${DB.pools.map((pl,pi)=>`<tr><td>${escHtml(pl.name)}</td>${[2,3].map(sz=>`<td><input id="ph_${pi}_${sz}" inputmode="decimal" style="${inp}" value="${poolPrice(pl.name,'private'+sz)||''}"></td><td><button class="btn sm" onclick="phSave(${pi},${sz})">Kaydet</button></td>`).join('')}</tr>`).join('')}</tbody></table></div></div>`);
 }; }
 /* ---- Kayıt formu: üyelik süresi ---- */
@@ -6920,7 +6920,7 @@ function cAthPkgCat(){
   const ps=document.getElementById('af_pkpool'), sz=document.getElementById('af_pksize'), hs=document.getElementById('af_pkh'); if(!ps||!hs||role!=='admin') return;
   const size=Number(sz.value)||1, prev=hs.value, cat=poolPackages(ps.value,size), by={}; cat.forEach(x=>by[x.hours]=x.price);
   const hours=Array.from(new Set(PKG_SIZES.concat(cat.map(x=>x.hours)))).sort((a,b)=>a-b);
-  hs.innerHTML='<option value="">Paket tanımlama</option>'+hours.map(h=>`<option value="${h}">${h} ders — ${by[h]?money(by[h])+(size>1?' (kişi başı)':''):'fiyat girilmemiş'}</option>`).join('');
+  hs.innerHTML='<option value="">Paket tanımlama</option>'+hours.map(h=>`<option value="${h}">${h} ders — ${by[h]?money(by[h])+(size>1?' toplam · kişi başı '+money(by[h]/size):''):'fiyat girilmemiş'}</option>`).join('');
   if(prev) hs.value=prev;
 }
 function cAthPkgApply(athId){
@@ -6933,7 +6933,7 @@ function cAthPkgApply(athId){
 
 /* ---- Aranabilir sporcu seçici: ad veya telefon (sporcu / veli) yazarak bul ---- */
 (function(){
-  const IDS=/^(py_ath|pk_ath|pm_ath[23]?|gf_ath)$/;
+  const IDS=/^(py_ath|pk_ath|pm_ath[23]?|gf_ath|ptn_ath[12])$/;
   const norm=s=>String(s||'').toLocaleLowerCase('tr').replace(/ı/g,'i').replace(/ş/g,'s').replace(/ğ/g,'g').replace(/ü/g,'u').replace(/ö/g,'o').replace(/ç/g,'c').replace(/İ/g,'i');
   const digits=s=>String(s||'').replace(/\D/g,'');
   const st=document.createElement('style'); st.textContent='.ss-wrap{position:relative;}.ss-in{width:100%;box-sizing:border-box;}.ss-list{position:fixed;z-index:300;max-height:260px;overflow-y:auto;background:var(--ss-bg,#fff);border:1px solid var(--line);border-radius:10px;box-shadow:0 10px 28px rgba(0,0,0,.2);}.ss-it{padding:8px 12px;cursor:pointer;font-size:14px;display:flex;justify-content:space-between;gap:10px;color:var(--ink);}.ss-it small{color:var(--muted);font-size:12px;}.ss-it.act,.ss-it:hover{background:rgba(14,143,181,.14);}.ss-none{padding:10px 12px;color:var(--muted);font-size:13px;}:root[data-theme="dark"] .ss-list{--ss-bg:#0a2236}:root[data-theme="light"] .ss-list{--ss-bg:#fbfeff}';
@@ -8614,7 +8614,7 @@ plShow=function(id){
 function apkgChanged(){
   const ps=document.getElementById('apkg_pool'), hs=document.getElementById('apkg_h'), sz=document.getElementById('apkg_size'); if(!ps||!hs) return;
   const L=poolPackages(ps.value,Number(sz&&sz.value)||1);
-  hs.innerHTML=L.map(x=>`<option value="${x.hours}">${x.hours} saatlik paket — ${money(x.price)}</option>`).join('')||'<option value="">Bu havuz/tür için paket tanımlı değil</option>';
+  hs.innerHTML=L.map(x=>`<option value="${x.hours}">${x.hours} saatlik paket — ${money(x.price)}${(Number(sz&&sz.value)||1)>1?' toplam · kişi başı '+money(x.price/(Number(sz.value)||1)):''}</option>`).join('')||'<option value="">Bu havuz/tür için paket tanımlı değil</option>';
 }
 function apkgSell(athId){
   if(role!=='admin') return; const v=id=>(document.getElementById(id)||{}).value||''; const m=document.getElementById('apkg_m');
@@ -8694,6 +8694,36 @@ function unassignedCardHtml(){
 { const _rp=renderPrivLessons; renderPrivLessons=function(c){ _rp(c); const h=unassignedCardHtml(); if(h) c.insertAdjacentHTML('afterbegin',h); }; }
 { const _d=renderDashboard; renderDashboard=function(c){ _d(c); try{ if(role!=='admin'&&role!=='coach') return; const n=unassignedPriv().length; if(!n) return;
     c.insertAdjacentHTML('afterbegin',`<div class="attn-item" style="cursor:pointer;margin-bottom:12px;" onclick="route='privlesson';render();">👤 Eğitmeni atanmamış <b>${n}</b> özel ders sporcusu var${role==='coach'?' — üstlenebilirsiniz':''}</div>`); }catch(e){ console.error(e); } }; }
+
+/* ============ İkili / üçlü paket: toplam fiyat kişi sayısına bölünür; her sporcuya ayrı paket ============ */
+const PTN_SIZES=['pk_size','apkg_size','af_pksize'];
+function ptnRoot(){ const d=document.getElementById('drawer'); return (d&&d.classList.contains('open'))?d:document.getElementById('content'); }
+function ptnSizeSel(){ const r=ptnRoot(); if(!r) return null; for(const id of PTN_SIZES){ const e=r.querySelector('#'+id); if(e) return e; } return null; }
+function ptnRender(){
+  const r=ptnRoot(); if(!r) return; const old=r.querySelector('#ptn_box'); const sz=ptnSizeSel(); const size=sz?Number(sz.value)||1:1;
+  if(!sz||size<2||role!=='admin'){ if(old) old.remove(); return; }
+  if(old&&Number(old.dataset.size)===size) return;
+  const list=DB.athletes.filter(a=>a.status==='active').sort((a,b)=>a.name.localeCompare(b.name,'tr'));
+  const html=`<div id="ptn_box" data-size="${size}" style="margin:10px 0;padding:10px;border:1px dashed var(--line);border-radius:10px;"><div style="font-size:12.5px;color:var(--muted);margin-bottom:8px;">${PL_SIZE_LABEL[size]} derste paket her sporcuya <b>ayrı</b> tanımlanır. Paket fiyatı toplamdır; ${size} sporcuya bölünüp her birine ${'1/'+size} tutarı yazılır.</div>
+   ${Array.from({length:size-1},(_,k)=>`<div class="field" style="margin:0 0 8px;"><label for="ptn_ath${k+1}">${k+2}. sporcu</label><select id="ptn_ath${k+1}" class="ptn-sel"><option value="">Seçin</option>${list.map(a=>`<option value="${escHtml(a.id)}">${escHtml(a.name)}</option>`).join('')}</select></div>`).join('')}</div>`;
+  if(old) old.remove(); const host=sz.closest('.field'); if(host&&host.parentElement) host.parentElement.insertAdjacentHTML('afterend',html);
+}
+['pkgPoolChanged','apkgChanged','cAthPkgCat'].forEach(n=>{ const f=window[n]; if(typeof f!=='function') return; window[n]=function(){ const r=f.apply(this,arguments); try{ ptnRender(); }catch(e){ console.error(e); } return r; }; });
+{ const _sp=sellPackage;
+  sellPackage=function(athId,hours,withPayment,pool,size){
+    size=Number(size)||1; if(size<2||role!=='admin'||window.__ptnBusy) return _sp.apply(this,arguments);
+    const root=ptnRoot(); const partners=root?[...root.querySelectorAll('.ptn-sel')].map(s=>s.value):[];
+    if(partners.length!==size-1||partners.some(x=>!x)) return {ok:false,errors:[PL_SIZE_LABEL[size]+' ders için diğer '+(size-1)+' sporcuyu da seçin. Paket her sporcuya ayrı tanımlanır.']};
+    const ids=[athId].concat(partners); if(new Set(ids).size!==ids.length) return {ok:false,errors:['Aynı sporcu birden fazla seçilmiş.']};
+    if(ids.some(id=>{ const a=DB.athletes.find(x=>x.id===id); return !a||a.status!=='active'; })) return {ok:false,errors:['Paket yalnızca aktif sporculara tanımlanır.']};
+    const h=Number(hours), total=pkgPriceFor(pool,h,size); if(!okAmt(total)) return {ok:false,errors:[(pool||'Havuz')+' için '+h+' saatlik '+PL_SIZE_LABEL[size].toLowerCase()+' paket tanımlı değil. Finans > Havuz Fiyatları bölümünden ekleyin.']};
+    const share=r2(total/size); const out=[]; window.__ptnBusy=true;
+    try{ for(const id of ids){ const r=_sp(id,hours,withPayment,pool,size); if(!r.ok) return {ok:false,errors:r.errors,partial:out.length}; out.push(r);
+        const pk=DB.plPackages.find(x=>x.id===r.id); if(pk){ pk.price=share; pk.together=ids.filter(x=>x!==id); DB.payments.filter(p=>p.pkg===pk.id).forEach(p=>{ p.amount=share; }); } } }
+    finally{ window.__ptnBusy=false; }
+    recalcBalances(); save(); return {ok:true,id:out[0].id,errors:[],attached:out.reduce((s,r)=>s+(r.attached||0),0)};
+  };
+}
 
 /* ============ INIT ============ */
 boot();
