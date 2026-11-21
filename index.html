@@ -1424,7 +1424,7 @@ function renderSchedule(c){
       const ds=ymd(d);
       const evts=cGrpInHour(list,ds,h).filter(g=>!fp||gPoolOn(g,ds)===fp);
       const pls=priv.filter(p=>p.date===ds&&p.hour===h);
-      html+=`<div class="slot">${evts.map(g=>`<div class="evt${g._cont?' cont':''}" onclick="showGroupMembers('${g.id}')">${g.name}<small>${g._cont?'devam · ':''}${gTimeOn(g,ds)} · ${gPoolOn(g,ds)}${fam?'<br>'+visibleAthletes().filter(a=>a.group===g.id).map(a=>a.name.split(' ')[0]).join(', '):''}</small></div>`).join('')}${pls.map(p=>`<div class="evt private" onclick="plShow('${p.id}')">${cPlTitle(p)}<small>${h}:00-${h+1}:00 · ${lab(p)}</small></div>`).join('')}${cRentEvts(ds,h)}</div>`;
+      html+=`<div class="slot">${evts.map(g=>`<div class="evt${g._cont?' cont':''}" onclick="showGroupSession('${g.id}','${ds}')">${g.name}<small>${g._cont?'devam · ':''}${gTimeOn(g,ds)} · ${gPoolOn(g,ds)}${fam?'<br>'+visibleAthletes().filter(a=>a.group===g.id).map(a=>a.name.split(' ')[0]).join(', '):''}</small></div>`).join('')}${pls.map(p=>`<div class="evt private" onclick="plShow('${p.id}')">${cPlTitle(p)}<small>${h}:00-${h+1}:00 · ${lab(p)}</small></div>`).join('')}${cRentEvts(ds,h)}</div>`;
     });
   });
   html+='</div>';
@@ -1435,7 +1435,7 @@ function renderSchedule(c){
     html='<div class="dv">'+hours.map(h=>{
       const ev=cGrpInHour(list,ds,h).filter(g=>!fp||gPoolOn(g,ds)===fp).sort((a,b)=>groupMinutes(a,ds)[0]-groupMinutes(b,ds)[0]);
       const pl=priv.filter(p=>p.date===ds&&p.hour===h);
-      const cards=ev.map(g=>`<div class="evt${g._cont?' cont':''}" onclick="showGroupMembers('${g.id}')">${escHtml(g.name)}<small>${g._cont?'devam · ':''}${escHtml(gTimeOn(g,ds))} · ${escHtml(gPoolOn(g,ds))}${gLaneOn(g,ds)&&gLaneOn(g,ds)!=='-'?' · '+escHtml(String(gLaneOn(g,ds)))+'. kulvar':''}${staffV?'<br>Antrenör: '+escHtml(cEffName(g,ds))+(g.assistant?' (yrd: '+escHtml(coachName(g.assistant))+')':'')+' · '+(g.enrolled!=null?g.enrolled+'/'+g.capacity+' sporcu':''):'<br>'+visibleAthletes().filter(a=>a.group===g.id).map(a=>escHtml(a.name.split(' ')[0])).join(', ')}</small></div>`).join('')
+      const cards=ev.map(g=>`<div class="evt${g._cont?' cont':''}" onclick="showGroupSession('${g.id}','${ds}')">${escHtml(g.name)}<small>${g._cont?'devam · ':''}${escHtml(gTimeOn(g,ds))} · ${escHtml(gPoolOn(g,ds))}${gLaneOn(g,ds)&&gLaneOn(g,ds)!=='-'?' · '+escHtml(String(gLaneOn(g,ds)))+'. kulvar':''}${staffV?'<br>Antrenör: '+escHtml(cEffName(g,ds))+(g.assistant?' (yrd: '+escHtml(coachName(g.assistant))+')':'')+' · '+(g.enrolled!=null?g.enrolled+'/'+g.capacity+' sporcu':''):'<br>'+visibleAthletes().filter(a=>a.group===g.id).map(a=>escHtml(a.name.split(' ')[0])).join(', ')}</small></div>`).join('')
         +pl.map(p=>`<div class="evt private" onclick="plShow('${p.id}')">${cPlTitle(p)}<small>${h}:00-${h+1}:00 · ${lab(p)}${staffV&&isAdm?' · '+escHtml(lessonPool(p)):''}</small></div>`).join('')+cRentEvts(ds,h);
       return `<div class="dv-row"><div class="tcell">${h}:00</div><div class="dv-cell">${cards||'<span class="dv-empty">Ders yok</span>'}</div></div>`;
     }).join('')+'</div>';
@@ -8538,6 +8538,57 @@ renderParents=function(c){ _renderParents15(c); if(role==='admin') c.insertAdjac
   const _r=render; render=function(){ const r=_r.apply(this,arguments); try{ if(last!==null&&(route!==last||Date.now()-flag<1500)){ top(); } last=route; flag=0; }catch(e){} return r; };
   const d=document.getElementById('drawer'); if(d&&window.MutationObserver) new MutationObserver(()=>{ d.scrollTop=0; const b=d.querySelector('.drawer-body'); if(b) b.scrollTop=0; }).observe(d,{childList:true});
 })();
+
+/* ============ DERS PROGRAMI: grup dersi penceresi (yoklama + iptal) ve özel ders paket bilgisi ============ */
+const GS_COL={'Katıldı':'green','Geç geldi':'amber','Telafi':'blue','Gelmedi':'red','İzinli':'grey','Hastalık':'grey'};
+function gsAttendance(g,ds){
+  const roster=cRoster(g.id,ds), log=(DB.attendanceLog||{})[g.id+'|'+ds]||null;
+  const cnt={}; if(log) roster.forEach(a=>{ const s=log[a.id]; if(s) cnt[s]=(cnt[s]||0)+1; });
+  return {roster,log,cnt};
+}
+function showGroupSession(gid,ds){
+  if(role==='parent'||role==='athlete') return showGroupMembers(gid);
+  if(!canViewGroup(gid)) return; const g=DB.groups.find(x=>x.id===gid); if(!g) return;
+  if(!ds||!groupOnDay(g,ds)) return showGroupMembers(gid);
+  const t=todayStr(), canc=gCancelRec(g,ds), {roster,log,cnt}=gsAttendance(g,ds), past=ds<t, today=ds===t;
+  const full=role==='admin'||(role==='coach'&&(DB.currentUser||{}).coachId===effCoach(g,ds));
+  const st=canc?`<span class="badge amber">İptal · ${escHtml(canc.reason)}</span>`:log?`<span class="badge green">Yapıldı</span>`:past?`<span class="badge red">Yoklama alınmadı</span>`:today?'<span class="badge grey">Bugün</span>':'<span class="badge grey">Planlı</span>';
+  const timeOnly=String(gTimeOn(g,ds)).replace(/ · İPTAL.*$/,'');
+  const attHtml=canc?'':log?`<div class="section-title" style="margin-top:16px;">Yoklama (${Object.keys(cnt).map(k=>k+': '+cnt[k]).join(' · ')||'—'})</div>
+    ${roster.map(a=>{ const s=log[a.id]; return `<div class="card rowlink" style="margin-bottom:6px;padding:8px 12px;display:flex;justify-content:space-between;align-items:center;gap:8px;" onclick="closeDrawer();openAthlete('${a.id}')"><span>${escHtml(a.name)}</span>${s?`<span class="badge ${GS_COL[s]||'grey'}">${escHtml(s)}</span>`:'<span style="color:var(--muted);font-size:12px;">işaretlenmedi</span>'}</div>`; }).join('')||'<div class="empty">Sporcu yok</div>'}`
+    :`<div class="section-title" style="margin-top:16px;">Yoklama</div><div style="font-size:13px;color:var(--muted);">${past?'Bu ders için yoklama alınmamış.':'Ders henüz yapılmadı.'} Kayıtlı sporcu: ${roster.length}</div>`;
+  const reasons=CC_REASONS.map(r=>`<option>${escHtml(r)}</option>`).join('');
+  const adminHtml=role==='admin'?(canc?`<div class="section-title">İptal</div><div style="font-size:13px;margin-bottom:8px;">${escHtml(canc.reason)}${canc.note?' · '+escHtml(canc.note):''}</div><button class="btn" onclick="gsUncancel('${canc.id}','${gid}','${ds}')">İptali geri al</button>`
+    :`<div class="section-title">Dersi iptal et</div><div style="font-size:12.5px;color:var(--muted);margin-bottom:8px;">İptal edilen derste hocaya ücret yazılmaz, hoca o saatte boşa çıkar ve sporculara telafi hakkı işlenir.</div>
+    <div class="field"><label for="gs_r">Neden</label><select id="gs_r">${reasons}</select></div><div class="field"><label for="gs_n">Açıklama (isteğe bağlı)</label><input id="gs_n" maxlength="150"></div>
+    <div id="gs_m" role="alert" style="color:var(--red);font-size:13px;min-height:16px;"></div><button class="btn danger" onclick="gsCancel('${gid}','${ds}')">Dersi iptal et</button>`):'';
+  openDrawerHtml(`<div class="drawer-head"><div><div style="font-weight:800;font-size:16px;">${escHtml(g.name)}</div><div style="font-size:12.5px;color:var(--muted);">${escHtml(fmtDate(ds))} · ${escHtml(timeOnly)}</div></div><button class="close-x" onclick="closeDrawer()">✕</button></div>
+  <div class="drawer-body"><div class="card" style="margin-top:16px;"><table>
+   <tr><td style="color:var(--muted);">Durum</td><td>${st}</td></tr>
+   <tr><td style="color:var(--muted);">Havuz</td><td>${escHtml(gPoolOn(g,ds)||'—')}</td></tr>
+   <tr><td style="color:var(--muted);">Antrenör</td><td>${escHtml(cEffName(g,ds))}</td></tr>
+   <tr><td style="color:var(--muted);">Kayıtlı sporcu</td><td>${roster.length}</td></tr></table></div>
+   ${attHtml}
+   <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px;">${full&&!canc&&(past||today)?`<button class="btn primary" onclick="gsTakeAtt('${gid}','${ds}')">${log?'Yoklamayı düzenle':'Yoklama al'}</button>`:''}<button class="btn" onclick="showGroupMembers('${gid}')">Grubu / sporcuları gör</button></div>
+   ${adminHtml}</div>`);
+}
+function gsTakeAtt(gid,ds){ closeDrawer(); route='attendance'; render(); const g=document.getElementById('attGroup'), d=document.getElementById('attDate'); if(g&&d){ g.value=gid; d.value=ds; if(g.onchange) g.onchange(); } }
+function gsCancel(gid,ds){
+  const r=ccAdd(gid,ds,cV('gs_r'),cV('gs_n')); const m=document.getElementById('gs_m'); if(!r.ok){ if(m) m.textContent=r.errors.join(' '); return; }
+  closeDrawer(); render(); setTimeout(()=>showGroupSession(gid,ds),50);
+}
+function gsUncancel(id,gid,ds){ if(!confirm('İptal geri alınsın mı? Ders yeniden hakedişe dahil olur.')) return; ccRemove(id); closeDrawer(); render(); setTimeout(()=>showGroupSession(gid,ds),50); }
+/* özel ders penceresine paket bilgisi */
+const _plShow17=plShow;
+plShow=function(id){
+  _plShow17(id); const p=(DB.privateLessons||[]).find(x=>x.id===id); if(!p||role==='parent'||role==='athlete') return;
+  const tb=document.querySelector('#drawer .drawer-body table'); if(!tb) return;
+  const pk=(DB.plPackages||[]).find(x=>x.id===p.pkg); let row;
+  if(!pk) row='<span style="color:var(--muted);">Paketsiz ders</span>';
+  else { const x=dlPkgIndex(p); const n=x&&x.n>0?x.n:null; const left=pk.hours-(n||pkgUsed(pk)); const used=pkgUsed(pk);
+    row=`<b>${n?n+'.':'—'} ders</b> / ${pk.hours} derslik paket<div style="font-size:12.5px;color:var(--muted);">Bu dersten sonra <b>${Math.max(0,left)}</b> ders kalıyor · paketten ${used} ders programlandı, ${Math.max(0,pk.hours-used)} ders planlanmadı</div>`; }
+  tb.insertAdjacentHTML('beforeend',`<tr><td style="color:var(--muted);">Paket</td><td>${row}</td></tr>`);
+};
 
 /* ============ INIT ============ */
 boot();
