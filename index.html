@@ -8610,6 +8610,37 @@ plShow=function(id){
     else if(l==='Öğretmen') td.innerHTML=lkCoach(p.coach); });
 };
 
+/* ============ Sporcu kartı: özel ders paketi tanımla (yalnızca yönetici) ============ */
+function apkgChanged(){
+  const ps=document.getElementById('apkg_pool'), hs=document.getElementById('apkg_h'), sz=document.getElementById('apkg_size'); if(!ps||!hs) return;
+  const L=poolPackages(ps.value,Number(sz&&sz.value)||1);
+  hs.innerHTML=L.map(x=>`<option value="${x.hours}">${x.hours} saatlik paket — ${money(x.price)}</option>`).join('')||'<option value="">Bu havuz/tür için paket tanımlı değil</option>';
+}
+function apkgSell(athId){
+  if(role!=='admin') return; const v=id=>(document.getElementById(id)||{}).value||''; const m=document.getElementById('apkg_m');
+  const r=sellPackage(athId,v('apkg_h'),!!(document.getElementById('apkg_pay')||{}).checked,v('apkg_pool'),Number(v('apkg_size'))||1);
+  if(!r.ok){ if(m){ m.style.color='var(--red)'; m.textContent=r.errors.join(' '); } return; }
+  const att=r.attached?r.attached+' paketsiz ders bu pakete bağlandı. ':'';
+  render(); setTimeout(()=>{ openAthlete(athId); const mm=document.getElementById('apkg_m'); if(mm){ mm.style.color='var(--green)'; mm.textContent='Paket tanımlandı. '+att; } },60);
+}
+function apkgDel(pid,athId){ if(role!=='admin'||!confirm('Paket silinsin mi?')) return; const r=removePackage(pid); if(!r.ok){ alert(r.errors.join(' ')); return; } render(); setTimeout(()=>openAthlete(athId),60); }
+const _openAthlete19=openAthlete;
+openAthlete=function(id){
+  _openAthlete19(id); if(role!=='admin') return; const a=DB.athletes.find(x=>x.id===id); const body=document.querySelector('#drawer .drawer-body'); if(!a||!body||!$('#drawer').classList.contains('open')) return;
+  const pks=(DB.plPackages||[]).filter(p=>p.athlete===id).sort((x,y)=>String(y.createdAt).localeCompare(String(x.createdAt)));
+  const g=DB.groups.find(x=>x.id===a.group); const defPool=(g&&g.pool)||(DB.pools[0]&&DB.pools[0].name)||'';
+  const active=a.status==='active';
+  body.insertAdjacentHTML('beforeend',`<div class="section-title">Özel ders paketi</div><div class="card" style="margin-bottom:14px;">
+   ${pks.length?`<table style="width:100%;font-size:13px;margin-bottom:10px;"><thead><tr><th>Havuz</th><th>Paket</th><th>Kalan</th><th>Fiyat</th><th></th></tr></thead><tbody>${pks.map(p=>`<tr><td>${escHtml(p.pool||'')}</td><td>${p.hours} saat${(p.size>1)?' · '+escHtml(PL_SIZE_LABEL[p.size]||''):''}</td><td>${pkgRemaining(p)}</td><td>${p.pricePending?'<i>bekliyor</i>':money(p.price)}</td><td><button class="btn sm danger" onclick="apkgDel('${p.id}','${id}')">Sil</button></td></tr>`).join('')}</tbody></table>`:'<div style="font-size:13px;color:var(--muted);margin-bottom:10px;">Tanımlı paket yok.</div>'}
+   ${active?`<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;">
+    <div class="field" style="margin:0;"><label for="apkg_pool">Havuz</label><select id="apkg_pool" onchange="apkgChanged()">${DB.pools.map(p=>`<option${p.name===defPool?' selected':''}>${escHtml(p.name)}</option>`).join('')}</select></div>
+    <div class="field" style="margin:0;"><label for="apkg_size">Ders türü</label><select id="apkg_size" onchange="apkgChanged()"><option value="1">Bireysel</option><option value="2">İkili</option><option value="3">Üçlü</option></select></div>
+    <div class="field" style="margin:0;"><label for="apkg_h">Paket</label><select id="apkg_h"></select></div></div>
+    <label style="display:flex;gap:8px;align-items:center;margin:10px 0;font-size:13px;"><input type="checkbox" id="apkg_pay" checked> Ödeme kaydı da oluştur (bekleyen)</label>
+    <div id="apkg_m" role="alert" style="font-size:12.5px;min-height:16px;margin-bottom:6px;"></div><button class="btn primary" onclick="apkgSell('${id}')">Paket tanımla</button>`:'<div style="font-size:12.5px;color:var(--muted);">Paket yalnızca aktif sporcuya tanımlanır.</div>'}</div>`);
+  apkgChanged();
+};
+
 /* ============ INIT ============ */
 boot();
 </script>
