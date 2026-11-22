@@ -8809,7 +8809,7 @@ function dkMark(c){
   const isRow=e=>(e.classList.contains('grid')||e.classList.contains('two-col'))&&e.children.length>1&&[...e.children].every(k=>k.classList.contains('card'));
   const rows=[...c.children].filter(isRow);
   rows.forEach(g=>[...g.children].forEach(k=>add(k,'in')));
-  dkUnits(c).forEach(u=>{ add(u.main,'top'); if(rows.includes(u.main)){ const h=u.main.querySelector(':scope > .dk-h'); if(h){ h.style.right='auto'; h.style.left='6px'; h.style.top='-14px'; h.title='Tüm satırı taşı'; } } });
+  dkUnits(c).forEach(u=>{ add(u.main,'top'); if(rows.includes(u.main)){ const h=u.main.querySelector(':scope > .dk-h'); if(h){ h.classList.add('dk-row'); h.title='Tüm satırı taşı'; } } });
 }
 function dkPersist(c){
   const st=dkStore(); const units=dkUnits(c); st.top=dkKeys(units.map(u=>u.main)); st.inner=st.inner||{};
@@ -8828,7 +8828,7 @@ function dkToggle(){ dashEdit=!dashEdit; const c=document.getElementById('conten
 function dkReset(){ try{ localStorage.removeItem('dashOrder_'+role); }catch(e){} dashEdit=false; render(); }
 function dkBar(c){ let b=c.querySelector('.dk-bar'); if(b) b.remove();
   c.insertAdjacentHTML('afterbegin',`<div class="dk-bar" style="display:flex;gap:8px;justify-content:flex-end;margin-bottom:10px;">${dashEdit?'<button class="btn sm" onclick="dkReset()">Düzeni sıfırla</button><button class="btn sm primary" onclick="dkToggle()">Bitti</button>':'<button class="btn sm ghost" onclick="dkToggle()">⠿ Kutuların yerini değiştir</button>'}</div>`); }
-(function(){ const st=document.createElement('style'); st.textContent='.dk-unit{position:relative;outline:2px dashed var(--aqua,#2bb5c8);outline-offset:3px;}.dk-h{position:absolute;top:6px;right:6px;display:flex;gap:4px;align-items:center;z-index:5;background:var(--card,#fff);border:1px solid var(--line,#ddd);border-radius:8px;padding:2px 4px;}.dk-b{border:0;background:transparent;cursor:pointer;font-size:13px;padding:4px 6px;}.dk-grab{cursor:grab;touch-action:none;padding:4px 8px;font-size:16px;user-select:none;}.dk-unit.dk-drag{opacity:.55;}'; document.head.appendChild(st); })();
+(function(){ const st=document.createElement('style'); st.textContent='.dk-unit{position:relative;outline:2px dashed var(--aqua,#2bb5c8);outline-offset:0;min-width:0;}.dk-h{display:flex;gap:4px;align-items:center;justify-content:center;width:max-content;max-width:100%;margin:0 0 8px auto;background:var(--card,#fff);border:1px solid var(--line,#ddd);border-radius:8px;padding:2px 4px;}.dk-h.dk-row{grid-column:1/-1;margin:0 auto 4px 0;}.dk-b{border:0;background:transparent;cursor:pointer;font-size:13px;padding:4px 6px;}.dk-grab{cursor:grab;touch-action:none;padding:4px 8px;font-size:16px;user-select:none;}.dk-unit.dk-drag{opacity:.55;}'; document.head.appendChild(st); })();
 document.addEventListener('click',e=>{ const b=e.target.closest&&e.target.closest('.dk-b'); if(!b) return; e.preventDefault(); e.stopPropagation(); const u=b.closest('.dk-unit'); if(u){ dkMove(u,Number(b.dataset.d)); u.scrollIntoView&&u.scrollIntoView({block:'nearest'}); } },true);
 document.addEventListener('pointerdown',e=>{ const g=e.target.closest&&e.target.closest('.dk-grab'); if(!g) return; const u=g.closest('.dk-unit'); if(!u) return; e.preventDefault(); u.classList.add('dk-drag');
   const kind=u.dataset.dk; const c=document.getElementById('content');
@@ -8839,6 +8839,48 @@ document.addEventListener('pointerdown',e=>{ const g=e.target.closest&&e.target.
   const up=()=>{ document.removeEventListener('pointermove',mv); document.removeEventListener('pointerup',up); u.classList.remove('dk-drag'); dkPersist(c); };
   document.addEventListener('pointermove',mv); document.addEventListener('pointerup',up); },true);
 { const _d=renderDashboard; renderDashboard=function(c){ _d.apply(this,arguments); try{ if(role!=='admin'&&role!=='coach') return; c.querySelector('.dk-bar')||0; dkApply(c); dkBar(c); dkMark(c); }catch(e){ console.error(e); } }; }
+
+/* ============ Aynı isim uyarısı + yönetici silme (sporcu / veli) ============ */
+function dupNorm(s){ return String(s||'').toLocaleLowerCase('tr').replace(/\s+/g,' ').trim(); }
+function dupFind(first,last,exceptId){ const n=dupNorm((first||'')+' '+(last||'')); if(!n||n.length<3) return []; return DB.athletes.filter(a=>a.id!==exceptId&&dupNorm(a.name)===n); }
+function dupDesc(a){ const g=DB.groups.find(x=>x.id===a.group); return a.name+' ('+(a.status==='passive'?'devam etmiyor':a.status==='trial'?'deneme':a.kind==='private'?'özel ders':(g?g.name:'grupsuz'))+(a.dob?', '+fmtDate(a.dob):'')+')'; }
+function dupInline(){ const f=document.getElementById('af_first'), l=document.getElementById('af_last'); if(!f||!l) return; let box=document.getElementById('af_dup');
+  const m=dupFind(f.value,l.value,window.__athEdit||null);
+  if(!m.length){ if(box) box.remove(); return; }
+  if(!box){ box=document.createElement('div'); box.id='af_dup'; box.className='note-banner'; box.style.cssText='margin:0 0 10px;color:var(--red,#c0392b);'; const grid=f.closest('div[style*="grid"]'); (grid||f.parentElement).insertAdjacentElement('afterend',box); }
+  box.innerHTML='⚠ Bu isimde kayıtlı sporcu var: <b>'+m.map(x=>escHtml(dupDesc(x))).join('; ')+'</b>. Aynı kişiyi ikinci kez eklemediğinizden emin olun.'; }
+document.addEventListener('input',e=>{ const t=e.target; if(t&&(t.id==='af_first'||t.id==='af_last')) dupInline(); });
+{ const _sa=submitAthlete; submitAthlete=function(c,editId,extra){
+    if(!editId&&!window.__dupOk){ const m=dupFind(c&&c.first,c&&c.last,null); if(m.length&&!confirm('Bu isimde sporcu zaten kayıtlı:\n\n'+m.map(dupDesc).join('\n')+'\n\nYine de yeni kayıt eklensin mi?')) return {ok:false,errors:['Kayıt eklenmedi: aynı isimde sporcu zaten var ('+m.map(x=>x.name).join(', ')+'). Farklı bir kişiyse devam etmek için tekrar deneyip onaylayın.']}; }
+    return _sa(c,editId,extra); }; }
+
+function athHistory(id){ const n=(k)=>(DB[k]||[]).filter(x=>x&&x.athlete===id).length; let att=0; Object.keys(DB.attendanceLog||{}).forEach(k=>{ if((DB.attendanceLog[k]||{})[id]!==undefined) att++; });
+  return {payments:n('payments'),packages:n('plPackages'),lessons:n('privateLessons'),attendance:att}; }
+function athRemove(id){
+  if(role!=='admin') return {ok:false,errors:['Yalnızca yönetici silebilir.']};
+  const a=DB.athletes.find(x=>x.id===id); if(!a) return {ok:false,errors:['Sporcu bulunamadı.']};
+  Object.keys(DB).forEach(k=>{ if(k==='athletes'||k==='auditLog'||!Array.isArray(DB[k])) return; if(DB[k].some(x=>x&&typeof x==='object'&&x.athlete===id)) DB[k]=DB[k].filter(x=>!(x&&typeof x==='object'&&x.athlete===id)); });
+  Object.keys(DB.attendanceLog||{}).forEach(k=>{ const r=DB.attendanceLog[k]; if(r&&r[id]!==undefined){ delete r[id]; if(!Object.keys(r).length) delete DB.attendanceLog[k]; } });
+  (DB.parents||[]).forEach(p=>{ if(Array.isArray(p.children)) p.children=p.children.filter(x=>x!==id); });
+  if(DB.photos) delete DB.photos['athlete:'+id];
+  DB.athletes=DB.athletes.filter(x=>x.id!==id);
+  try{ recalcBalances(); }catch(e){} save(); return {ok:true,errors:[],name:a.name}; }
+function athDeleteUi(id){
+  if(role!=='admin') return; const a=DB.athletes.find(x=>x.id===id); if(!a) return; const h=athHistory(id);
+  const parts=[]; if(h.payments) parts.push(h.payments+' ödeme'); if(h.packages) parts.push(h.packages+' özel ders paketi'); if(h.lessons) parts.push(h.lessons+' özel ders kaydı'); if(h.attendance) parts.push(h.attendance+' yoklama kaydı');
+  const msg=parts.length?`"${a.name}" kalıcı olarak silinsin mi?\n\nBu sporcuya ait şunlar da silinecek: ${parts.join(', ')}.\nBu işlem geri alınamaz. (Sadece ayrıldıysa silmek yerine Durum: "Devam etmiyor" yapın.)`:`"${a.name}" kalıcı olarak silinsin mi? Bu işlem geri alınamaz.`;
+  if(!confirm(msg)) return; const r=athRemove(id); if(!r.ok){ alert(r.errors.join(' ')); return; }
+  closeDrawer(); mgmtMsg='"'+r.name+'" silindi.'; render(); }
+function parentRemove(id){ if(role!=='admin') return {ok:false,errors:['Yalnızca yönetici silebilir.']}; const p=DB.parents.find(x=>x.id===id); if(!p) return {ok:false,errors:['Veli bulunamadı.']};
+  DB.athletes.forEach(a=>{ if(Array.isArray(a.parents)) a.parents=a.parents.filter(x=>x!==id); });
+  DB.tickets=(DB.tickets||[]).filter(t=>t.parent!==id); DB.parents=DB.parents.filter(x=>x.id!==id); save(); return {ok:true,errors:[],name:p.name}; }
+function parentDeleteUi(id){ if(role!=='admin') return; const p=DB.parents.find(x=>x.id===id); if(!p) return; const kids=DB.athletes.filter(a=>(p.children||[]).includes(a.id)||(a.parents||[]).includes(id));
+  if(!confirm(`"${p.name}" velisi kalıcı olarak silinsin mi?`+(kids.length?`\n\nBağlı sporcular (${kids.map(k=>k.name).join(', ')}) silinmez; yalnızca bu veli bağlantısı kalkar.`:'')+'\nBu işlem geri alınamaz.')) return;
+  const r=parentRemove(id); if(!r.ok){ alert(r.errors.join(' ')); return; } closeDrawer(); mgmtMsg='"'+r.name+'" velisi silindi.'; render(); }
+{ const _oa=openAthlete; openAthlete=function(id){ _oa(id); try{ if(role!=='admin'||!$('#drawer').classList.contains('open')) return; const bar=document.getElementById('apay_bar'); if(!bar||bar.querySelector('.ath-del')) return;
+    bar.insertAdjacentHTML('beforeend',`<button class="btn sm danger ath-del" style="margin-left:auto;" onclick="athDeleteUi('${id}')">Kaydı sil</button>`); }catch(e){ console.error(e); } }; }
+{ const _op=openParent; openParent=function(id){ _op(id); try{ if(role!=='admin'||!$('#drawer').classList.contains('open')) return; const b=document.querySelector('#drawer .drawer-body'); if(!b||b.querySelector('.par-del')) return;
+    b.insertAdjacentHTML('beforeend',`<div style="margin-top:16px;"><button class="btn sm danger par-del" onclick="parentDeleteUi('${id}')">Veliyi sil</button></div>`); }catch(e){ console.error(e); } }; }
 
 /* ============ INIT ============ */
 boot();
