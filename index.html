@@ -2602,9 +2602,9 @@ function renderPayments(c){
    ${payAthFilter?`<span class="badge aqua">${escHtml(athleteName(payAthFilter))} <a href="#" onclick="payClearFilter();return false;" aria-label="Filtreyi kaldır">✕</a></span>`:''}</div>
   ${payView==='open'?`<div style="font-size:12.5px;color:var(--muted);margin:-6px 0 8px;">Ödemesi tamamlananlar bu listede gösterilmez; görmek için “Tüm ödemeler”e basın.</div>`:''}
   <div class="card" style="padding:0;margin-top:16px;overflow-x:auto;">
-  <table><thead><tr><th>Sporcu</th><th>Tür</th><th>Havuz</th><th>Tutar</th><th>Vade</th><th>Durum</th><th>Yöntem</th>${adm?'<th></th>':''}</tr></thead><tbody>
-  ${list.length?'':'<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:18px;">Bekleyen veya gecikmiş ödeme yok.</td></tr>'}
-  ${list.map(p=>`<tr><td>${escHtml(athleteName(p.athlete))}</td><td>${escHtml(p.type||'Aidat')}</td><td>${escHtml(payPool(p)||'Ortak')}</td><td>${money(p.amount)}</td><td>${fmtDate(p.due)}</td><td>${statusBadge(p.status)}</td><td>${escHtml(p.method)}</td>
+  <table><thead><tr><th>Sporcu</th><th>Tür</th><th>Detay</th><th>Havuz</th><th>Tutar</th><th>Vade</th><th>Durum</th><th>Yöntem</th>${adm?'<th></th>':''}</tr></thead><tbody>
+  ${list.length?'':'<tr><td colspan="9" style="text-align:center;color:var(--muted);padding:18px;">Bekleyen veya gecikmiş ödeme yok.</td></tr>'}
+  ${list.map(p=>`<tr><td>${escHtml(athleteName(p.athlete))}</td><td>${escHtml(p.type||'Aidat')}</td><td style="font-size:12.5px;">${escHtml(payDetail(p))}</td><td>${escHtml(payPool(p)||'Ortak')}</td><td>${money(p.amount)}</td><td>${fmtDate(p.due)}</td><td>${statusBadge(p.status)}</td><td>${escHtml(p.method)}</td>
     ${adm?`<td style="white-space:nowrap;">${p.status!=='paid'?`<button class="btn sm" onclick="markPaid('${p.id}')">Ödendi</button> `:''}<button class="btn sm" onclick="payOpen('${p.id}')">Düzenle</button></td>`:''}</tr>`).join('')}
   </tbody></table></div>`;
 }
@@ -3108,7 +3108,7 @@ function rateSave(cid,pi){const pl=DB.pools[pi]; const el=document.getElementByI
 function extraAdd(){const v=id=>document.getElementById(id).value; const r=addExtraSession({coach:v('xs_coach'),pool:v('xs_pool'),date:v('xs_date'),label:v('xs_label'),count:v('xs_count')}); if(!r.ok){document.getElementById('xs_res').textContent=r.errors.join(' ');return;} finMonth=ymOf(v('xs_date')); finMsg='Kayıt eklendi.'; renderFinance($('#content'));}
 function extraDel(id){removeExtraSession(id); renderFinance($('#content'));}
 function priceSave(pi){const pl=DB.pools[pi]; if(!pl) return; const r=savePoolPrices(pl.name,{group:document.getElementById('hp_g'+pi).value,private:document.getElementById('hp_p'+pi).value}); const el=document.getElementById('pp_res'); if(r.ok){finMsg=pl.name+' fiyatları kaydedildi.'; renderFinance($('#content')); return;} el.style.color='var(--red)'; el.textContent=pl.name+': '+r.errors.join(' ');}
-function pkgSell(){const r=sellPackage(document.getElementById('pk_ath').value,document.getElementById('pk_h').value,document.getElementById('pk_pay').checked,document.getElementById('pk_pool').value,Number((document.getElementById('pk_size')||{}).value)||1); if(!r.ok){document.getElementById('pk_res').textContent=r.errors.join(' ');return;} finMsg='Paket tanımlandı.'+(r.attached?' '+r.attached+' paketsiz ders bu pakete bağlandı.':''); renderFinance($('#content'));}
+function pkgSell(){const r=sellPackage(document.getElementById('pk_ath').value,document.getElementById('pk_h').value,document.getElementById('pk_pay').checked,document.getElementById('pk_pool').value,Number((document.getElementById('pk_size')||{}).value)||1); if(!r.ok){document.getElementById('pk_res').textContent=r.errors.join(' ');return;} finMsg=(r.merged?'Mevcut pakete '+r.addedHours+' saat eklendi (toplam '+r.totalHours+' saat).':'Paket tanımlandı.')+(r.attached?' '+r.attached+' paketsiz ders bu pakete bağlandı.':''); renderFinance($('#content'));}
 function pkgDel(id){if(!confirm('Paket silinsin mi?'))return; const r=removePackage(id); finMsg=r.ok?'Paket silindi.':r.errors.join(' '); renderFinance($('#content'));}
 
 /* ---------- HAVUZ KİRALAMA EKRANI ---------- */
@@ -8646,8 +8646,8 @@ function apkgSell(athId){
   if(role!=='admin') return; const v=id=>(document.getElementById(id)||{}).value||''; const m=document.getElementById('apkg_m');
   const r=sellPackage(athId,v('apkg_h'),!!(document.getElementById('apkg_pay')||{}).checked,v('apkg_pool'),Number(v('apkg_size'))||1);
   if(!r.ok){ if(m){ m.style.color='var(--red)'; m.textContent=r.errors.join(' '); } return; }
-  const att=r.attached?r.attached+' paketsiz ders bu pakete bağlandı. ':'';
-  render(); setTimeout(()=>{ openAthlete(athId); const mm=document.getElementById('apkg_m'); if(mm){ mm.style.color='var(--green)'; mm.textContent='Paket tanımlandı. '+att; } },60);
+  const att=r.attached?r.attached+' paketsiz ders bu pakete bağlandı. ':''; if(r.merged) r._mg={a:r.addedHours,t:r.totalHours};
+  render(); setTimeout(()=>{ openAthlete(athId); const mm=document.getElementById('apkg_m'); if(mm){ mm.style.color='var(--green)'; mm.textContent=(r._mg?'Mevcut pakete '+r._mg.a+' saat eklendi (toplam '+r._mg.t+' saat). ':'Paket tanımlandı. ')+att; } },60);
 }
 function apkgDel(pid,athId){ if(role!=='admin'||!confirm('Paket silinsin mi?')) return; const r=removePackage(pid); if(!r.ok){ alert(r.errors.join(' ')); return; } render(); setTimeout(()=>openAthlete(athId),60); }
 const _openAthlete19=openAthlete;
@@ -8881,6 +8881,83 @@ function parentDeleteUi(id){ if(role!=='admin') return; const p=DB.parents.find(
     bar.insertAdjacentHTML('beforeend',`<button class="btn sm danger ath-del" style="margin-left:auto;" onclick="athDeleteUi('${id}')">Kaydı sil</button>`); }catch(e){ console.error(e); } }; }
 { const _op=openParent; openParent=function(id){ _op(id); try{ if(role!=='admin'||!$('#drawer').classList.contains('open')) return; const b=document.querySelector('#drawer .drawer-body'); if(!b||b.querySelector('.par-del')) return;
     b.insertAdjacentHTML('beforeend',`<div style="margin-top:16px;"><button class="btn sm danger par-del" onclick="parentDeleteUi('${id}')">Veliyi sil</button></div>`); }catch(e){ console.error(e); } }; }
+
+/* ============ Yenileme: yeni kayıt açmadan üyelik bitişi / paket saati güncellenir ============ */
+function isAccReal(){ return !!(DB.currentUser&&DB.currentUser.accountantId); }
+function renewApply(p){
+  const a=DB.athletes.find(x=>x.id===p.athlete); const m=RENEW_MONTHS[p.type]; p.renewApplied=true; if(!a||!m) return false;
+  const paidD=p.paidDate||p.due||todayStr(); let mem=a.membership; const cur=(mem&&mem.end&&!mem.pending)?mem.end:''; const cont=!!(cur&&cur>=paidD);
+  const base=cont?cur:paidD; const end=addMonthsYmd(base,m);
+  if(!mem){ mem=a.membership={months:m,start:base,end,pool:p.pool||''}; }
+  else if(cont){ mem.months=(Number(mem.months)||0)+m; if(mem.ext) mem.ext.base=addMonthsYmd(mem.ext.base,m); mem.end=end; }
+  else { delete mem.ext; mem.months=m; mem.start=base; mem.end=end; if(p.pool) mem.pool=p.pool; }
+  delete mem.pending; delete mem.unpaid; mem.lastPaid=paidD;
+  mem.history=(mem.history||[]).concat([{pay:p.id,date:paidD,type:p.type,months:m,from:base,to:end,amount:p.amount}]);
+  p.period={from:base,to:end,months:m}; p.renewAth=a.id; return true;
+}
+function renewUndo(p){
+  if(!p.renewApplied||!p.period) { delete p.renewApplied; return; }
+  const a=DB.athletes.find(x=>x.id===(p.renewAth||p.athlete)); const mem=a&&a.membership;
+  if(mem){ const m=p.period.months; mem.end=addMonthsYmd(mem.end,-m); if(mem.ext) mem.ext.base=addMonthsYmd(mem.ext.base,-m); mem.months=Math.max(0,(Number(mem.months)||0)-m);
+    mem.history=(mem.history||[]).filter(h=>h.pay!==p.id); const last=mem.history[mem.history.length-1]; mem.lastPaid=last?last.date:''; if(!mem.history.length&&!mem.start) delete a.membership; }
+  delete p.period; delete p.renewApplied; delete p.renewAth;
+}
+function renewSync(){
+  if(role!=='admin'||isAccReal()) return 0; let n=0;
+  DB.payments.filter(p=>p.status==='paid'&&RENEW_MONTHS[p.type]&&!p.renewApplied).sort((x,y)=>String(x.paidDate||x.due).localeCompare(String(y.paidDate||y.due))).forEach(p=>{ if(renewApply(p)) n++; });
+  if(n) save(); return n;
+}
+{ const _sp=savePayment; savePayment=function(c,editId){
+    const old=editId?DB.payments.find(p=>p.id===editId):null; const wasApplied=old&&old.renewApplied;
+    const r=_sp(c,editId);
+    try{ if(r.ok&&role==='admin'&&!isAccReal()){ const p=DB.payments.find(x=>x.id===r.id);
+        if(p&&wasApplied&&(p.status!=='paid'||p.type!==old.type||p.athlete!==(old.renewAth||old.athlete)||(p.paidDate||'')!==(old.period?old.paidDate:p.paidDate))) { /* eski uygulamayı geri al */ renewUndo(p); }
+        renewSync(); } }catch(e){ console.error(e); }
+    return r; }; }
+{ const _rp=removePayment; removePayment=function(id){ const p=DB.payments.find(x=>x.id===id); if(p&&p.renewApplied&&role==='admin'&&!isAccReal()){ try{ renewUndo(p); }catch(e){ console.error(e); } } return _rp(id); }; }
+{ const _d=renderDashboard; renderDashboard=function(c){ try{ renewSync(); }catch(e){} return _d.apply(this,arguments); }; }
+{ const _rp=renderPayments; renderPayments=function(c){ try{ renewSync(); }catch(e){} return _rp.apply(this,arguments); }; }
+
+/* ödeme listesinde: ne kadar, hangi tarih, hangi paket */
+function payDetail(p){
+  const m=RENEW_MONTHS[p.type];
+  if(p.period) return p.period.months+' aylık · '+fmtDate(p.period.from)+' → '+fmtDate(p.period.to);
+  if(m) return m+' aylık yenileme'+(p.status==='paid'?'':' (ödenince bitiş tarihi uzar)');
+  if(p.pkg){ const pk=(DB.plPackages||[]).find(x=>x.id===p.pkg); if(pk){ return p.addHours?('+'+p.addHours+' saat eklendi (toplam '+(p.addTotal||pk.hours)+' saat)'+((pk.size||1)>1?' · '+(PL_SIZE_LABEL[pk.size]||''):'')):((pk.hours-(pk.renewals||[]).reduce((t,r)=>t+(Number(r.hours)||0),0))+' saatlik paket'+((pk.size||1)>1?' · '+(PL_SIZE_LABEL[pk.size]||''):'')); } }
+  if(p.term) return p.term+' aylık üyelik'+(p.due?' · başlangıç '+fmtDate(p.due):'');
+  return '';
+}
+
+/* özel ders: mevcut pakete ekle */
+function renewBoxRender(){
+  const r=ptnRoot(); if(!r||role!=='admin') return; const sz=r.querySelector('#pk_size')||r.querySelector('#apkg_size'); const old=r.querySelector('#pk_addto_box');
+  if(!sz){ if(old) old.remove(); return; }
+  const size=Number(sz.value)||1; if(size!==1){ if(old) old.remove(); return; } if(old) return;
+  sz.closest('.field').parentElement.insertAdjacentHTML('afterend','<label id="pk_addto_box" style="display:flex;gap:8px;align-items:flex-start;margin:8px 0;font-size:13px;"><input type="checkbox" id="pk_addto" checked style="margin-top:3px;"> <span>Yenileme: sporcunun bu havuzda bireysel paketi varsa <b>yeni paket açma</b>, mevcut pakete saat ekle.</span></label>');
+}
+['pkgPoolChanged','apkgChanged'].forEach(n=>{ const f=window[n]; if(typeof f!=='function') return; window[n]=function(){ const r=f.apply(this,arguments); try{ renewBoxRender(); }catch(e){ console.error(e); } return r; }; });
+{ const _s=sellPackage; sellPackage=function(athId,hours,withPayment,pool,size){
+    size=Number(size)||1; const root=ptnRoot(); const cb=root&&root.querySelector('#pk_addto');
+    const prev=(size===1&&role==='admin'&&cb&&cb.checked)?(DB.plPackages||[]).filter(x=>x.athlete===athId&&(x.pool||'')===(pool||'')&&(x.size||1)===1).sort((a,b)=>String(b.createdAt).localeCompare(String(a.createdAt)))[0]:null;
+    const r=_s.apply(this,arguments); if(!r.ok||!prev) return r;
+    const nw=(DB.plPackages||[]).find(x=>x.id===r.id); if(!nw||nw.id===prev.id) return r;
+    prev.hours=Number(prev.hours)+Number(nw.hours); prev.price=r2((Number(prev.price)||0)+(Number(nw.price)||0));
+    (prev.renewals=prev.renewals||[]).push({date:todayStr(),hours:Number(nw.hours),price:Number(nw.price)||0});
+    DB.payments.forEach(p=>{ if(p.pkg===nw.id){ p.pkg=prev.id; p.addHours=Number(nw.hours); p.addTotal=prev.hours; } });
+    (DB.privateLessons||[]).forEach(l=>{ if(l.pkg===nw.id) l.pkg=prev.id; });
+    DB.plPackages=DB.plPackages.filter(x=>x.id!==nw.id); try{ recalcBalances(); }catch(e){} save();
+    return Object.assign({},r,{id:prev.id,merged:true,addedHours:Number(nw.hours),totalHours:prev.hours}); }; }
+
+/* sporcu kartı: üyelik ve yenileme geçmişi */
+{ const _oa=openAthlete; openAthlete=function(id){ _oa(id); try{ if(role!=='admin'||!$('#drawer').classList.contains('open')) return; const body=document.querySelector('#drawer .drawer-body'); const a=DB.athletes.find(x=>x.id===id); if(!a||!body||body.querySelector('#renew_card')) return;
+    const mem=a.membership; const pays=DB.payments.filter(p=>p.athlete===id&&p.status==='paid'&&payDetail(p)&&(RENEW_MONTHS[p.type]||p.term||p.pkg)).sort((x,y)=>String(y.paidDate||y.due).localeCompare(String(x.paidDate||x.due)));
+    const pks=(DB.plPackages||[]).filter(p=>p.athlete===id&&(p.renewals||[]).length);
+    if(!mem&&!pays.length&&!pks.length) return;
+    let h='<div class="section-title">Üyelik ve yenileme geçmişi</div><div class="card" id="renew_card" style="font-size:13px;">';
+    if(mem&&mem.end) h+=`<div style="margin-bottom:8px;"><b>Üyelik bitişi:</b> ${escHtml(fmtDate(mem.end))}${mem.lastPaid?' · <b>Son ödeme:</b> '+escHtml(fmtDate(mem.lastPaid)):''}${mem.start?' · Başlangıç: '+escHtml(fmtDate(mem.start)):''}</div>`;
+    pks.forEach(p=>{ h+=`<div style="margin-bottom:6px;"><b>Özel ders paketi (${escHtml(p.pool||'')}):</b> toplam ${p.hours} saat, kalan ${pkgRemaining(p)} · ${p.renewals.map(r=>escHtml(fmtDate(r.date))+' +'+r.hours+' saat ('+money(r.price)+')').join(', ')}</div>`; });
+    if(pays.length) h+=`<table style="width:100%;font-size:12.5px;"><thead><tr><th>Ödeme tarihi</th><th>Tür</th><th>Detay</th><th>Tutar</th></tr></thead><tbody>${pays.map(p=>`<tr><td>${escHtml(fmtDate(p.paidDate||p.due))}</td><td>${escHtml(p.type||'')}</td><td>${escHtml(payDetail(p))}</td><td>${money(p.amount)}</td></tr>`).join('')}</tbody></table>`;
+    h+='</div>'; body.insertAdjacentHTML('beforeend',h); }catch(e){ console.error(e); } }; }
 
 /* ============ INIT ============ */
 boot();
