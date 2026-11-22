@@ -9066,6 +9066,23 @@ function dhRemoveUi(id,gid,ds){ if(!confirm('Yardımcı hoca bu dersten çıkar�
          <div id="dh_m" role="alert" style="font-size:12.5px;min-height:14px;margin-bottom:6px;"></div><button class="btn primary" onclick="dhAddUi('${gid}','${ds}')">Yardımcı ekle</button></div>`); }
     }catch(e){ console.error(e); } }; }
 
+/* ============ Yoklama listesi katılış tarihine uyar + başlangıçtan önceki yoklamaları temizleme ============ */
+{ const _cr=cRoster; cRoster=function(gid,ds){ const saved=(DB.attendanceLog||{})[gid+'|'+ds]||{}; return _cr(gid,ds).filter(a=>!(a.joined&&okDateStr(a.joined)&&ds<a.joined)||saved[a.id]!==undefined); }; }
+{ const _hp=cGrpHistPush; cGrpHistPush=function(a,fromDs){ const had=!!(a&&a.groupSince); _hp(a,fromDs);
+    try{ const h=a&&a.groupHistory; if(h&&h.length){ const l=h[h.length-1]; if(l.from==='0000-00-00'&&!had&&a.joined&&okDateStr(a.joined)) l.from=a.joined; } }catch(e){} }; }
+function attPreJoin(){ const out=[]; Object.keys(DB.attendanceLog||{}).forEach(k=>{ const p=k.split('|'); const ds=p[1]; if(!ds) return; const rec=DB.attendanceLog[k]||{};
+    Object.keys(rec).forEach(id=>{ const a=DB.athletes.find(x=>x.id===id); if(a&&a.joined&&okDateStr(a.joined)&&ds<a.joined) out.push({k,id,name:a.name,date:ds,joined:a.joined,group:p[0],st:rec[id]}); }); }); return out; }
+function attPreJoinClean(){
+  if(role!=='admin') return {ok:false,n:0}; const list=attPreJoin(); const touched=new Set();
+  list.forEach(x=>{ const rec=DB.attendanceLog[x.k]; if(!rec) return; delete rec[x.id]; touched.add(x.k); if(!Object.keys(rec).length) delete DB.attendanceLog[x.k]; });
+  touched.forEach(k=>{ const p=k.split('|'); try{ if(DB.attendanceLog[k]) makeupSync(p[0],p[1],DB.attendanceLog[k]); else makeupSync(p[0],p[1],{}); }catch(e){} });
+  if(list.length) save(); return {ok:true,n:list.length}; }
+function attPreJoinUi(){ const l=attPreJoin(); if(!l.length){ alert('Başlangıçtan önce kaydedilmiş yoklama yok.'); return; }
+  const sample=l.slice(0,12).map(x=>x.name+' — '+fmtDate(x.date)+' ('+x.st+'), katılış '+fmtDate(x.joined)).join('\n');
+  if(!confirm(l.length+' yoklama kaydı, sporcunun katılış tarihinden öncesine ait. Silinsin mi?\n\n'+sample+(l.length>12?'\n… ve '+(l.length-12)+' kayıt daha':'')+'\n\nBu işlem geri alınamaz. Bu kayıtlarla ilgili otomatik telafi hakları da güncellenir.')) return;
+  const r=attPreJoinClean(); alert(r.n+' kayıt silindi.'); render(); }
+{ const _ra=renderAttendance; renderAttendance=function(c){ _ra(c); try{ if(role!=='admin') return; const n=attPreJoin().length; c.insertAdjacentHTML('afterbegin',`<div class="card" style="margin-bottom:12px;font-size:13px;display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:space-between;"><span>${n?`<b style="color:var(--red);">${n}</b> yoklama kaydı sporcunun katılış tarihinden öncesine ait.`:'Katılış tarihinden önceye ait yoklama kaydı yok.'}</span>${n?'<button class="btn sm danger" onclick="attPreJoinUi()">Başlangıçtan önceki yoklamaları temizle</button>':''}</div>`); }catch(e){ console.error(e); } }; }
+
 /* ============ INIT ============ */
 boot();
 </script>
