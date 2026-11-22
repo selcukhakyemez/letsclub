@@ -7507,20 +7507,21 @@ saveGroup=function(c,editId){
 coachPayFor=function(cid,ym,pool){
   if(pool===undefined) pool=null;
   const per={}; DB.pools.forEach(p=>{per[p.name]={groupCount:0,teamCount:0,asstCount:0,privateCount:0,private2Count:0,private3Count:0,otherCount:0};});
-  const bump=(pn,k,n)=>{ if(per[pn]) per[pn][k]+=n; };
+  const bump=(pn,k,n)=>{ if(per[pn]) per[pn][k]+=n; }; const hxN={}, hxA={};
   DB.groups.forEach(g=>{ monthDays(ym).forEach(ds=>{ if(!groupOnDay(g,ds)||gCancelled(g,ds)) return; const pn=gPoolOn(g,ds);
     if(mergeSkip(g,ds)) return;
     if(effCoach(g,ds)===cid) bump(pn,gIsTeam(g)?'teamCount':'groupCount',1);
-    else if(g.assistant===cid) bump(pn,'asstCount',1); }); });
+    else if(g.assistant===cid) bump(pn,'asstCount',1);
+    if(effCoach(g,ds)!==cid&&(DB.dayHelpers||[]).some(h=>h.group===g.id&&h.date===ds&&h.coach===cid)){ const mc=effCoach(g,ds); hxN[pn]=(hxN[pn]||0)+1; hxA[pn]=(hxA[pn]||0)+(gIsTeam(g)?(rateOf(mc,'team',pn)||TEAM_SESSION_FEE):rateOf(mc,'group',pn)); } }); });
   const sess={}; (DB.privateLessons||[]).filter(p=>!p._stub&&p.coach===cid&&p.status==='Onaylandı'&&ymOf(p.date)===ym).forEach(p=>{ const k=p.sid||p.id; (sess[k]=sess[k]||{pool:lessonPool(p),n:0}).n++; });
   Object.values(sess).forEach(s=>{ bump(s.pool,s.n>=3?'private3Count':s.n===2?'private2Count':'privateCount',1); });
   (DB.extraSessions||[]).filter(x=>x.coach===cid&&ymOf(x.date)===ym).forEach(x=>bump(x.pool,'otherCount',x.count));
   const byPool={}; let gc=0,ac=0,pc=0,p2=0,p3=0,oc=0,ga=0,aa=0,pa=0,oa=0,tc=0;
   Object.keys(per).forEach(pn=>{
     if(pool!==null&&pn!==pool) return; const x=per[pn];
-    const a=r2(x.groupCount*rateOf(cid,'group',pn)+x.teamCount*(rateOf(cid,'team',pn)||TEAM_SESSION_FEE)), s=r2(x.asstCount*rateOf(cid,'asst',pn));
+    const a=r2(x.groupCount*rateOf(cid,'group',pn)+x.teamCount*(rateOf(cid,'team',pn)||TEAM_SESSION_FEE)+(hxA[pn]||0)), s=r2(x.asstCount*rateOf(cid,'asst',pn));
     const b=r2(x.privateCount*rateOf(cid,'private',pn)+x.private2Count*rateOf(cid,'private2',pn)+x.private3Count*rateOf(cid,'private3',pn));
-    const c=r2(x.otherCount*rateOf(cid,'other',pn)); const pcn=x.privateCount+x.private2Count+x.private3Count; const gcn=x.groupCount+x.teamCount;
+    const c=r2(x.otherCount*rateOf(cid,'other',pn)); const pcn=x.privateCount+x.private2Count+x.private3Count; const gcn=x.groupCount+x.teamCount+(hxN[pn]||0);
     byPool[pn]={groupCount:gcn,teamCount:x.teamCount,asstCount:x.asstCount,privateCount:pcn,private2Count:x.private2Count,private3Count:x.private3Count,otherCount:x.otherCount,groupAmt:a,asstAmt:s,privateAmt:b,otherAmt:c,total:r2(a+s+b+c)};
     gc+=gcn; tc+=x.teamCount; ac+=x.asstCount; pc+=pcn; p2+=x.private2Count; p3+=x.private3Count; oc+=x.otherCount; ga+=a; aa+=s; pa+=b; oa+=c;
   });
@@ -9027,6 +9028,43 @@ function plTrBulkDo(cid){ const to=(document.getElementById('plb_to')||{}).value
   aths.forEach(id=>{ const r=plTransfer({athlete:id,to,from,reason,fromCoach:cid}); if(r.ok){ mv+=r.moved; cf+=r.conflicts; } else if(!/zaten/.test(r.errors.join(' '))) err.push(r.errors.join(' ')); });
   closeDrawer(); mgmtMsg=`${mv} özel ders ${coachName(to)} eğitmenine devredildi.`+(cf?` ⚠ ${cf} çakışma var.`:''); render(); }
 { const _rc=renderCoaches; renderCoaches=function(c){ _rc.apply(this,arguments); try{ if(role!=='admin') return; c.querySelectorAll('button[onclick^="assignOpen("]').forEach(b=>{ const m=/assignOpen\('([^']+)'\)/.exec(b.getAttribute('onclick')); if(!m||b.parentElement.querySelector('.plb-btn')) return; b.insertAdjacentHTML('afterend',`<button class="btn sm plb-btn" onclick="plTrBulkOpen('${m[1]}')">Özel dersleri devret</button>`); }); }catch(e){ console.error(e); } }; }
+
+/* ============ Tek günlük yardımcı hoca (aynı ders ücreti, ortak yoklama listesi) ============ */
+if(C_COLLS.indexOf('dayHelpers')<0) C_COLLS.push('dayHelpers');
+if(!SB_SPECS.some(s=>s.c==='dayHelpers')) SB_SPECS.push({c:'dayHelpers',t:'arr'});
+if(typeof AU_COLL==='object') AU_COLL.dayHelpers='Yardımcı hoca';
+function dhOf(g,ds){ return (DB.dayHelpers||[]).filter(x=>x.group===(g.id||g)&&x.date===ds); }
+function dhAdd(groupId,ds,coachId){
+  if(role!=='admin') return {ok:false,errors:['Yardımcı hocayı yalnızca yönetici ekler.']};
+  cEnsure(); const g=DB.groups.find(x=>x.id===groupId); if(!g) return {ok:false,errors:['Grup bulunamadı.']};
+  if(!groupOnDay(g,ds)) return {ok:false,errors:['Bu grubun seçilen günde dersi yok.']};
+  if(gCancelled(g,ds)) return {ok:false,errors:['Ders iptal edilmiş.']};
+  const co=DB.coaches.find(x=>x.id===coachId); if(!co) return {ok:false,errors:['Yardımcı hocayı seçin.']};
+  if(effCoach(g,ds)===coachId||g.coach===coachId) return {ok:false,errors:[co.name+' bu dersin zaten hocası.']};
+  if(g.assistant===coachId) return {ok:false,errors:[co.name+' bu grubun kalıcı yardımcısı; ayrıca eklemeye gerek yok.']};
+  if(dhOf(g,ds).some(x=>x.coach===coachId)) return {ok:false,errors:[co.name+' bu derse zaten eklenmiş.']};
+  if((DB.coachLeaves||[]).some(l=>l.coach===coachId&&lcCovers(l,ds))) return {ok:false,errors:[co.name+' bu tarihte izinli.']};
+  const m=groupMinutes(g,ds); const info=coachBusyInfo(coachId,ds,m[0],m[1],groupId,null);
+  if(info){ const og=info.type==='group'?DB.groups.find(x=>x.id===info.ref):null; return {ok:false,errors:[co.name+' bu saatte '+(og?'"'+og.name+'" grubunda':'özel derste')+' görevli.']}; }
+  const rec={id:cUid('dh'),group:groupId,date:ds,coach:coachId,createdAt:todayStr()}; DB.dayHelpers.push(rec); save(); return {ok:true,errors:[],id:rec.id};
+}
+function dhRemove(id){ if(role!=='admin') return; DB.dayHelpers=(DB.dayHelpers||[]).filter(x=>x.id!==id); save(); }
+const _dhSub=subGroupIds;
+subGroupIds=function(coachId,ds){ ds=ds||todayStr(); const out=_dhSub(coachId,ds); (DB.dayHelpers||[]).forEach(h=>{ if(h.coach===coachId&&h.date===ds&&out.indexOf(h.group)<0) out.push(h.group); }); return out; };
+const _dhName=cEffName;
+cEffName=function(g,ds){ let n=_dhName(g,ds); const hs=dhOf(g,ds); return hs.length?n+' + yardımcı: '+hs.map(h=>coachName(h.coach)).join(', '):n; };
+function dhAddUi(gid,ds){ const r=dhAdd(gid,ds,cV('dh_c')); const m=document.getElementById('dh_m'); if(!r.ok){ if(m){ m.style.color='var(--red)'; m.textContent=r.errors.join(' '); } return; } render(); setTimeout(()=>showGroupSession(gid,ds),50); }
+function dhRemoveUi(id,gid,ds){ if(!confirm('Yardımcı hoca bu dersten çıkarılsın mı? Ücreti de kalkar.')) return; dhRemove(id); render(); setTimeout(()=>showGroupSession(gid,ds),50); }
+{ const _sg=showGroupSession; showGroupSession=function(gid,ds){ _sg(gid,ds);
+    try{ const g=DB.groups.find(x=>x.id===gid); if(!g||!ds||!groupOnDay(g,ds)||!$('#drawer').classList.contains('open')) return; const body=document.querySelector('#drawer .drawer-body'); if(!body||body.querySelector('#dh_box')) return;
+      const hs=dhOf(g,ds); const me=(DB.currentUser||{}).coachId; const canc=gCancelRec(g,ds); const t=todayStr();
+      if(role==='coach'&&hs.some(h=>h.coach===me)&&!canc&&ds<=t&&!body.querySelector('[onclick^="gsTakeAtt"]')) body.insertAdjacentHTML('beforeend',`<div style="margin-top:14px;"><button class="btn primary" onclick="gsTakeAtt('${gid}','${ds}')">Yoklama al / düzenle</button><div style="font-size:12px;color:var(--muted);margin-top:6px;">Bu derste yardımcı hocasınız; yoklama listesi ana hocayla ortaktır. Bir öğrenci için kayıt tektir, sonra kaydeden değiştirir.</div></div>`);
+      if(role==='admin'&&!canc){ const ex=DB.coaches.filter(c=>c.id!==effCoach(g,ds)&&c.id!==g.coach&&!hs.some(h=>h.coach===c.id));
+        body.insertAdjacentHTML('beforeend',`<div id="dh_box"><div class="section-title">Yardımcı hoca (yalnızca bu ders)</div>${hs.map(h=>`<div class="card" style="margin-bottom:6px;padding:8px 12px;display:flex;justify-content:space-between;align-items:center;"><span>${escHtml(coachName(h.coach))}</span><button class="btn sm danger" onclick="dhRemoveUi('${h.id}','${gid}','${ds}')">Çıkar</button></div>`).join('')}
+         <div style="font-size:12.5px;color:var(--muted);margin:6px 0 8px;">Yardımcı hocaya bu ders için ana hocanın ders ücreti (o havuzdaki tarifesi) yazılır; ana hocanın ücreti değişmez. Her iki hoca da aynı yoklama listesini görür.</div>
+         <div class="field"><label for="dh_c">Yardımcı hoca</label><select id="dh_c"><option value="">Seçin</option>${ex.map(c=>`<option value="${escHtml(c.id)}">${escHtml(c.name)}</option>`).join('')}</select></div>
+         <div id="dh_m" role="alert" style="font-size:12.5px;min-height:14px;margin-bottom:6px;"></div><button class="btn primary" onclick="dhAddUi('${gid}','${ds}')">Yardımcı ekle</button></div>`); }
+    }catch(e){ console.error(e); } }; }
 
 /* ============ INIT ============ */
 boot();
