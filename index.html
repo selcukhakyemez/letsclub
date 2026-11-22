@@ -8959,6 +8959,73 @@ function renewBoxRender(){
     if(pays.length) h+=`<table style="width:100%;font-size:12.5px;"><thead><tr><th>Ödeme tarihi</th><th>Tür</th><th>Detay</th><th>Tutar</th></tr></thead><tbody>${pays.map(p=>`<tr><td>${escHtml(fmtDate(p.paidDate||p.due))}</td><td>${escHtml(p.type||'')}</td><td>${escHtml(payDetail(p))}</td><td>${money(p.amount)}</td></tr>`).join('')}</tbody></table>`;
     h+='</div>'; body.insertAdjacentHTML('beforeend',h); }catch(e){ console.error(e); } }; }
 
+/* ============ Özel ders eğitmen değişikliği (geçmiş dersler eski hocada, kalan dersler yeni hocada) ============ */
+function plTrLessons(athId,fromCoach,from){ return (DB.privateLessons||[]).filter(l=>l.athlete===athId&&(l.status==='Onaylandı'||l.status==='Onay bekliyor')&&(!fromCoach||l.coach===fromCoach)); }
+function plTrPlan(athId,to,from,fromCoach){
+  const all=plTrLessons(athId,fromCoach); const sids=new Set(); const move=[]; const keep=[];
+  all.forEach(l=>{ if(l.date>=from&&l.coach!==to){ move.push(l); if(l.sid) sids.add(l.sid); } else keep.push(l); });
+  const extra=(DB.privateLessons||[]).filter(l=>l.sid&&sids.has(l.sid)&&l.athlete!==athId&&(l.status==='Onaylandı'||l.status==='Onay bekliyor')&&l.date>=from&&l.coach!==to);
+  const moving=new Set(move.concat(extra)); const conflicts=[...moving].filter(l=>(DB.privateLessons||[]).some(o=>o.coach===to&&o.date===l.date&&o.hour===l.hour&&(o.status==='Onaylandı'||o.status==='Onay bekliyor')&&(!l.sid||o.sid!==l.sid)&&!moving.has(o))).length;
+  return {move:[...moving],mine:move.length,done:keep.filter(l=>l.date<from).length,extra:extra.length,conflicts};
+}
+function plTransfer(o){
+  if(role!=='admin') return {ok:false,errors:['Yalnızca yönetici eğitmen değiştirebilir.']};
+  const a=DB.athletes.find(x=>x.id===o.athlete); if(!a) return {ok:false,errors:['Sporcu bulunamadı.']};
+  if(!o.to||!DB.coaches.some(c=>c.id===o.to)) return {ok:false,errors:['Yeni eğitmeni seçin.']};
+  const from=o.from||todayStr(); if(!okDateStr(from)) return {ok:false,errors:['Geçerlilik tarihi geçersiz.']};
+  const prevCoach=a.coach||''; const plan=plTrPlan(o.athlete,o.to,from,o.fromCoach||'');
+  if(!plan.move.length&&!(a.kind==='private'&&prevCoach!==o.to)) return {ok:false,errors:['Taşınacak ders yok veya sporcunun eğitmeni zaten bu kişi.']};
+  const old=new Set(plan.move.map(l=>l.coach)); plan.move.forEach(l=>{ l.coach=o.to; });
+  if(a.kind==='private'&&(!o.fromCoach||prevCoach===o.fromCoach)) a.coach=o.to;
+  (a.coachLog=a.coachLog||[]).push({date:todayStr(),eff:from,from:[...old].join(',')||prevCoach,to:o.to,n:plan.move.length,reason:String(o.reason||'').slice(0,120)});
+  save(); return {ok:true,errors:[],moved:plan.move.length,done:plan.done,conflicts:plan.conflicts};
+}
+function plTrBox(id){ return document.getElementById('pltr_'+id); }
+function plTrPreview(id){
+  const v=k=>(document.getElementById('pltr_'+k)||{}).value||''; const el=document.getElementById('pltr_prev'); if(!el) return;
+  const to=v('to'), from=v('from')||todayStr(); if(!to){ el.textContent=''; return; }
+  const p=plTrPlan(id,to,from,''); el.innerHTML=`<b>${p.done}</b> ders (${escHtml(fmtDate(from))} öncesi) eski eğitmende kalır, ücreti eski eğitmene yazılır.<br><b>${p.move.length}</b> ders ${escHtml(coachName(to))} eğitmenine geçer, ücreti yeni eğitmene yazılır.${p.extra?`<br><span style="color:var(--muted);">(${p.extra} ders aynı seansı paylaşan diğer sporculara ait; seans birlikte taşınır.)</span>`:''}${p.conflicts?`<br><span style="color:var(--red);">⚠ ${p.conflicts} derste yeni eğitmenin aynı saatte başka dersi var.</span>`:''}`;
+}
+function plTrDo(id){
+  const v=k=>(document.getElementById('pltr_'+k)||{}).value||''; const to=v('to'); const from=v('from')||todayStr(); const p=plTrPlan(id,to,from,'');
+  if(!to){ document.getElementById('pltr_msg').textContent='Yeni eğitmeni seçin.'; return; }
+  if(!confirm(`${p.move.length} ders ${coachName(to)} eğitmenine geçirilsin mi?\n${p.done} ders eski eğitmende kalır (ücreti eski eğitmene yazılır).`+(p.conflicts?`\n⚠ ${p.conflicts} derste çakışma var.`:''))) return;
+  const r=plTransfer({athlete:id,to,from,reason:v('reason')}); const m=document.getElementById('pltr_msg'); if(!r.ok){ m.style.color='var(--red)'; m.textContent=r.errors.join(' '); return; }
+  render(); setTimeout(()=>{ openAthlete(id); const mm=document.getElementById('pltr_msg'); if(mm){ mm.style.color='var(--green)'; mm.textContent=`${r.moved} ders yeni eğitmene geçirildi.`+(r.conflicts?` ⚠ ${r.conflicts} çakışma var.`:''); } },60);
+}
+{ const _oa=openAthlete; openAthlete=function(id){ _oa(id); try{ if(role!=='admin'||!$('#drawer').classList.contains('open')) return; const body=document.querySelector('#drawer .drawer-body'); const a=DB.athletes.find(x=>x.id===id); if(!a||!body||body.querySelector('#pltr_box')) return;
+    const hasPl=a.kind==='private'||(DB.privateLessons||[]).some(l=>l.athlete===id&&l.status!=='İptal')||(DB.plPackages||[]).some(p=>p.athlete===id); if(!hasPl||a.status!=='active') return;
+    const cur=[...new Set((DB.privateLessons||[]).filter(l=>l.athlete===id&&l.date>=todayStr()&&(l.status==='Onaylandı'||l.status==='Onay bekliyor')).map(l=>l.coach))].map(coachName);
+    const log=(a.coachLog||[]).slice().reverse().map(x=>`<div style="font-size:12.5px;color:var(--muted);">${escHtml(fmtDate(x.eff))}: ${x.from?escHtml(x.from.split(',').map(coachName).join('/')):'—'} → ${escHtml(coachName(x.to))} (${x.n} ders${x.reason?', '+escHtml(x.reason):''})</div>`).join('');
+    body.insertAdjacentHTML('beforeend',`<div class="section-title">Özel ders eğitmenini değiştir</div><div class="card" id="pltr_box" style="margin-bottom:14px;">
+     <div style="font-size:13px;margin-bottom:8px;">Şu anki eğitmen: <b>${a.kind==='private'&&a.coach?escHtml(coachName(a.coach)):(cur.length?escHtml(cur.join(', ')):'—')}</b></div>
+     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;">
+      <div class="field" style="margin:0;"><label for="pltr_to">Yeni eğitmen</label><select id="pltr_to" onchange="plTrPreview('${id}')"><option value="">Seçin</option>${DB.coaches.map(c=>`<option value="${escHtml(c.id)}">${escHtml(c.name)}</option>`).join('')}</select></div>
+      <div class="field" style="margin:0;"><label for="pltr_from">Bu tarihten itibaren</label><input id="pltr_from" type="date" value="${todayStr()}" onchange="plTrPreview('${id}')"></div>
+      <div class="field" style="margin:0;"><label for="pltr_reason">Sebep (isteğe bağlı)</label><input id="pltr_reason" maxlength="100"></div></div>
+     <div id="pltr_prev" style="font-size:12.5px;margin:8px 0;"></div><div id="pltr_msg" role="alert" style="font-size:12.5px;min-height:14px;margin-bottom:6px;"></div>
+     <button class="btn primary" onclick="plTrDo('${id}')">Eğitmeni değiştir</button>${log?`<div style="margin-top:10px;">${log}</div>`:''}</div>`); }catch(e){ console.error(e); } }; }
+
+/* eğitmen ayrılıyorsa: tüm özel ders öğrencilerini toplu devret */
+function plTrBulkPlan(from,to,coach){ const aths=new Set(); (DB.privateLessons||[]).forEach(l=>{ if(l.coach===coach&&l.date>=from&&(l.status==='Onaylandı'||l.status==='Onay bekliyor')) aths.add(l.athlete); }); DB.athletes.forEach(a=>{ if(a.kind==='private'&&a.coach===coach&&a.status==='active') aths.add(a.id); }); return [...aths]; }
+function plTrBulkOpen(cid){ if(role!=='admin') return; const co=DB.coaches.find(x=>x.id===cid); if(!co) return;
+  openDrawerHtml(`<div class="drawer-head"><div style="font-weight:800;font-size:16px;">${escHtml(co.name)}: özel dersleri devret</div><button class="close-x" onclick="closeDrawer()">✕</button></div><div class="drawer-body" style="padding-top:16px;">
+   <div style="font-size:13px;margin-bottom:10px;">Seçtiğiniz tarihten sonraki özel dersler ve bu eğitmene atanmış özel ders öğrencileri yeni eğitmene geçer. Önceki dersler ${escHtml(co.name)} adına kalır; ücretleri değişmez.</div>
+   <div class="field"><label for="plb_to">Yeni eğitmen</label><select id="plb_to" onchange="plTrBulkPrev('${cid}')"><option value="">Seçin</option>${DB.coaches.filter(c=>c.id!==cid).map(c=>`<option value="${escHtml(c.id)}">${escHtml(c.name)}</option>`).join('')}</select></div>
+   <div class="field"><label for="plb_from">Bu tarihten itibaren</label><input id="plb_from" type="date" value="${todayStr()}" onchange="plTrBulkPrev('${cid}')"></div>
+   <div class="field"><label for="plb_reason">Sebep (isteğe bağlı)</label><input id="plb_reason" maxlength="100" placeholder="Örn. eğitmen ayrıldı"></div>
+   <div id="plb_prev" style="font-size:13px;margin:8px 0;"></div><div id="plb_msg" role="alert" style="font-size:12.5px;min-height:14px;"></div>
+   <div style="display:flex;gap:10px;margin-top:10px;"><button class="btn primary" onclick="plTrBulkDo('${cid}')">Devret</button><button class="btn" onclick="closeDrawer()">Vazgeç</button></div></div>`); plTrBulkPrev(cid); }
+function plTrBulkPrev(cid){ const to=(document.getElementById('plb_to')||{}).value||'', from=(document.getElementById('plb_from')||{}).value||todayStr(); const el=document.getElementById('plb_prev'); if(!el) return;
+  const aths=plTrBulkPlan(from,to,cid); let n=0,conf=0; aths.forEach(id=>{ const p=plTrPlan(id,to||'__x',from,cid); n+=p.move.length; conf+=p.conflicts; });
+  el.innerHTML=`<b>${aths.length}</b> sporcu, <b>${n}</b> ders devredilecek.${conf&&to?` <span style="color:var(--red);">⚠ ${conf} çakışma</span>`:''}`; }
+function plTrBulkDo(cid){ const to=(document.getElementById('plb_to')||{}).value||'', from=(document.getElementById('plb_from')||{}).value||todayStr(), reason=(document.getElementById('plb_reason')||{}).value||''; const m=document.getElementById('plb_msg');
+  if(!to){ m.style.color='var(--red)'; m.textContent='Yeni eğitmeni seçin.'; return; } const aths=plTrBulkPlan(from,to,cid); if(!aths.length){ m.style.color='var(--red)'; m.textContent='Devredilecek özel ders veya sporcu yok.'; return; }
+  if(!confirm(`${aths.length} sporcunun özel dersleri ${coachName(to)} eğitmenine geçirilsin mi?`)) return; let mv=0,cf=0,err=[];
+  aths.forEach(id=>{ const r=plTransfer({athlete:id,to,from,reason,fromCoach:cid}); if(r.ok){ mv+=r.moved; cf+=r.conflicts; } else if(!/zaten/.test(r.errors.join(' '))) err.push(r.errors.join(' ')); });
+  closeDrawer(); mgmtMsg=`${mv} özel ders ${coachName(to)} eğitmenine devredildi.`+(cf?` ⚠ ${cf} çakışma var.`:''); render(); }
+{ const _rc=renderCoaches; renderCoaches=function(c){ _rc.apply(this,arguments); try{ if(role!=='admin') return; c.querySelectorAll('button[onclick^="assignOpen("]').forEach(b=>{ const m=/assignOpen\('([^']+)'\)/.exec(b.getAttribute('onclick')); if(!m||b.parentElement.querySelector('.plb-btn')) return; b.insertAdjacentHTML('afterend',`<button class="btn sm plb-btn" onclick="plTrBulkOpen('${m[1]}')">Özel dersleri devret</button>`); }); }catch(e){ console.error(e); } }; }
+
 /* ============ INIT ============ */
 boot();
 </script>
