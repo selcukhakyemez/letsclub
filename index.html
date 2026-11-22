@@ -7777,7 +7777,7 @@ function missingAttendance(days){
   for(let i=0;i<days;i++){ const ds=fbAddDays(t,-i);
     DB.groups.forEach(g=>{ if(!groupOnDay(g,ds)||gCancelled(g,ds)) return; const b=gBlockOn(g,ds); if(!b) return; const end=gBlockMin(b)[1]; if(i===0&&end>nowMin) return;
       const rec=DB.attendanceLog[g.id+'|'+ds]; if(rec&&Object.keys(rec).length) return;
-      if(!DB.athletes.some(a=>a.group===g.id&&a.status==='active')) return; out.push({g,ds,min:gBlockMin(b)[0]}); }); }
+      if(!cRoster(g.id,ds).some(a=>a.status==='active')) return; out.push({g,ds,min:gBlockMin(b)[0]}); }); }
   return out.sort((a,b)=>b.ds.localeCompare(a.ds)||a.min-b.min);
 }
 function pageCoachPay(){ const me=DB.currentUser&&DB.currentUser.coachId; return me?cpCoachCard(me,'Bu ay hakedişim'):''; }
