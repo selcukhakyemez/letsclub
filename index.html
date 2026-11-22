@@ -635,10 +635,22 @@ function render(){
 }
 
 /* ============ DASHBOARD ============ */
+function dashActiveStats(){
+  const cats=['child','male','female','other']; const mk=()=>({child:0,male:0,female:0,other:0,total:0}); const o={group:mk(),priv:mk(),total:0,frozen:0};
+  DB.athletes.forEach(a=>{ if(a.status!=='active') return; let fz=false; try{ fz=isFrozenNow(a); }catch(e){} if(fz){ o.frozen++; return; }
+    const row=a.kind==='private'?o.priv:o.group; const ag=a.dob?age(a.dob):null; const adult=a.adult||(ag!==null&&ag>=18);
+    const cat=!adult?(ag===null?'other':'child'):(a.gender==='K'?'female':a.gender==='E'?'male':'other'); row[cat]++; row.total++; o.total++; });
+  return o;
+}
+function dashActiveTable(o){
+  const hasOther=o.group.other+o.priv.other>0; const cell=v=>`<td style="text-align:right;padding:3px 6px;">${v}</td>`;
+  const row=(n,r)=>`<tr><td style="padding:3px 6px;">${n}</td>${cell(r.child)}${cell(r.male)}${cell(r.female)}${hasOther?cell(r.other):''}<td style="text-align:right;padding:3px 6px;font-weight:700;">${r.total}</td></tr>`;
+  return `<div style="overflow-x:auto;margin-top:8px;"><table style="font-size:12.5px;width:100%;"><thead><tr><th></th><th style="text-align:right;padding:3px 6px;">Çocuk</th><th style="text-align:right;padding:3px 6px;">Yetişkin Erkek</th><th style="text-align:right;padding:3px 6px;">Yetişkin Kadın</th>${hasOther?'<th style="text-align:right;padding:3px 6px;">Belirsiz</th>':''}<th style="text-align:right;padding:3px 6px;">Toplam</th></tr></thead><tbody>${row('Grup dersi',o.group)}${row('Özel ders',o.priv)}</tbody></table></div>${o.frozen?`<div class="delta" style="margin-top:6px;">${o.frozen} dondurulmuş sporcu sayılmadı</div>`:''}`;
+}
 function renderDashboardBase(c){
   if(role==='parent'||role==='athlete'){ renderFamilyHome(c); return; }
   if(role==='coach'){ renderCoachHome(c); return; }
-  const activeAthletes=DB.athletes.filter(a=>a.status==='active').length;
+  const AS=dashActiveStats(); const activeAthletes=AS.total;
   const overdue=DB.payments.filter(p=>p.status==='overdue');
   const overdueSum=overdue.reduce((s,p)=>s+p.amount,0);
   const paidThisMonth=DB.payments.filter(p=>p.status==='paid').reduce((s,p)=>s+p.amount,0);
@@ -648,7 +660,7 @@ function renderDashboardBase(c){
 
   c.innerHTML=`
   <div class="grid kpi">
-    <div class="card"><div class="label">Aktif Sporcu</div><div class="val">${activeAthletes}</div><div class="delta up">▲ %4 bu ay</div></div>
+    <div class="card" style="grid-column:1/-1;"><div class="label">Aktif Sporcu</div><div class="val">${activeAthletes}</div>${dashActiveTable(AS)}</div>
     <div class="card"><div class="label">Bugünkü Ders</div><div class="val">${todayGroups.length}</div><div class="delta">${DB.groups.reduce((s,g)=>s+g.enrolled,0)} sporcu programda</div></div>
     <div class="card"><div class="label">Bu Ay Tahsilat</div><div class="val">${money(paidThisMonth)}</div><div class="delta up">▲ tahsilat düzenli</div></div>
     <div class="card"><div class="label">Gecikmiş Ödeme</div><div class="val">${money(overdueSum)}</div><div class="delta down">${overdue.length} sporcu</div></div>
