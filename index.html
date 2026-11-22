@@ -765,19 +765,21 @@ function renderAthletesBase(c){
   c.innerHTML=`
   <div class="pillbar" id="athFilters">
     <div class="p active" data-f="all">Tümü (${list.length})</div>
-    ${[...new Set(list.map(a=>a.level))].map(l=>`<div class="p" data-f="${l}">${l}</div>`).join('')}
+    ${[...new Set(list.map(a=>a.level).filter(Boolean))].map(l=>`<div class="p" data-f="${escHtml(l)}">${escHtml(l)}</div>`).join('')}
+    ${list.some(a=>a.kind==='private')?`<div class="p" data-f="__private">Özel ders (${list.filter(a=>a.kind==='private').length})</div>`:''}
+    ${list.some(a=>!a.level&&a.kind!=='private')?`<div class="p" data-f="__nolevel">Seviyesiz (${list.filter(a=>!a.level&&a.kind!=='private').length})</div>`:''}
   </div>
   <div class="card" style="padding:0;overflow:hidden;">
   <table><thead><tr><th>Sporcu</th><th>Yaş</th><th>Seviye</th><th>Grup</th><th>Antrenör</th><th>Devam</th><th>Lisans</th>${canSeeFinance()?'<th>Bakiye</th>':''}</tr></thead>
   <tbody id="athBody"></tbody></table>
   </div>`;
   function draw(filter){
-    const rows=list.filter(a=>filter==='all'||a.level===filter);
+    const rows=list.filter(a=>filter==='all'||(filter==='__private'?a.kind==='private':filter==='__nolevel'?(!a.level&&a.kind!=='private'):a.level===filter));
     $('#athBody').innerHTML = rows.length? rows.map(a=>`
       <tr class="rowlink" onclick="openAthlete('${a.id}')">
         <td class="name-cell">${av('athlete:'+a.id,a.name)}${a.name}${a.status==='trial'?' <span class="badge amber" style="margin-left:6px;">Deneme</span>':''}${a.status==='passive'?' <span class="badge grey" style="margin-left:6px;">Pasif</span>':''}</td>
         <td>${okDateStr(a.dob)?age(a.dob):'—'}</td>
-        <td>${a.level}</td>
+        <td>${a.level?escHtml(a.level):'—'}</td>
         <td>${a.kind==='private'&&!a.group?'Özel ders':groupName(a.group)}${a.adult?' <span class="badge" style="font-size:10.5px;">Yetişkin</span>':''}${a.membership?' <span class="badge aqua" style="font-size:10.5px;">'+a.membership.months+' aylık</span>':''}</td>
         <td>${coachName(a.coach)}</td>
         <td>%${Math.round(a.attendance*100)}</td>
