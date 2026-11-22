@@ -8781,6 +8781,65 @@ function athPayNew(id){ payOpen(); setTimeout(()=>{ const e=document.getElementB
 { const _oa=openAthlete; openAthlete=function(id){ _oa(id); try{ if(role!=='admin') return; const body=document.querySelector('#drawer .drawer-body'); if(!body||!$('#drawer').classList.contains('open')||document.getElementById('apay_bar')) return;
     body.insertAdjacentHTML('afterbegin',`<div id="apay_bar" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;"><button class="btn sm primary" onclick="athPayNew('${id}')">+ Ödeme gir</button><button class="btn sm" onclick="athPayGo('${id}')">Ödemeleri gör</button></div>`); }catch(e){ console.error(e); } }; }
 
+/* ============ Dashboard: kutuların yerini değiştirme (cihazda saklanır) ============ */
+let dashEdit=false;
+function dkLabel(e){ const l=e.querySelector('.label,.section-title,h3,b,summary'); const t=(l?l.textContent:e.textContent)||''; return t.replace(/[0-9.:\/,₺%\s]+/g,' ').trim().slice(0,28)||'kutu'; }
+function dkKeys(list){ const seen={}; return list.map(e=>{ let k=e.tagName+'.'+(e.className||'').toString().replace(/\s*(dk-unit|dk-edit)\s*/g,' ').trim()+':'+dkLabel(e); seen[k]=(seen[k]||0)+1; return seen[k]>1?k+'#'+seen[k]:k; }); }
+function dkStore(){ try{ return JSON.parse(localStorage.getItem('dashOrder_'+role)||'{}')||{}; }catch(e){ return {}; } }
+function dkSave(o){ try{ localStorage.setItem('dashOrder_'+role,JSON.stringify(o)); }catch(e){} }
+function dkUnits(c){ const out=[]; [...c.children].forEach(e=>{ if(e.classList.contains('dk-bar')) return; if(e.classList.contains('section-title')){ out.push({el:e,tied:true}); return; } out.push({el:e}); });
+  // başlık, kendinden sonraki kutuya bağlı birim olur
+  const units=[]; let pend=[]; out.forEach(o=>{ if(o.tied){ pend.push(o.el); } else { units.push({els:pend.concat([o.el]),main:o.el}); pend=[]; } }); pend.forEach(e=>units.push({els:[e],main:e})); return units; }
+function dkOrder(items,keys,saved){ if(!saved||!saved.length) return items; const res=[]; const used=new Set();
+  saved.forEach(k=>{ const i=keys.indexOf(k); if(i>=0&&!used.has(i)){ used.add(i); res.push(items[i]); } });
+  items.forEach((it,i)=>{ if(!used.has(i)) res.splice(Math.min(i,res.length),0,it); }); return res; }
+function dkApply(c){
+  const st=dkStore(); const units=dkUnits(c); const keys=dkKeys(units.map(u=>u.main));
+  const ord=dkOrder(units,keys,st.top); const bar=c.querySelector('.dk-bar'); const anchor=bar?bar.nextSibling:c.firstChild;
+  // yeniden sırala
+  const frag=document.createDocumentFragment(); ord.forEach(u=>u.els.forEach(e=>frag.appendChild(e))); c.insertBefore(frag,anchor&&anchor.parentNode===c?anchor:null);
+  const inner=st.inner||{};
+  [...c.children].filter(e=>(e.classList.contains('grid')||e.classList.contains('two-col'))&&e.children.length>1&&[...e.children].every(k=>k.classList.contains('card'))).forEach(g=>{
+    const ch=[...g.children]; const ks=dkKeys(ch); const gk=ks.slice().sort().join('|'); const o=dkOrder(ch,ks,inner[gk]); const f=document.createDocumentFragment(); o.forEach(e=>f.appendChild(e)); g.appendChild(f); });
+}
+function dkMark(c){
+  c.querySelectorAll('.dk-h').forEach(e=>e.remove()); c.querySelectorAll('.dk-unit').forEach(e=>e.classList.remove('dk-unit'));
+  if(!dashEdit) return;
+  const add=(el,kind)=>{ el.classList.add('dk-unit'); el.dataset.dk=kind; el.insertAdjacentHTML('afterbegin','<div class="dk-h" role="group" aria-label="Kutuyu taşı"><button type="button" class="dk-b" data-d="-1" aria-label="Yukarı/sola taşı">◀</button><span class="dk-grab" title="Tutup sürükleyin">⠿</span><button type="button" class="dk-b" data-d="1" aria-label="Aşağı/sağa taşı">▶</button></div>'); };
+  const isRow=e=>(e.classList.contains('grid')||e.classList.contains('two-col'))&&e.children.length>1&&[...e.children].every(k=>k.classList.contains('card'));
+  const rows=[...c.children].filter(isRow);
+  rows.forEach(g=>[...g.children].forEach(k=>add(k,'in')));
+  dkUnits(c).forEach(u=>{ add(u.main,'top'); if(rows.includes(u.main)){ const h=u.main.querySelector(':scope > .dk-h'); if(h){ h.style.right='auto'; h.style.left='6px'; h.style.top='-14px'; h.title='Tüm satırı taşı'; } } });
+}
+function dkPersist(c){
+  const st=dkStore(); const units=dkUnits(c); st.top=dkKeys(units.map(u=>u.main)); st.inner=st.inner||{};
+  [...c.children].filter(e=>(e.classList.contains('grid')||e.classList.contains('two-col'))&&e.children.length>1).forEach(g=>{ const ch=[...g.children].filter(k=>!k.classList.contains('dk-h')); const ks=dkKeys(ch); st.inner[ks.slice().sort().join('|')]=ks; });
+  dkSave(st);
+}
+function dkKeysClean(c){ /* kutu anahtarları handle eklenince bozulmasın */ }
+function dkMove(unit,dir){
+  const c=document.getElementById('content'); const kind=unit.dataset.dk;
+  if(kind==='in'){ const sib=dir<0?unit.previousElementSibling:unit.nextElementSibling; if(!sib||sib.classList.contains('dk-h')) return; if(dir<0) unit.parentNode.insertBefore(unit,sib); else unit.parentNode.insertBefore(sib,unit); }
+  else { const us=dkUnits(c); const i=us.findIndex(u=>u.main===unit); const j=i+dir; if(i<0||j<0||j>=us.length) return;
+    if(dir<0){ const ref=us[j].els[0]; us[i].els.forEach(e=>c.insertBefore(e,ref)); } else { const ref=us[j].main.nextSibling; us[i].els.forEach(e=>c.insertBefore(e,ref)); } }
+  dkPersist(c);
+}
+function dkToggle(){ dashEdit=!dashEdit; const c=document.getElementById('content'); dkBar(c); dkMark(c); }
+function dkReset(){ try{ localStorage.removeItem('dashOrder_'+role); }catch(e){} dashEdit=false; render(); }
+function dkBar(c){ let b=c.querySelector('.dk-bar'); if(b) b.remove();
+  c.insertAdjacentHTML('afterbegin',`<div class="dk-bar" style="display:flex;gap:8px;justify-content:flex-end;margin-bottom:10px;">${dashEdit?'<button class="btn sm" onclick="dkReset()">Düzeni sıfırla</button><button class="btn sm primary" onclick="dkToggle()">Bitti</button>':'<button class="btn sm ghost" onclick="dkToggle()">⠿ Kutuların yerini değiştir</button>'}</div>`); }
+(function(){ const st=document.createElement('style'); st.textContent='.dk-unit{position:relative;outline:2px dashed var(--aqua,#2bb5c8);outline-offset:3px;}.dk-h{position:absolute;top:6px;right:6px;display:flex;gap:4px;align-items:center;z-index:5;background:var(--card,#fff);border:1px solid var(--line,#ddd);border-radius:8px;padding:2px 4px;}.dk-b{border:0;background:transparent;cursor:pointer;font-size:13px;padding:4px 6px;}.dk-grab{cursor:grab;touch-action:none;padding:4px 8px;font-size:16px;user-select:none;}.dk-unit.dk-drag{opacity:.55;}'; document.head.appendChild(st); })();
+document.addEventListener('click',e=>{ const b=e.target.closest&&e.target.closest('.dk-b'); if(!b) return; e.preventDefault(); e.stopPropagation(); const u=b.closest('.dk-unit'); if(u){ dkMove(u,Number(b.dataset.d)); u.scrollIntoView&&u.scrollIntoView({block:'nearest'}); } },true);
+document.addEventListener('pointerdown',e=>{ const g=e.target.closest&&e.target.closest('.dk-grab'); if(!g) return; const u=g.closest('.dk-unit'); if(!u) return; e.preventDefault(); u.classList.add('dk-drag');
+  const kind=u.dataset.dk; const c=document.getElementById('content');
+  const mv=ev=>{ const t=document.elementFromPoint(ev.clientX,ev.clientY); if(!t) return; let o=t.closest('.dk-unit'); if(!o||o===u||o.dataset.dk!==kind||o.parentNode!==u.parentNode) return;
+    const r=o.getBoundingClientRect(); const after=(kind==='in'&&Math.abs(ev.clientX-(r.left+r.width/2))>Math.abs(ev.clientY-(r.top+r.height/2)))?ev.clientX>r.left+r.width/2:ev.clientY>r.top+r.height/2;
+    if(kind==='top'){ const us=dkUnits(c); const iu=us.find(x=>x.main===u), io=us.find(x=>x.main===o); if(!iu||!io) return; if(after){ const ref=io.main.nextSibling; iu.els.forEach(x=>c.insertBefore(x,ref)); } else { iu.els.forEach(x=>c.insertBefore(x,io.els[0])); } }
+    else { if(after) o.parentNode.insertBefore(u,o.nextSibling); else o.parentNode.insertBefore(u,o); } };
+  const up=()=>{ document.removeEventListener('pointermove',mv); document.removeEventListener('pointerup',up); u.classList.remove('dk-drag'); dkPersist(c); };
+  document.addEventListener('pointermove',mv); document.addEventListener('pointerup',up); },true);
+{ const _d=renderDashboard; renderDashboard=function(c){ _d.apply(this,arguments); try{ if(role!=='admin'&&role!=='coach') return; c.querySelector('.dk-bar')||0; dkApply(c); dkBar(c); dkMark(c); }catch(e){ console.error(e); } }; }
+
 /* ============ INIT ============ */
 boot();
 </script>
