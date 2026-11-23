@@ -629,7 +629,7 @@ function render(){
   const fns={dashboard:renderDashboard,athletes:renderAthletes,parents:renderParents,groups:renderGroups,
     schedule:renderSchedule,trainplan:renderTrainPlan,weekly:renderWeekly,makeups:renderMakeups,times:renderTimes,levels:renderLevels,attendance:renderAttendance,development:renderDevelopment,competitions:renderCompetitions,
     crm:renderCRM,coaches:renderCoaches,payments:renderPayments,announcements:renderAnnouncements,tickets:renderTickets,
-    reports:renderReports,settings:renderSettings,ai:renderAI,approvals:renderApprovals,insights:renderInsights,rentals:renderRentals,finance:renderFinance,poolreport:renderPoolReport,dailylessons:renderDailyLessons,monthlylessons:renderMonthlyLessons,ratings:renderRatings,myratings:renderMyRatings,rate:renderRate,messages:renderMessages,surveys:renderSurveys,leaves:renderLeaves,discounts:renderDiscounts,devreport:renderDevReport,audit:renderAudit,payroll:renderPayroll,atthist:renderAttHistory,newitems:renderNewItems,privlesson:renderPrivLessons};
+    absences:(c=>renderAbsences(c)),reports:renderReports,settings:renderSettings,ai:renderAI,approvals:renderApprovals,insights:renderInsights,rentals:renderRentals,finance:renderFinance,poolreport:renderPoolReport,dailylessons:renderDailyLessons,monthlylessons:renderMonthlyLessons,ratings:renderRatings,myratings:renderMyRatings,rate:renderRate,messages:renderMessages,surveys:renderSurveys,leaves:renderLeaves,discounts:renderDiscounts,devreport:renderDevReport,audit:renderAudit,payroll:renderPayroll,atthist:renderAttHistory,newitems:renderNewItems,privlesson:renderPrivLessons};
   c.innerHTML='';
   (fns[route]||renderDashboard)(c);
 }
@@ -9095,6 +9095,48 @@ function attPreJoinUi(){ const l=attPreJoin(); if(!l.length){ alert('Başlangı�
 /* ============ Yönetici: Günlük Dersler sayfası (muhasebe görünümüyle aynı) ============ */
 { if(!NAV.admin.some(x=>x.id==='dailylessons')){ const i=NAV.admin.findIndex(x=>x.id==='attendance'); NAV.admin.splice(i>=0?i+1:NAV.admin.length,0,{id:'dailylessons',label:'Günlük Dersler',ic:'📅'}); }
   const g=NAV_GROUPS.admin.find(x=>x[0]==='Ders ve Antrenman'); if(g&&g[1].indexOf('dailylessons')<0){ const j=g[1].indexOf('attendance'); g[1].splice(j>=0?j+1:g[1].length,0,'dailylessons'); } }
+
+/* ============ Devamsızlık uyarısı: "Gördüm" onayı + tüm uyarıların sayfası ============ */
+TITLES.absences='Devamsızlık Takibi';
+function absKey(a){ return 'abs:'+a.athlete+':'+a.group+':'+a.last+':'+a.streak; }
+function absAcks(key){ return (DB.msgReads||[]).filter(r=>r.msg===key); }
+function absSeenByMe(key){ const me=cMe(); return (DB.msgReads||[]).some(r=>r.msg===key&&r.who===me); }
+function absWhoName(w){ if(w==='admin') return 'Yönetici'; const p=String(w).split(':'); if(p[0]==='coach') return coachName(p[1])||'Antrenör'; return w; }
+function absAck(key){ cEnsure(); if(absSeenByMe(key)) return; const me=cMe(); DB.msgReads.push({id:'rd_'+key.replace(/[^\w:.-]/g,'_')+'_'+me.replace(/[^\w:.-]/g,'_'),msg:key,who:me,at:new Date().toISOString()}); save(); absRefresh(); }
+function absAckAll(){ cEnsure(); absenceAlerts().forEach(a=>{ const k=absKey(a); if(!absSeenByMe(k)){ const me=cMe(); DB.msgReads.push({id:'rd_'+k.replace(/[^\w:.-]/g,'_')+'_'+me.replace(/[^\w:.-]/g,'_'),msg:k,who:me,at:new Date().toISOString()}); } }); save(); absRefresh(); }
+function absUnack(key){ const me=cMe(); DB.msgReads=(DB.msgReads||[]).filter(r=>!(r.msg===key&&r.who===me)); save(); absRefresh(); }
+function absRefresh(){ render(); }
+const _absHtml0=absAlertsHtml;
+absAlertsHtml=function(){
+  const all=absenceAlerts(); const L=all.filter(a=>!absSeenByMe(absKey(a))); const seen=all.length-L.length;
+  if(!all.length) return '';
+  if(!L.length) return `<div class="card" id="absCard" style="margin-bottom:16px;display:flex;gap:10px;flex-wrap:wrap;justify-content:space-between;align-items:center;font-size:13px;"><span>Devamsızlık uyarıları: ${seen} uyarının hepsini gördünüz.</span><button class="btn sm" onclick="route='absences';render();">Tümünü gör →</button></div>`;
+  return `<div class="card" id="absCard" style="margin-bottom:16px;border-left:4px solid var(--red);"><div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:space-between;align-items:center;"><div><b>Devamsızlık uyarısı (${L.length})</b> <span style="color:var(--muted);font-size:12.5px;">Son ${ABS_STREAK} veya daha fazla antrenmana üst üste gelmeyen sporcular${seen?' · '+seen+' uyarı görüldü':''}</span></div><div style="display:flex;gap:8px;flex-wrap:wrap;"><button class="btn sm" onclick="absAckAll()">Hepsini gördüm</button><button class="btn sm" onclick="route='absences';render();">Tümünü gör →</button></div></div>
+  ${L.map(a=>{ const p=absParent(a); const msg=absMsg(a); const wa=p?fcWaLink(p.phone,msg):''; const k=absKey(a);
+    return `<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:10px;padding-top:10px;border-top:1px solid var(--line);">
+      <div style="min-width:200px;"><b class="rowlink" style="cursor:pointer;" onclick="openAthlete('${a.athlete}')">${escHtml(a.name)}</b><div style="font-size:12px;color:var(--muted);">${escHtml(a.groupName)} · ${a.streak} ders · son ${escHtml(fmtDate(a.last))}</div></div>
+      <button class="btn sm primary" onclick="absAck(${escHtml(JSON.stringify(k))})">Gördüm</button>
+      <button class="btn sm" onclick="fcCopy(${escHtml(JSON.stringify(msg))},this)">Mesajı kopyala</button>${wa?`<a class="btn sm" href="${escHtml(wa)}" target="_blank" rel="noopener">WhatsApp'ta aç</a>`:''}
+      ${p?`<span style="font-size:12px;color:var(--muted);">${escHtml(p.name)} · ${escHtml(p.phone||'')}</span>`:''}</div>`; }).join('')}</div>`;
+};
+let absView='new';
+function absSetView(v){ absView=v; renderAbsences($('#content')); }
+function renderAbsences(c){
+  const all=absenceAlerts(); const L=absView==='all'?all:all.filter(a=>!absSeenByMe(absKey(a)));
+  c.innerHTML=`<div class="card" style="margin-bottom:14px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;"><button class="btn sm${absView==='new'?' primary':''}" onclick="absSetView('new')">Görmediklerim (${all.filter(a=>!absSeenByMe(absKey(a))).length})</button><button class="btn sm${absView==='all'?' primary':''}" onclick="absSetView('all')">Tümü (${all.length})</button>${L.length&&absView==='new'?'<button class="btn sm" style="margin-left:auto;" onclick="absAckAll()">Hepsini gördüm</button>':''}</div>
+  <div class="card" style="padding:0;overflow-x:auto;"><table><thead><tr><th>Sporcu</th><th>Grup</th><th>Üst üste</th><th>Son devamsızlık</th><th>Durum</th><th></th></tr></thead><tbody>
+  ${L.length?'':`<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:18px;">${absView==='new'?'Görmediğiniz devamsızlık uyarısı yok.':'Devamsızlık uyarısı yok.'}</td></tr>`}
+  ${L.map(a=>{ const k=absKey(a); const acks=absAcks(k); const mine=absSeenByMe(k); const p=absParent(a); const msg=absMsg(a); const wa=p?fcWaLink(p.phone,msg):'';
+    const st=acks.length?'<span class="badge green">Görüldü</span><div style="font-size:12px;color:var(--muted);">'+acks.map(r=>escHtml(absWhoName(r.who))+' · '+escHtml(fmtDate(String(r.at||'').slice(0,10)))).join('<br>')+'</div>':'<span class="badge red">Yeni</span>';
+    return `<tr><td><b class="rowlink" style="cursor:pointer;" onclick="openAthlete('${a.athlete}')">${escHtml(a.name)}</b></td><td>${escHtml(a.groupName)}</td><td><b>${a.streak}</b> ders</td><td>${escHtml(fmtDate(a.last))}</td><td>${st}</td>
+     <td style="white-space:nowrap;">${mine?(role==='admin'?`<button class="btn sm" onclick="absUnack(${escHtml(JSON.stringify(k))})">Görmedim yap</button>`:''):`<button class="btn sm primary" onclick="absAck(${escHtml(JSON.stringify(k))})">Gördüm</button>`} <button class="btn sm" onclick="fcCopy(${escHtml(JSON.stringify(msg))},this)">Mesajı kopyala</button>${wa?` <a class="btn sm" href="${escHtml(wa)}" target="_blank" rel="noopener">WhatsApp</a>`:''}</td></tr>`; }).join('')}
+  </tbody></table></div>
+  <div class="note-banner" style="margin-top:14px;font-size:12.5px;">Uyarı, sporcu son ${ABS_STREAK} veya daha fazla yoklamada üst üste “Gelmedi” işaretlendiğinde çıkar. “Gördüm” dediğiniz uyarı sizin için gizlenir; sporcu yeniden devamsızlık yaparsa uyarı tekrar çıkar. Başka bir yerde göründüğünde kimin gördüğü burada yazar.</div>`;
+}
+{ NAV.admin.splice(Math.max(0,NAV.admin.findIndex(x=>x.id==='attendance'))+1,0,{id:'absences',label:'Devamsızlık Takibi',ic:'⚠️'});
+  const gA=NAV_GROUPS.admin.find(x=>x[0]==='Ders ve Antrenman'); if(gA&&gA[1].indexOf('absences')<0){ const j=gA[1].indexOf('attendance'); gA[1].splice(j>=0?j+1:gA[1].length,0,'absences'); }
+  NAV.coach.splice(Math.max(0,NAV.coach.findIndex(x=>x.id==='attendance'))+1,0,{id:'absences',label:'Devamsızlık Takibi',ic:'⚠️'});
+  const gC=NAV_GROUPS.coach.find(x=>x[0]==='Sporcularım'); if(gC&&gC[1].indexOf('absences')<0){ const j=gC[1].indexOf('attendance'); gC[1].splice(j>=0?j+1:gC[1].length,0,'absences'); } }
 
 /* ============ INIT ============ */
 boot();
