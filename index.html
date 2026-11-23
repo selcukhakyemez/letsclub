@@ -629,7 +629,7 @@ function render(){
   const fns={dashboard:renderDashboard,athletes:renderAthletes,parents:renderParents,groups:renderGroups,
     schedule:renderSchedule,trainplan:renderTrainPlan,weekly:renderWeekly,makeups:renderMakeups,times:renderTimes,levels:renderLevels,attendance:renderAttendance,development:renderDevelopment,competitions:renderCompetitions,
     crm:renderCRM,coaches:renderCoaches,payments:renderPayments,announcements:renderAnnouncements,tickets:renderTickets,
-    absences:(c=>renderAbsences(c)),reports:renderReports,settings:renderSettings,ai:renderAI,approvals:renderApprovals,insights:renderInsights,rentals:renderRentals,finance:renderFinance,poolreport:renderPoolReport,dailylessons:renderDailyLessons,monthlylessons:renderMonthlyLessons,ratings:renderRatings,myratings:renderMyRatings,rate:renderRate,messages:renderMessages,surveys:renderSurveys,leaves:renderLeaves,discounts:renderDiscounts,devreport:renderDevReport,audit:renderAudit,payroll:renderPayroll,atthist:renderAttHistory,newitems:renderNewItems,privlesson:renderPrivLessons};
+    absences:(c=>renderAbsences(c)),reports:renderReports,settings:renderSettings,ai:renderAI,approvals:renderApprovals,insights:renderInsights,rentals:renderRentals,extpk:(c=>renderExtPk(c)),finance:renderFinance,poolreport:renderPoolReport,dailylessons:renderDailyLessons,monthlylessons:renderMonthlyLessons,ratings:renderRatings,myratings:renderMyRatings,rate:renderRate,messages:renderMessages,surveys:renderSurveys,leaves:renderLeaves,discounts:renderDiscounts,devreport:renderDevReport,audit:renderAudit,payroll:renderPayroll,atthist:renderAttHistory,newitems:renderNewItems,privlesson:renderPrivLessons};
   c.innerHTML='';
   (fns[route]||renderDashboard)(c);
 }
@@ -2858,7 +2858,7 @@ function financeCore(ym,pool){
   const paid=DB.payments.filter(p=>p.status==='paid'&&ymOf(p.paidDate||p.due)===ym&&inScope(pool,payPool(p)));
   const byType={}; PAY_TYPES.forEach(t=>{byType[t]=0;}); paid.forEach(p=>{const t=p.type||'Aidat'; byType[t]=r2((byType[t]||0)+p.amount);});
   const rentals=(DB.rentals||[]).filter(r=>inScope(pool,r.pool)).map(r=>{const i=rentalInfo(r,ym); return {r,amount:i.due,gross:i.gross,skipN:i.skipN,skipAmt:i.skipAmt,adj:i.adj,paidAmt:i.paidAmt,remain:i.remain,status:i.status,paid:i.status==='Tamam'||i.status==='Fazla ödeme',sessions:i.sessions};}).filter(x=>x.amount>0||x.paidAmt>0);
-  const rentIn=r2(rentals.reduce((s,x)=>s+x.paidAmt,0)), rentRecv=r2(rentals.reduce((s,x)=>s+Math.max(0,x.remain),0));
+  const xkF=xkFinance(ym,pool); const rentIn=r2(rentals.reduce((s,x)=>s+x.paidAmt,0)+xkF.in), rentRecv=r2(rentals.reduce((s,x)=>s+Math.max(0,x.remain),0)+xkF.recv);
   const unpaid=DB.payments.filter(p=>p.status!=='paid'&&p.due<=last&&inScope(pool,payPool(p)));
   const recv=r2(unpaid.reduce((s,p)=>s+p.amount,0)), overdue=r2(unpaid.filter(p=>p.status==='overdue').reduce((s,p)=>s+p.amount,0));
   let pay=DB.coaches.map(c=>coachPayFor(c.id,ym,pool));
@@ -2872,7 +2872,7 @@ function financeCore(ym,pool){
   const ex={}; RATE_TYPES.forEach(t=>{ex['coach:'+t[0]]=coachBy[t[0]];}); EXP_CATS.forEach(c=>{ex['cat:'+c]=byCat[c]||0;});
   const income=r2(INC_ITEMS.reduce((s,i)=>s+(inc[i[0]]||0),0));
   const expense=r2(coachTotal+expTotal);
-  return {ym,pool,byType,rentals,rentIn,rentRecv,recv,overdue,unpaidCount:unpaid.length,pay,coachBy,coachTotal,byCat,expTotal,inc,exp:ex,income,expense,net:r2(income-expense)};
+  return {ym,pool,byType,rentals,extPk:xkF.rows,rentIn,rentRecv,recv,overdue,unpaidCount:unpaid.length,pay,coachBy,coachTotal,byCat,expTotal,inc,exp:ex,income,expense,net:r2(income-expense)};
 }
 function validSel(sel,items){ if(!Array.isArray(sel)) return items.map(i=>i[0]); return items.map(i=>i[0]).filter(k=>sel.indexOf(k)>-1); }
 /* Seçili kalemlere göre toplamları yeniden hesaplar (kalem filtresi isteğe bağlı) */
@@ -2957,6 +2957,7 @@ function reportBodyHtml(rep){
   ${c.pay.map(x=>`<tr><td>${escHtml(x.name)}</td><td class="n">${x.groupCount} ders · ${m(x.groupAmt)}</td><td class="n">${x.privateCount} ders · ${m(x.privateAmt)}</td><td class="n">${x.otherCount} ders · ${m(x.otherAmt)}${x.asstCount?' · yrd. '+x.asstCount+' ders · '+m(x.asstAmt):''}</td><td class="n"><b>${m(x.total)}</b></td></tr>`).join('')||'<tr><td colspan="5">Bu kapsamda ders yok</td></tr>'}
   <tr class="tot"><td>Toplam</td><td></td><td></td><td></td><td class="n">${m(c.coachTotal)}</td></tr></tbody></table></div>
   ${c.rentals.length?`<h2>Havuz kiralamaları</h2><div class="tw"><table><thead><tr><th>Kulüp</th><th>Havuz / kulvar</th><th class="n">Seans</th><th class="n">Net tutar</th><th class="n">Ödenen</th><th class="n">Kalan</th><th>Durum</th></tr></thead><tbody>${c.rentals.map(x=>`<tr><td>${escHtml(x.r.club)}</td><td>${escHtml(x.r.pool)}${DB.pools.some(pp=>pp.name===x.r.pool&&pp.lanes>0)?' · '+x.r.lanes+' kulvar':''}</td><td class="n">${x.sessions}${x.skipN?' <small>('+x.skipN+' iptal)</small>':''}</td><td class="n">${m(x.amount)}</td><td class="n">${m(x.paidAmt)}</td><td class="n">${m(Math.max(0,x.remain))}</td><td>${rentalStatusText(x)}</td></tr>`).join('')}</tbody></table></div>`:''}
+  ${(c.extPk||[]).length?`<h2>Dış antrenör paketleri</h2><div class="tw"><table><thead><tr><th>Antrenör</th><th>Havuz</th><th class="n">Paket</th><th class="n">Bu ay ders</th><th class="n">Kalan ders</th><th class="n">Bu ay alınan</th><th class="n">Kalan borç</th></tr></thead><tbody>${c.extPk.map(x=>`<tr><td>${escHtml(x.pk.name)}</td><td>${escHtml(x.pk.pool)}</td><td class="n">${x.pk.lessons} ders · ${x.pk.people} kişi · ${m(x.pk.price)}</td><td class="n">${x.hours}</td><td class="n">${x.left}</td><td class="n">${m(x.paidInMonth)}</td><td class="n">${m(x.debt)}</td></tr>`).join('')}</tbody></table></div>`:''}
   <h2>Alacaklar</h2><table><tbody><tr><td>Tahsil edilmemiş aidat/paket alacağı</td><td class="n">${m(c.recv)}</td></tr><tr><td>Bunun gecikmiş kısmı</td><td class="n">${m(c.overdue)}</td></tr><tr><td>Havuz kiralama alacağı</td><td class="n">${m(c.rentRecv)}</td></tr></tbody></table>
   <h2>${rep.pool===null?'Kulüp hareketleri':'Havuz hareketleri'}</h2><table><tbody>${kp}</tbody></table></div>`;
 }
@@ -9296,6 +9297,138 @@ function dhBulkSave(){
 }
 function dhBulkAssign(gid,cid,dates){ let added=0; const errors=[]; (dates||[]).forEach(d=>{ const r=dhAdd(gid,d,cid); if(r.ok) added++; else errors.push(fmtDate(d)+': '+r.errors.join(' ')); }); return {added,errors}; }
 { const _rg=renderGroups; renderGroups=function(c){ _rg(c); try{ if(role!=='admin'||(typeof isAccReal==='function'&&isAccReal())) return; c.insertAdjacentHTML('afterbegin','<div style="margin-bottom:12px;"><button class="btn" onclick="dhBulkOpen()">👥 Yardımcı hoca ata (gün seçerek)</button></div>'); }catch(e){} }; }
+/* ============ DIŞ ANTRENÖR HAVUZ PAKETLERİ (saat saat kiralama, ders düşümlü) ============ */
+['extPackages','extPays'].forEach(k=>{ if(C_COLLS.indexOf(k)<0) C_COLLS.push(k); if(!SB_SPECS.some(s=>s.c===k)) SB_SPECS.push({c:k,t:'arr'}); });
+if(typeof AU_COLL==='object'){ AU_COLL.extPackages='Dış antrenör paketi'; AU_COLL.extPays='Dış antrenör ödemesi'; }
+if(SB_WRITE.accountant&&SB_WRITE.accountant.indexOf('extPays')<0) SB_WRITE.accountant.push('extPays');
+TITLES.extpk='Dış Antrenör Paketleri';
+{ const mk=(arr,after)=>{ if(!arr||arr.some(x=>x.id==='extpk')) return; const i=arr.findIndex(x=>x.id===after); arr.splice(i>=0?i+1:arr.length,0,{id:'extpk',label:'Dış Antrenör Paketleri',ic:'🎟️'}); };
+  mk(NAV.admin,'rentals'); mk(NAV.accountant,'rentals');
+  const g=NAV_GROUPS.admin.find(x=>x[1].indexOf('rentals')>-1); if(g&&g[1].indexOf('extpk')<0) g[1].splice(g[1].indexOf('rentals')+1,0,'extpk'); }
+const XK_METHODS=['Nakit','Havale / EFT','Kredi kartı','Diğer'];
+const xkIsAdmin=()=>role==='admin'&&!(typeof isAccReal==='function'&&isAccReal());
+const xkCanPay=()=>xkIsAdmin()||role==='accountant';
+function xkList(){ cEnsure(); let l=(DB.extPackages||[]).slice(); if(role==='accountant'){ const m=accMe(); if(m.pools&&m.pools.length) l=l.filter(p=>m.pools.indexOf(p.pool)>-1); } return l; }
+function xkPaid(pk,upTo){ return r2((DB.extPays||[]).filter(p=>p.pkg===pk.id&&(!upTo||(p.date||'')<=upTo)).reduce((s,p)=>s+(Number(p.amount)||0),0)); }
+function xkUsed(pk){ return (pk.uses||[]).reduce((s,u)=>s+(Number(u.hours)||0),0); }
+function xkInfo(pk){ const used=xkUsed(pk), paid=xkPaid(pk); return {used,left:pk.lessons-used,paid,debt:r2(pk.price-paid)}; }
+/* tek tarihte kulvar yoğunluğu: gruplar + sürekli kiralamalar + diğer dış paket dersleri */
+function xkLoad(poolName,ds,start,end,ignoreUseId){
+  const pool=DB.pools.find(p=>p.name===poolName); if(!pool) return {over:true,peak:0,cap:0,msg:'Havuz bulunamadı.'};
+  const items=[]; const dow=parseYmd(ds).getDay();
+  DB.groups.forEach(g=>{ try{ if(!groupOnDay(g,ds)||gCancelled(g,ds)) return; if(typeof mergeSkip==='function'&&mergeSkip(g,ds)) return; const b=gBlockOn(g,ds); if(!b) return; if(gPoolOn(g,ds)!==poolName) return; const iv=gBlockMin(b);
+      items.push({iv,lanes:pool.lanes>0?laneList(b.pool&&b.lane!=null?b.lane:g.lane):[],n:1,label:'Grup: '+g.name}); }catch(e){} });
+  (DB.rentals||[]).forEach(r=>{ if(r.pool!==poolName) return; if(rentalDates(r,ds.slice(0,7)).indexOf(ds)<0) return; if(rentalSkipDates&&rentalSkipDates(r,ds.slice(0,7)).some(s=>s.date===ds)) return; items.push({iv:[timeToMin(r.start),timeToMin(r.end)],lanes:null,n:rentalUnits(r),label:'Kiralama: '+r.club}); });
+  (DB.extPackages||[]).forEach(pk=>{ if(pk.pool!==poolName) return; (pk.uses||[]).forEach(u=>{ if(u.date!==ds||u.id===ignoreUseId) return; const s=timeToMin(u.start); items.push({iv:[s,s+(Number(u.hours)||1)*60],lanes:null,n:Number(u.lanes)||1,label:'Dış antrenör: '+pk.name}); }); });
+  const pts=new Set([start]); items.forEach(x=>pts.add(x.iv[0])); let peak=0,at=null,who=[];
+  pts.forEach(t=>{ if(t<start||t>=end) return; const gl=new Set(); let cnt=0,n=0; const w=[];
+    items.forEach(x=>{ if(x.iv[0]<=t&&t<x.iv[1]){ if(x.lanes){ x.lanes.forEach(l=>gl.add(l)); cnt++; } else { n+=x.n; cnt++; } w.push(x.label); } });
+    const used=pool.lanes>0?(gl.size+n):cnt; if(used>peak){peak=used;at=t;who=w;} });
+  return {peak,cap:pool.lanes>0?pool.lanes:1,at,who,pool,lanesFree:pool.lanes>0};
+}
+function xkMin2t(m){ return String(Math.floor(m/60)).padStart(2,'0')+':'+String(m%60).padStart(2,'0'); }
+function xkCheckUse(pk,u,ignoreId){
+  const errors=[]; if(!/^\d{4}-\d{2}-\d{2}$/.test(u.date||'')) errors.push('Tarih geçersiz.');
+  const s=timeToMin(u.start); if(s===null) errors.push('Başlangıç saati geçersiz (ör. 18:00).');
+  const h=Number(u.hours); if(!(h>=1)||h!==Math.floor(h)||h>6) errors.push('Süre 1-6 saat arası tam sayı olmalı.');
+  const pool=DB.pools.find(p=>p.name===pk.pool); const lanes=Number(u.lanes)||1; if(lanes<1||lanes!==Math.floor(lanes)) errors.push('Kulvar adedi geçersiz.');
+  if(pool&&pool.lanes>0&&lanes>pool.lanes) errors.push('Havuzda en fazla '+pool.lanes+' kulvar var.');
+  const left=pk.lessons-(pk.uses||[]).filter(x=>x.id!==ignoreId).reduce((a,x)=>a+(Number(x.hours)||0),0); if(h>left) errors.push('Pakette yalnızca '+left+' ders kaldı.');
+  let load=null; if(!errors.length){ const add=pool&&pool.lanes>0?lanes:1; load=xkLoad(pk.pool,u.date,s,s+h*60,ignoreId);
+    /* aday ders yükü ekle */ const total=load.peak+add; if(total>load.cap) errors.push('Kulvar yetersiz: '+pk.pool+' havuzunda '+xkMin2t(load.at)+' civarında '+load.peak+'/'+load.cap+' dolu ('+load.who.join(', ')+'); '+add+' kulvar daha eklenemez.'); }
+  return {ok:!errors.length,errors};
+}
+function xkAddPackage(c){
+  if(!xkIsAdmin()) return {ok:false,errors:['Yalnızca yönetici paket tanımlar.']};
+  const e=[]; const name=String(c.name||'').trim(), ph=String(c.phone||'').trim(); const lessons=Number(c.lessons), people=Number(c.people), price=r2(Number(String(c.price).replace(',','.')));
+  if(!/^[\p{L} .'\-]{3,60}$/u.test(name)) e.push('Antrenör adı soyadı 3-60 karakter olmalı.');
+  if(ph&&!/^[0-9 +()\-]{7,20}$/.test(ph)) e.push('Telefon geçersiz.');
+  if(!DB.pools.some(p=>p.name===c.pool)) e.push('Havuz seçin.');
+  if(!(lessons>=1)||lessons!==Math.floor(lessons)||lessons>500) e.push('Ders sayısı 1-500 arası tam sayı olmalı.');
+  if(!(people>=1)||people!==Math.floor(people)||people>50) e.push('Kişi sayısı geçersiz.');
+  if(!(price>0)) e.push('Paket fiyatı girin.');
+  if(e.length) return {ok:false,errors:e};
+  cEnsure(); const rec={id:'xk'+Date.now()+Math.floor(Math.random()*1000),name,phone:ph,pool:c.pool,lessons,people,price,createdAt:todayStr(),note:String(c.note||'').slice(0,120),uses:[]};
+  DB.extPackages.push(rec); save(); return {ok:true,errors:[],id:rec.id};
+}
+function xkUse(id,u){
+  if(!xkIsAdmin()) return {ok:false,errors:['Yalnızca yönetici ders düşer.']}; const pk=(DB.extPackages||[]).find(x=>x.id===id); if(!pk) return {ok:false,errors:['Paket bulunamadı.']};
+  const rec={date:u.date,start:u.start,hours:Number(u.hours),lanes:Number(u.lanes)||1,note:String(u.note||'').slice(0,100)}; const v=xkCheckUse(pk,rec); if(!v.ok) return v;
+  rec.id='xu'+Date.now()+Math.floor(Math.random()*1000); pk.uses=pk.uses||[]; pk.uses.push(rec); pk.uses.sort((a,b)=>(a.date+a.start)<(b.date+b.start)?-1:1); save(); return {ok:true,errors:[]};
+}
+function xkDelUse(id,uid){ if(!xkIsAdmin()) return {ok:false,errors:['Yetki yok.']}; const pk=(DB.extPackages||[]).find(x=>x.id===id); if(!pk) return {ok:false,errors:['Paket bulunamadı.']}; pk.uses=(pk.uses||[]).filter(u=>u.id!==uid); save(); return {ok:true,errors:[]}; }
+function xkDelPackage(id){ if(!xkIsAdmin()) return {ok:false,errors:['Yetki yok.']}; DB.extPackages=(DB.extPackages||[]).filter(x=>x.id!==id); DB.extPays=(DB.extPays||[]).filter(p=>p.pkg!==id); save(); return {ok:true,errors:[]}; }
+function xkAddPay(id,amount,date,method,note){
+  if(!xkCanPay()) return {ok:false,errors:['Yetki yok.']}; const pk=xkList().find(x=>x.id===id); if(!pk) return {ok:false,errors:['Paket bulunamadı.']};
+  const a=r2(Number(String(amount).replace(',','.'))); if(!(a>0)) return {ok:false,errors:['Tutar sıfırdan büyük olmalı.']};
+  if(date&&!/^\d{4}-\d{2}-\d{2}$/.test(date)) return {ok:false,errors:['Tarih geçersiz.']}; cEnsure();
+  DB.extPays.push({id:'xp'+Date.now()+Math.floor(Math.random()*1000),pkg:id,pool:pk.pool,amount:a,date:date||todayStr(),method:String(method||'').slice(0,30),note:String(note||'').slice(0,100)}); save(); return {ok:true,errors:[]};
+}
+function xkDelPay(pid){ if(!xkIsAdmin()) return {ok:false,errors:['Yetki yok.']}; DB.extPays=(DB.extPays||[]).filter(p=>p.id!==pid); save(); return {ok:true,errors:[]}; }
+/* finans: ay içinde alınan ödeme + ay sonu itibarıyla kalan borç */
+function xkFinance(ym,pool){
+  const last=ym+'-'+String(monthDays(ym).length).padStart(2,'0'); const rows=[]; let inn=0,recv=0;
+  (DB.extPackages||[]).forEach(pk=>{ if(pool!==null&&pool!==undefined&&pk.pool!==pool) return; if((pk.createdAt||'')>last) return;
+    const pm=r2((DB.extPays||[]).filter(p=>p.pkg===pk.id&&ymOf(p.date)===ym).reduce((s,p)=>s+(Number(p.amount)||0),0)); const debt=Math.max(0,r2(pk.price-xkPaid(pk,last)));
+    const hrs=(pk.uses||[]).filter(u=>ymOf(u.date)===ym).reduce((s,u)=>s+(Number(u.hours)||0),0);
+    inn=r2(inn+pm); recv=r2(recv+debt); if(pm>0||debt>0||hrs>0) rows.push({pk,paidInMonth:pm,debt,hours:hrs,left:pk.lessons-xkUsed(pk)}); });
+  return {in:inn,recv,rows};
+}
+function renderExtPk(c){
+  if(!xkIsAdmin()&&role!=='accountant'){ c.innerHTML=''; return; }
+  const adm=xkIsAdmin(); const f=window.__xkFilt||'active'; let l=xkList().reverse(); if(f==='active') l=l.filter(p=>xkInfo(p).left>0||xkInfo(p).debt>0); else if(f==='done') l=l.filter(p=>xkInfo(p).left<=0&&xkInfo(p).debt<=0);
+  c.innerHTML=`${typeof takeMsg==='function'?takeMsg():''}<div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:14px;">${adm?'<button class="btn primary" onclick="xkNewOpen()">+ Yeni Paket</button>':''}
+   <span style="margin-left:auto;display:flex;gap:6px;">${[['active','Devam eden'],['done','Biten'],['all','Tümü']].map(x=>`<button class="btn sm ${f===x[0]?'primary':''}" onclick="xkFilt('${x[0]}')">${x[1]}</button>`).join('')}</span></div>
+  <div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(300px,1fr));">${l.map(p=>{ const i=xkInfo(p);
+    return `<div class="card"><div style="display:flex;justify-content:space-between;gap:8px;"><b>${escHtml(p.name)}</b><span class="badge aqua">${escHtml(p.pool)}</span></div>
+     <div style="font-size:12.5px;color:var(--muted);margin-top:6px;">${p.phone?escHtml(p.phone)+' · ':''}${p.people} kişilik ders · ${p.lessons} ders paketi${p.note?' · '+escHtml(p.note):''}</div>
+     <div style="margin-top:8px;font-size:13px;line-height:1.7;">Kalan ders: <b style="color:${i.left<=2?'var(--amber)':'inherit'};">${i.left}</b> / ${p.lessons}${i.left<=0?' <span class="badge green">Bitti</span>':i.left<=2?' <span class="badge amber">Azaldı</span>':''}<br>Fiyat: <b>${money(p.price)}</b> · Ödenen: <b style="color:var(--green);">${money(i.paid)}</b> · Kalan borç: <b style="color:${i.debt>0?'var(--amber)':'inherit'};">${money(Math.max(0,i.debt))}</b></div>
+     <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;">${adm?`<button class="btn sm primary" onclick="xkUseOpen('${p.id}')">Ders düş</button>`:''}<button class="btn sm" onclick="xkPayOpen('${p.id}')">Ödeme al</button>${adm?`<button class="btn sm" onclick="xkDetail('${p.id}')">Detay</button><button class="btn sm danger" onclick="xkDel('${p.id}')">Sil</button>`:''}</div></div>`; }).join('')||'<div class="empty">Paket yok</div>'}</div>`;
+}
+function xkFilt(f){ window.__xkFilt=f; renderExtPk($('#content')); }
+function xkDel(id){ const p=(DB.extPackages||[]).find(x=>x.id===id); if(!p||!confirm(p.name+' paketi ve ödemeleri silinsin mi? Bu işlem geri alınamaz.')) return; xkDelPackage(id); mgmtMsg='Paket silindi.'; renderExtPk($('#content')); }
+function xkNewOpen(){
+  if(!xkIsAdmin()) return;
+  openDrawerHtml(`<div class="drawer-head"><div><div style="font-weight:800;font-size:16px;">Yeni dış antrenör paketi</div><div style="font-size:12.5px;color:var(--muted);">Antrenör yalnızca seçilen havuzda ders verebilir.</div></div><button class="close-x" onclick="closeDrawer()">✕</button></div>
+  <div class="drawer-body" style="padding-top:14px;"><div class="field"><label for="xk_n">Antrenör adı soyadı</label><input id="xk_n" maxlength="60"></div>
+  <div class="field"><label for="xk_t">Telefon</label><input id="xk_t" maxlength="20"></div>
+  <div class="field"><label for="xk_p">Havuz</label><select id="xk_p"><option value="">Havuz seçin</option>${DB.pools.map(p=>`<option value="${escHtml(p.name)}">${escHtml(p.name)}</option>`).join('')}</select></div>
+  <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;"><div class="field"><label for="xk_l">Ders sayısı</label><input id="xk_l" type="number" min="1" value="10"></div><div class="field"><label for="xk_k">Kişi sayısı</label><input id="xk_k" type="number" min="1" value="1"></div><div class="field"><label for="xk_f">Paket fiyatı (₺)</label><input id="xk_f" inputmode="decimal"></div></div>
+  <div class="field"><label for="xk_o">Not</label><input id="xk_o" maxlength="120"></div><div id="xk_r" role="alert" style="color:var(--red);font-size:12.5px;min-height:16px;"></div>
+  <button class="btn primary" onclick="xkNewSave()">Paketi oluştur</button></div>`);
+}
+function xkNewSave(){ const v=id=>document.getElementById(id).value; const r=xkAddPackage({name:v('xk_n'),phone:v('xk_t'),pool:v('xk_p'),lessons:v('xk_l'),people:v('xk_k'),price:v('xk_f'),note:v('xk_o')}); if(!r.ok){ document.getElementById('xk_r').textContent=r.errors.join(' '); return; } closeDrawer(); mgmtMsg='Paket oluşturuldu.'; renderExtPk($('#content')); }
+let xkCur=null;
+function xkUseOpen(id){
+  if(!xkIsAdmin()) return; const pk=(DB.extPackages||[]).find(x=>x.id===id); if(!pk) return; xkCur=id; const i=xkInfo(pk); const pool=DB.pools.find(p=>p.name===pk.pool);
+  openDrawerHtml(`<div class="drawer-head"><div><div style="font-weight:800;font-size:16px;">Ders düş · ${escHtml(pk.name)}</div><div style="font-size:12.5px;color:var(--muted);">${escHtml(pk.pool)} · kalan ${i.left} ders</div></div><button class="close-x" onclick="closeDrawer()">✕</button></div>
+  <div class="drawer-body" style="padding-top:14px;"><div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;"><div class="field"><label for="xu_d">Tarih</label><input id="xu_d" type="date" value="${todayStr()}" oninput="xkUseCheck()"></div><div class="field"><label for="xu_s">Başlangıç saati</label><input id="xu_s" type="time" oninput="xkUseCheck()"></div>
+  <div class="field"><label for="xu_h">Süre (saat = düşen ders)</label><input id="xu_h" type="number" min="1" max="6" value="1" oninput="xkUseCheck()"></div><div class="field"><label for="xu_l">Kulvar adedi</label><input id="xu_l" type="number" min="1" value="1" ${pool&&pool.lanes>0?'':'disabled'} oninput="xkUseCheck()"></div></div>
+  <div class="field"><label for="xu_n">Not</label><input id="xu_n" maxlength="100"></div><div id="xu_r" class="grp-result" aria-live="polite">Saati girin; kulvar uygunluğu burada görünür.</div>
+  <button id="xu_b" class="btn primary" onclick="xkUseSave()" disabled style="margin-top:10px;">Dersi düş</button></div>`);
+}
+function xkUseVals(){ const v=id=>{const e=document.getElementById(id); return e?e.value:'';}; return {date:v('xu_d'),start:v('xu_s'),hours:v('xu_h'),lanes:v('xu_l')||1,note:v('xu_n')}; }
+function xkUseCheck(){ const pk=(DB.extPackages||[]).find(x=>x.id===xkCur); const res=document.getElementById('xu_r'),b=document.getElementById('xu_b'); if(!pk||!res) return; const u=xkUseVals(); if(!u.start){ res.className='grp-result'; res.textContent='Saati girin; kulvar uygunluğu burada görünür.'; b.disabled=true; return; }
+  const v=xkCheckUse(pk,u); if(v.ok){ res.className='grp-result good'; res.innerHTML='<b>Uygun.</b> Seçilen saatte kulvar boş.'; b.disabled=false; } else { res.className='grp-result bad'; res.innerHTML='<b>Düşülemez</b><ul class="ai-list">'+v.errors.map(e=>'<li>'+escHtml(e)+'</li>').join('')+'</ul>'; b.disabled=true; } }
+function xkUseSave(){ const r=xkUse(xkCur,xkUseVals()); if(!r.ok){ xkUseCheck(); return; } closeDrawer(); mgmtMsg='Ders paketten düşüldü.'; renderExtPk($('#content')); }
+function xkPayOpen(id){
+  if(!xkCanPay()) return; const pk=xkList().find(x=>x.id===id); if(!pk) return; xkCur=id; const i=xkInfo(pk);
+  openDrawerHtml(`<div class="drawer-head"><div><div style="font-weight:800;font-size:16px;">Ödeme al · ${escHtml(pk.name)}</div><div style="font-size:12.5px;color:var(--muted);">Fiyat ${money(pk.price)} · ödenen ${money(i.paid)} · kalan ${money(Math.max(0,i.debt))}</div></div><button class="close-x" onclick="closeDrawer()">✕</button></div>
+  <div class="drawer-body" style="padding-top:14px;"><div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;"><div class="field"><label for="xp_a">Tutar (₺)</label><input id="xp_a" inputmode="decimal" value="${i.debt>0?i.debt:''}"></div><div class="field"><label for="xp_d">Tarih</label><input id="xp_d" type="date" value="${todayStr()}"></div>
+  <div class="field"><label for="xp_m">Ödeme şekli</label><select id="xp_m">${XK_METHODS.map(m=>`<option>${m}</option>`).join('')}</select></div><div class="field"><label for="xp_n">Not</label><input id="xp_n" maxlength="100" placeholder="ör. 1. taksit"></div></div>
+  <div id="xp_r" role="alert" style="color:var(--red);font-size:12.5px;min-height:16px;"></div><button class="btn primary" onclick="xkPaySave()">Ödemeyi kaydet</button></div>`);
+}
+function xkPaySave(){ const v=id=>document.getElementById(id).value; const r=xkAddPay(xkCur,v('xp_a'),v('xp_d'),v('xp_m'),v('xp_n')); if(!r.ok){ document.getElementById('xp_r').textContent=r.errors.join(' '); return; } closeDrawer(); mgmtMsg='Ödeme kaydedildi.'; renderExtPk($('#content')); }
+function xkDetail(id){
+  if(!xkIsAdmin()) return; const pk=(DB.extPackages||[]).find(x=>x.id===id); if(!pk) return; xkCur=id; const i=xkInfo(pk); const pays=(DB.extPays||[]).filter(p=>p.pkg===id).sort((a,b)=>(a.date||'')<(b.date||'')?-1:1);
+  openDrawerHtml(`<div class="drawer-head"><div><div style="font-weight:800;font-size:16px;">${escHtml(pk.name)} · ${escHtml(pk.pool)}</div><div style="font-size:12.5px;color:var(--muted);">${pk.people} kişilik · ${pk.lessons} ders · ${money(pk.price)} · açılış ${escHtml(fmtDate(pk.createdAt))}</div></div><button class="close-x" onclick="closeDrawer()">✕</button></div>
+  <div class="drawer-body" style="padding-top:14px;"><h3 style="font-size:14px;margin:0 0 6px;">Yapılan dersler (${i.used}/${pk.lessons})</h3>
+  ${(pk.uses||[]).map(u=>`<div style="display:flex;justify-content:space-between;gap:8px;font-size:13px;padding:5px 0;border-bottom:1px solid var(--line);"><span>${escHtml(fmtDate(u.date))} ${escHtml(u.start)} · ${u.hours} saat${DB.pools.some(p=>p.name===pk.pool&&p.lanes>0)?' · '+u.lanes+' kulvar':''}${u.note?' · '+escHtml(u.note):''}</span><button class="btn sm danger" onclick="xkDetUse('${u.id}')">Sil</button></div>`).join('')||'<div style="font-size:12.5px;color:var(--muted);">Henüz ders düşülmedi.</div>'}
+  <h3 style="font-size:14px;margin:18px 0 6px;">Ödemeler (${money(i.paid)})</h3>
+  ${pays.map(p=>`<div style="display:flex;justify-content:space-between;gap:8px;font-size:13px;padding:5px 0;border-bottom:1px solid var(--line);"><span>${escHtml(fmtDate(p.date))} · ${escHtml(p.method||'')}${p.note?' · '+escHtml(p.note):''}</span><span><b>${money(p.amount)}</b> <button class="btn sm danger" onclick="xkDetPay('${p.id}')">Sil</button></span></div>`).join('')||'<div style="font-size:12.5px;color:var(--muted);">Henüz ödeme yok.</div>'}</div>`);
+}
+function xkDetUse(uid){ if(!confirm('Bu ders kaydı silinsin mi? Ders pakete geri eklenir.')) return; xkDelUse(xkCur,uid); xkDetail(xkCur); if(route==='extpk') renderExtPk($('#content')); }
+function xkDetPay(pid){ if(!confirm('Bu ödeme kaydı silinsin mi?')) return; xkDelPay(pid); xkDetail(xkCur); if(route==='extpk') renderExtPk($('#content')); }
 /* ============ INIT ============ */
 boot();
 </script>
