@@ -2857,8 +2857,8 @@ function financeCore(ym,pool){
   const last=ym+'-'+String(monthDays(ym).length).padStart(2,'0');
   const paid=DB.payments.filter(p=>p.status==='paid'&&ymOf(p.paidDate||p.due)===ym&&inScope(pool,payPool(p)));
   const byType={}; PAY_TYPES.forEach(t=>{byType[t]=0;}); paid.forEach(p=>{const t=p.type||'Aidat'; byType[t]=r2((byType[t]||0)+p.amount);});
-  const rentals=(DB.rentals||[]).filter(r=>inScope(pool,r.pool)).map(r=>({r,amount:rentalAmount(r,ym),paid:(r.paidMonths||[]).indexOf(ym)>-1,sessions:rentalDates(r,ym).length})).filter(x=>x.amount>0);
-  const rentIn=r2(rentals.filter(x=>x.paid).reduce((s,x)=>s+x.amount,0)), rentRecv=r2(rentals.filter(x=>!x.paid).reduce((s,x)=>s+x.amount,0));
+  const rentals=(DB.rentals||[]).filter(r=>inScope(pool,r.pool)).map(r=>{const i=rentalInfo(r,ym); return {r,amount:i.due,gross:i.gross,skipN:i.skipN,skipAmt:i.skipAmt,adj:i.adj,paidAmt:i.paidAmt,remain:i.remain,status:i.status,paid:i.status==='Tamam'||i.status==='Fazla ödeme',sessions:i.sessions};}).filter(x=>x.amount>0||x.paidAmt>0);
+  const rentIn=r2(rentals.reduce((s,x)=>s+x.paidAmt,0)), rentRecv=r2(rentals.reduce((s,x)=>s+Math.max(0,x.remain),0));
   const unpaid=DB.payments.filter(p=>p.status!=='paid'&&p.due<=last&&inScope(pool,payPool(p)));
   const recv=r2(unpaid.reduce((s,p)=>s+p.amount,0)), overdue=r2(unpaid.filter(p=>p.status==='overdue').reduce((s,p)=>s+p.amount,0));
   let pay=DB.coaches.map(c=>coachPayFor(c.id,ym,pool));
@@ -2956,7 +2956,7 @@ function reportBodyHtml(rep){
   <h2>Antrenör ücretleri (ders başına)</h2><div class="tw"><table><thead><tr><th>Antrenör</th><th class="n">Grup</th><th class="n">Özel</th><th class="n">Diğer</th><th class="n">Toplam</th></tr></thead><tbody>
   ${c.pay.map(x=>`<tr><td>${escHtml(x.name)}</td><td class="n">${x.groupCount} ders · ${m(x.groupAmt)}</td><td class="n">${x.privateCount} ders · ${m(x.privateAmt)}</td><td class="n">${x.otherCount} ders · ${m(x.otherAmt)}${x.asstCount?' · yrd. '+x.asstCount+' ders · '+m(x.asstAmt):''}</td><td class="n"><b>${m(x.total)}</b></td></tr>`).join('')||'<tr><td colspan="5">Bu kapsamda ders yok</td></tr>'}
   <tr class="tot"><td>Toplam</td><td></td><td></td><td></td><td class="n">${m(c.coachTotal)}</td></tr></tbody></table></div>
-  ${c.rentals.length?`<h2>Havuz kiralamaları</h2><div class="tw"><table><thead><tr><th>Kulüp</th><th>Havuz / kulvar</th><th class="n">Seans</th><th class="n">Tutar</th><th>Durum</th></tr></thead><tbody>${c.rentals.map(x=>`<tr><td>${escHtml(x.r.club)}</td><td>${escHtml(x.r.pool)}${DB.pools.some(pp=>pp.name===x.r.pool&&pp.lanes>0)?' · '+x.r.lanes+' kulvar':''}</td><td class="n">${x.sessions}</td><td class="n">${m(x.amount)}</td><td>${x.paid?'Tahsil edildi':'Bekliyor'}</td></tr>`).join('')}</tbody></table></div>`:''}
+  ${c.rentals.length?`<h2>Havuz kiralamaları</h2><div class="tw"><table><thead><tr><th>Kulüp</th><th>Havuz / kulvar</th><th class="n">Seans</th><th class="n">Net tutar</th><th class="n">Ödenen</th><th class="n">Kalan</th><th>Durum</th></tr></thead><tbody>${c.rentals.map(x=>`<tr><td>${escHtml(x.r.club)}</td><td>${escHtml(x.r.pool)}${DB.pools.some(pp=>pp.name===x.r.pool&&pp.lanes>0)?' · '+x.r.lanes+' kulvar':''}</td><td class="n">${x.sessions}${x.skipN?' <small>('+x.skipN+' iptal)</small>':''}</td><td class="n">${m(x.amount)}</td><td class="n">${m(x.paidAmt)}</td><td class="n">${m(Math.max(0,x.remain))}</td><td>${rentalStatusText(x)}</td></tr>`).join('')}</tbody></table></div>`:''}
   <h2>Alacaklar</h2><table><tbody><tr><td>Tahsil edilmemiş aidat/paket alacağı</td><td class="n">${m(c.recv)}</td></tr><tr><td>Bunun gecikmiş kısmı</td><td class="n">${m(c.overdue)}</td></tr><tr><td>Havuz kiralama alacağı</td><td class="n">${m(c.rentRecv)}</td></tr></tbody></table>
   <h2>${rep.pool===null?'Kulüp hareketleri':'Havuz hareketleri'}</h2><table><tbody>${kp}</tbody></table></div>`;
 }
@@ -9137,6 +9137,127 @@ function renderAbsences(c){
   const gA=NAV_GROUPS.admin.find(x=>x[0]==='Ders ve Antrenman'); if(gA&&gA[1].indexOf('absences')<0){ const j=gA[1].indexOf('attendance'); gA[1].splice(j>=0?j+1:gA[1].length,0,'absences'); }
   NAV.coach.splice(Math.max(0,NAV.coach.findIndex(x=>x.id==='attendance'))+1,0,{id:'absences',label:'Devamsızlık Takibi',ic:'⚠️'});
   const gC=NAV_GROUPS.coach.find(x=>x[0]==='Sporcularım'); if(gC&&gC[1].indexOf('absences')<0){ const j=gC[1].indexOf('attendance'); gC[1].splice(j>=0?j+1:gC[1].length,0,'absences'); } }
+
+/* ============ HAVUZ KİRALAMA: KISMİ ÖDEME + İPTAL EDİLEN SEANS KESİNTİSİ ============ */
+const RENT_SKIP_REASONS=['Teknik arıza','Havuz bakım / temizlik','Kulüp isteği','Resmi tatil','Diğer'];
+const RENT_PAY_METHODS=['Nakit','Havale / EFT','Kredi kartı','Çek / senet','Diğer'];
+let rentYm=null;
+function rentCurYm(){ return rentYm&&okYm(rentYm)?rentYm:curYm(); }
+const _rentalGross=rentalAmount;
+function rentalSkipDates(r,ym){ const ok=new Set(rentalDates(r,ym)); const seen={}; return (r.skips||[]).filter(s=>s&&ok.has(s.date)&&!seen[s.date]&&(seen[s.date]=1)); }
+function rentalInfo(r,ym){
+  const dates=rentalDates(r,ym), N=dates.length, gross=_rentalGross(r,ym), per=N?gross/N:0;
+  const sk=rentalSkipDates(r,ym), skipN=sk.length, skipAmt=r2(per*skipN);
+  const adjs=(r.adjusts||[]).filter(a=>a&&a.ym===ym), adj=r2(adjs.reduce((s,a)=>s+(Number(a.amount)||0),0));
+  const due=Math.max(0,r2(gross-skipAmt+adj));
+  const pays=(r.payments||[]).filter(p=>p&&p.ym===ym);
+  const legacy=!pays.length&&(r.paidMonths||[]).indexOf(ym)>-1;
+  const paidAmt=legacy?due:r2(pays.reduce((s,p)=>s+(Number(p.amount)||0),0));
+  const remain=r2(due-paidAmt);
+  let status='Ödenmedi'; if(due<=0&&paidAmt<=0) status='—'; else if(remain<0) status='Fazla ödeme'; else if(remain===0) status='Tamam'; else if(paidAmt>0) status='Kısmi';
+  return {gross,per:r2(per),sessions:N-skipN,total:N,skipN,skipAmt,adj,due,paidAmt,remain,status,pays,skips:sk,adjs,legacy};
+}
+rentalAmount=function(r,ym){ return rentalInfo(r,ym).due; };
+function rentalStatusText(x){ return x.status==='Kısmi'?('Kısmi (ödenen '+money(x.paidAmt)+', kalan '+money(x.remain)+')'):x.status==='Fazla ödeme'?('Fazla ödeme ('+money(-x.remain)+')'):x.status==='Tamam'?'Tahsil edildi':x.status==='Ödenmedi'?'Bekliyor':'—'; }
+function rentalMaterialize(r,ym){ /* eski "tahsil edildi" işaretini ödeme kaydına çevirir */
+  const has=(r.payments||[]).some(p=>p.ym===ym);
+  if((r.paidMonths||[]).indexOf(ym)>-1&&!has){ const i=rentalInfo(r,ym); r.payments=r.payments||[]; r.payments.push({id:'rp'+Date.now()+Math.floor(Math.random()*1000),ym,amount:i.due,date:'',method:'',note:'Önceki toplu tahsilat'}); }
+  r.paidMonths=(r.paidMonths||[]).filter(m=>m!==ym);
+}
+function rentalFind(id){ return (DB.rentals||[]).find(x=>x.id===id); }
+function rentalGuard(id,ym){ if(role!=='admin'||isAccReal&&isAccReal()) return {ok:false,errors:['Yalnızca yönetici işlem yapabilir.']}; const r=rentalFind(id); if(!r||!okYm(ym)) return {ok:false,errors:['Kayıt bulunamadı.']}; return {ok:true,r}; }
+function rentalAddPayment(id,ym,amount,date,method,note){
+  const g=rentalGuard(id,ym); if(!g.ok) return g; const r=g.r; const a=r2(Number(String(amount).replace(',','.')));
+  if(!(a>0)) return {ok:false,errors:['Tutar sıfırdan büyük olmalı.']};
+  if(date&&!/^\d{4}-\d{2}-\d{2}$/.test(date)) return {ok:false,errors:['Tarih geçersiz.']};
+  rentalMaterialize(r,ym); r.payments=r.payments||[];
+  r.payments.push({id:'rp'+Date.now()+Math.floor(Math.random()*1000),ym,amount:a,date:date||todayStr(),method:String(method||'').slice(0,30),note:String(note||'').slice(0,100)});
+  save(); return {ok:true,errors:[]};
+}
+function rentalDelPayment(id,ym,pid){ const g=rentalGuard(id,ym); if(!g.ok) return g; rentalMaterialize(g.r,ym); g.r.payments=(g.r.payments||[]).filter(p=>p.id!==pid); save(); return {ok:true,errors:[]}; }
+function rentalSetSkips(id,ym,dates,reason,note){
+  const g=rentalGuard(id,ym); if(!g.ok) return g; const r=g.r; const ok=new Set(rentalDates(r,ym));
+  rentalMaterialize(r,ym);
+  const keep=(r.skips||[]).filter(s=>ymOf(s.date)!==ym||(ok.has(s.date)&&dates.indexOf(s.date)>-1));
+  dates.forEach(d=>{ if(ok.has(d)&&!keep.some(s=>s.date===d)) keep.push({date:d,reason:reason||'Diğer',note:String(note||'').slice(0,100)}); });
+  r.skips=keep.sort((a,b)=>a.date<b.date?-1:1); save(); return {ok:true,errors:[]};
+}
+function rentalAddAdjust(id,ym,amount,note){
+  const g=rentalGuard(id,ym); if(!g.ok) return g; const a=r2(Number(String(amount).replace(',','.')));
+  if(!a||isNaN(a)) return {ok:false,errors:['Tutar girin (indirim için eksi, ek ücret için artı).']};
+  rentalMaterialize(g.r,ym); g.r.adjusts=g.r.adjusts||[]; g.r.adjusts.push({id:'ra'+Date.now()+Math.floor(Math.random()*1000),ym,amount:a,note:String(note||'').slice(0,100)}); save(); return {ok:true,errors:[]};
+}
+function rentalDelAdjust(id,ym,aid){ const g=rentalGuard(id,ym); if(!g.ok) return g; rentalMaterialize(g.r,ym); g.r.adjusts=(g.r.adjusts||[]).filter(a=>a.id!==aid); save(); return {ok:true,errors:[]}; }
+rentalSetPaid=function(id,ym,paid){
+  const g=rentalGuard(id,ym); if(!g.ok) return g; const r=g.r;
+  if(paid){ rentalMaterialize(r,ym); const i=rentalInfo(r,ym); if(i.remain>0){ r.payments=r.payments||[]; r.payments.push({id:'rp'+Date.now()+Math.floor(Math.random()*1000),ym,amount:i.remain,date:todayStr(),method:'',note:'Kalanın tamamı'}); } }
+  else { r.payments=(r.payments||[]).filter(p=>p.ym!==ym); r.paidMonths=(r.paidMonths||[]).filter(m=>m!==ym); }
+  save(); return {ok:true,errors:[]};
+};
+function rentShift(n){ const p=rentCurYm().split('-').map(Number); const d=new Date(p[0],p[1]-1+n,1); rentYm=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'); renderRentals($('#content')); }
+function rentPaid(id,paid){ rentalSetPaid(id,rentCurYm(),paid); renderRentals($('#content')); }
+renderRentals=function(c){
+  if(role!=='admin'){c.innerHTML='';return;}
+  const ym=rentCurYm(); const list=(DB.rentals||[]).slice().reverse();
+  const infos=list.map(r=>({r,i:rentalInfo(r,ym)}));
+  const tDue=r2(infos.reduce((s,x)=>s+x.i.due,0)), tPaid=r2(infos.reduce((s,x)=>s+x.i.paidAmt,0)), tRem=r2(infos.reduce((s,x)=>s+Math.max(0,x.i.remain),0));
+  c.innerHTML=`${takeMsg()}<div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:14px;"><button class="btn primary" onclick="rentOpen()">+ Yeni Kiralama Kaydı</button>
+   <span style="margin-left:auto;display:flex;gap:6px;align-items:center;"><button class="btn sm" onclick="rentShift(-1)" aria-label="Önceki ay">‹</button><b id="rent_ym" style="min-width:110px;text-align:center;">${monthLabel(ym)}</b><button class="btn sm" onclick="rentShift(1)" aria-label="Sonraki ay">›</button></span></div>
+  <div class="card" style="margin-bottom:14px;font-size:13.5px;display:flex;gap:18px;flex-wrap:wrap;"><span>Net kira: <b>${money(tDue)}</b></span><span>Tahsil edilen: <b style="color:var(--green);">${money(tPaid)}</b></span><span>Kalan: <b style="color:var(--amber);">${money(tRem)}</b></span></div>
+  <div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(300px,1fr));">
+  ${infos.map(({r,i})=>{const p=DB.pools.find(x=>x.name===r.pool);
+   const badge=i.status==='Tamam'?'<span class="badge green">Tamamı ödendi</span>':i.status==='Kısmi'?'<span class="badge amber">Kısmi ödeme</span>':i.status==='Fazla ödeme'?'<span class="badge aqua">Fazla ödeme</span>':i.status==='Ödenmedi'?'<span class="badge red">Bekliyor</span>':'';
+   return `<div class="card"><div style="display:flex;justify-content:space-between;gap:8px;"><b>${escHtml(r.club)}</b><span class="badge aqua">${escHtml(r.pool)}</span></div>
+    <div style="font-size:12.5px;color:var(--muted);margin-top:6px;">Yetkili: ${escHtml(r.contact)}${r.phone?' · '+escHtml(r.phone):''}<br>Antrenör: ${escHtml(r.coachName)}</div>
+    <div style="font-size:12.5px;margin-top:8px;">${escHtml(r.days.join('/'))} · ${escHtml(r.start)}-${escHtml(r.end)}${p&&p.lanes>0?' · <b>'+r.lanes+' kulvar</b>':' · tüm havuz'}</div>
+    <div style="font-size:12px;color:var(--muted);margin-top:2px;">${escHtml(fmtDate(r.startDate))} – ${r.endDate?escHtml(fmtDate(r.endDate)):'süresiz'} · ${money(r.laneFee)} / ${p&&p.lanes>0?'kulvar-saat':'saat'}</div>
+    <div style="margin-top:8px;font-size:13px;line-height:1.6;">${monthLabel(ym)}: <b>${money(i.due)}</b> ${badge}
+     ${i.skipN?`<div style="color:var(--amber);font-size:12px;">${i.skipN} seans yapılamadı: −${money(i.skipAmt)}</div>`:''}${i.adj?`<div style="font-size:12px;color:var(--muted);">Düzeltme: ${i.adj>0?'+':''}${money(i.adj)}</div>`:''}
+     ${i.due>0||i.paidAmt>0?`<div style="font-size:12px;color:var(--muted);">Ödenen ${money(i.paidAmt)} · Kalan ${money(Math.max(0,i.remain))}</div>`:''}</div>
+    <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;"><button class="btn sm primary" onclick="rentPayOpen('${r.id}')">Ödeme / Kesinti</button>${i.remain>0?`<button class="btn sm" onclick="rentPaid('${r.id}',true)">Kalanı tahsil et</button>`:''}<button class="btn sm" onclick="rentOpen('${r.id}')">Düzenle</button><button class="btn sm danger" onclick="rentDel('${r.id}')">Sil</button></div></div>`;}).join('')||'<div class="empty">Henüz kiralama kaydı yok</div>'}</div>`;
+};
+let rentPayId=null;
+function rentPayOpen(id){
+  if(role!=='admin') return; const r=rentalFind(id); if(!r) return; rentPayId=id; const ym=rentCurYm(); const i=rentalInfo(r,ym);
+  const dates=rentalDates(r,ym), skipSet=new Set(i.skips.map(s=>s.date)), reasonOf={}; i.skips.forEach(s=>{reasonOf[s.date]=s.reason;});
+  const dn=['Paz','Pzt','Sal','Çar','Per','Cum','Cmt'];
+  const sOpts=RENT_SKIP_REASONS.map(x=>`<option>${escHtml(x)}</option>`).join(''), mOpts=RENT_PAY_METHODS.map(x=>`<option>${escHtml(x)}</option>`).join('');
+  openDrawerHtml(`<div class="drawer-head"><div><div style="font-weight:800;font-size:16px;">${escHtml(r.club)} · ${monthLabel(ym)}</div><div style="font-size:12.5px;color:var(--muted);">Parça parça tahsilat ve yapılamayan seans kesintisi</div></div><button class="close-x" onclick="closeDrawer()">✕</button></div>
+  <div class="drawer-body" style="padding-top:14px;">
+  <div class="card" style="font-size:13.5px;line-height:1.7;">
+   Brüt kira (${i.total} seans × ${money(i.per)}): <b>${money(i.gross)}</b><br>
+   ${i.skipN?`Yapılamayan ${i.skipN} seans: <b style="color:var(--amber);">−${money(i.skipAmt)}</b><br>`:''}${i.adj?`Düzeltme: <b>${i.adj>0?'+':''}${money(i.adj)}</b><br>`:''}
+   Net kira: <b>${money(i.due)}</b> · Ödenen: <b style="color:var(--green);">${money(i.paidAmt)}</b> · ${i.remain<0?'Fazla ödeme':'Kalan'}: <b style="color:${i.remain>0?'var(--amber)':'var(--green)'};">${money(Math.abs(i.remain))}</b></div>
+  <h3 style="margin:16px 0 6px;font-size:14px;">Ödemeler</h3>
+  ${i.pays.length?i.pays.map(p=>`<div style="display:flex;justify-content:space-between;gap:8px;font-size:13px;padding:5px 0;border-bottom:1px solid var(--line);"><span>${p.date?escHtml(fmtDate(p.date)):'—'} · ${escHtml(p.method||'')} ${p.note?'· '+escHtml(p.note):''}</span><span><b>${money(p.amount)}</b> <button class="btn sm danger" onclick="rentPayDel('${p.id}')">Sil</button></span></div>`).join(''):`<div style="font-size:12.5px;color:var(--muted);">${i.legacy?'Bu ay önceden tamamı tahsil edilmiş olarak işaretli.':'Henüz ödeme alınmadı.'}</div>`}
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px;">
+   <div class="field"><label for="rp_a">Alınan tutar (₺)</label><input id="rp_a" inputmode="decimal" value="${i.remain>0?i.remain:''}"></div>
+   <div class="field"><label for="rp_d">Tarih</label><input id="rp_d" type="date" value="${todayStr()}"></div>
+   <div class="field"><label for="rp_m">Ödeme şekli</label><select id="rp_m">${mOpts}</select></div>
+   <div class="field"><label for="rp_n">Not</label><input id="rp_n" maxlength="100" placeholder="ör. 1. taksit"></div></div>
+  <div id="rp_res" style="color:var(--red);font-size:12.5px;min-height:16px;" aria-live="polite"></div>
+  <button class="btn primary" onclick="rentPayAdd()">Ödemeyi ekle</button>
+  <h3 style="margin:20px 0 6px;font-size:14px;">Yapılamayan seanslar (kesinti)</h3>
+  <div style="font-size:12.5px;color:var(--muted);margin-bottom:6px;">Seans yapılamayan günleri işaretleyin; her biri kira tutarından otomatik düşülür.</div>
+  <div id="rs_list" style="display:flex;flex-wrap:wrap;gap:6px;">${dates.map(d=>`<label class="chk" style="border:1px solid var(--line);border-radius:8px;padding:4px 8px;font-size:12.5px;"><input type="checkbox" value="${d}" ${skipSet.has(d)?'checked':''}> ${escHtml(fmtDate(d))} ${dn[parseYmd(d).getDay()]}${reasonOf[d]?' <i style="color:var(--amber);">('+escHtml(reasonOf[d])+')</i>':''}</label>`).join('')||'<span style="font-size:12.5px;color:var(--muted);">Bu ay seans yok.</span>'}</div>
+  ${dates.length?`<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px;"><div class="field"><label for="rs_r">Neden (yeni işaretlenenler)</label><select id="rs_r">${sOpts}</select></div><div class="field"><label for="rs_n">Not</label><input id="rs_n" maxlength="100"></div></div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;"><button class="btn primary" onclick="rentSkipSave()">Kesintiyi kaydet</button><button class="btn" onclick="rentSkipWeek()">Seçili günlerin haftasını da işaretle</button></div>`:''}
+  <h3 style="margin:20px 0 6px;font-size:14px;">Elle düzeltme</h3>
+  ${i.adjs.map(a=>`<div style="display:flex;justify-content:space-between;font-size:13px;padding:4px 0;"><span>${escHtml(a.note||'Düzeltme')}</span><span><b>${a.amount>0?'+':''}${money(a.amount)}</b> <button class="btn sm danger" onclick="rentAdjDel('${a.id}')">Sil</button></span></div>`).join('')}
+  <div style="display:grid;grid-template-columns:1fr 2fr;gap:8px;"><div class="field"><label for="ra_a">Tutar (₺, indirim için −)</label><input id="ra_a" inputmode="decimal" placeholder="-500"></div><div class="field"><label for="ra_n">Açıklama</label><input id="ra_n" maxlength="100" placeholder="ör. uzlaşmalı indirim"></div></div>
+  <div id="ra_res" style="color:var(--red);font-size:12.5px;min-height:16px;"></div><button class="btn" onclick="rentAdjAdd()">Düzeltme ekle</button>
+  </div>`);
+}
+function rentPayRefresh(msg){ rentPayOpen(rentPayId); if(route==='rentals') renderRentals($('#content')); }
+function rentPayAdd(){ const v=id=>document.getElementById(id).value; const r=rentalAddPayment(rentPayId,rentCurYm(),v('rp_a'),v('rp_d'),v('rp_m'),v('rp_n')); if(!r.ok){document.getElementById('rp_res').textContent=r.errors.join(' ');return;} rentPayRefresh(); }
+function rentPayDel(pid){ if(!confirm('Bu ödeme kaydı silinsin mi?')) return; rentalDelPayment(rentPayId,rentCurYm(),pid); rentPayRefresh(); }
+function rentSkipSave(){ const ds=Array.from(document.querySelectorAll('#rs_list input:checked')).map(i=>i.value); const g=id=>{const e=document.getElementById(id);return e?e.value:'';}; rentalSetSkips(rentPayId,rentCurYm(),ds,g('rs_r'),g('rs_n')); rentPayRefresh(); }
+function rentSkipWeek(){ /* işaretli günlerin bulunduğu haftanın tüm seanslarını işaretler */
+  const boxes=Array.from(document.querySelectorAll('#rs_list input')); const wk=ds=>{const d=parseYmd(ds); const k=(d.getDay()+6)%7; d.setDate(d.getDate()-k); return ymd(d);};
+  const weeks=new Set(boxes.filter(b=>b.checked).map(b=>wk(b.value))); boxes.forEach(b=>{ if(weeks.has(wk(b.value))) b.checked=true; });
+}
+function rentAdjAdd(){ const r=rentalAddAdjust(rentPayId,rentCurYm(),document.getElementById('ra_a').value,document.getElementById('ra_n').value); if(!r.ok){document.getElementById('ra_res').textContent=r.errors.join(' ');return;} rentPayRefresh(); }
+function rentAdjDel(aid){ rentalDelAdjust(rentPayId,rentCurYm(),aid); rentPayRefresh(); }
 
 /* ============ INIT ============ */
 boot();
