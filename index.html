@@ -629,7 +629,7 @@ function render(){
   const fns={dashboard:renderDashboard,athletes:renderAthletes,parents:renderParents,groups:renderGroups,
     schedule:renderSchedule,trainplan:renderTrainPlan,weekly:renderWeekly,makeups:renderMakeups,times:renderTimes,levels:renderLevels,attendance:renderAttendance,development:renderDevelopment,competitions:renderCompetitions,
     crm:renderCRM,coaches:renderCoaches,payments:renderPayments,announcements:renderAnnouncements,tickets:renderTickets,
-    absences:(c=>renderAbsences(c)),reports:renderReports,settings:renderSettings,ai:renderAI,approvals:renderApprovals,insights:renderInsights,rentals:renderRentals,extpk:(c=>renderExtPk(c)),finance:renderFinance,poolreport:renderPoolReport,dailylessons:renderDailyLessons,monthlylessons:renderMonthlyLessons,ratings:renderRatings,myratings:renderMyRatings,rate:renderRate,messages:renderMessages,surveys:renderSurveys,leaves:renderLeaves,discounts:renderDiscounts,devreport:renderDevReport,audit:renderAudit,payroll:renderPayroll,atthist:renderAttHistory,newitems:renderNewItems,privlesson:renderPrivLessons};
+    absences:(c=>renderAbsences(c)),reports:renderReports,settings:renderSettings,ai:renderAI,approvals:renderApprovals,insights:renderInsights,rentals:renderRentals,extpk:(c=>renderExtPk(c)),plsum:(c=>renderPlSummary(c)),finance:renderFinance,poolreport:renderPoolReport,dailylessons:renderDailyLessons,monthlylessons:renderMonthlyLessons,ratings:renderRatings,myratings:renderMyRatings,rate:renderRate,messages:renderMessages,surveys:renderSurveys,leaves:renderLeaves,discounts:renderDiscounts,devreport:renderDevReport,audit:renderAudit,payroll:renderPayroll,atthist:renderAttHistory,newitems:renderNewItems,privlesson:renderPrivLessons};
   c.innerHTML='';
   (fns[route]||renderDashboard)(c);
 }
@@ -9445,6 +9445,54 @@ function athAttHtml(a){
   const gh=hist.length?`<div style="font-size:12.5px;color:var(--muted);margin-bottom:8px;">Grup geçmişi: ${hist.map(s=>escHtml(gn(s.group))+' ('+(s.from>'0000'?fmtDate(s.from):'başlangıç')+' – '+fmtDate(s.to)+')').join(' → ')} → <b>${escHtml(gn(a.group))}</b></div>`:'';
   const show=rows.slice(0,60);
   return `<div class="section-title">Yoklamalar</div>${gh}${sum}${show.length?`<div class="tw" style="max-height:340px;overflow:auto;"><table><thead><tr><th>Tarih</th><th>Grup</th><th>Durum</th></tr></thead><tbody>${show.map(r=>{ const t=AH_ST[r.st]; return `<tr><td>${escHtml(fmtDate(r.d))}</td><td>${escHtml(gn(r.g))}</td><td><span style="display:inline-block;min-width:22px;text-align:center;font-weight:700;border-radius:6px;padding:1px 6px;background:${t?t[1]:'transparent'};">${t?t[0]:'?'}</span> ${escHtml(r.st)}</td></tr>`; }).join('')}</tbody></table></div>${rows.length>60?`<div style="font-size:12px;color:var(--muted);margin-top:6px;">Son 60 kayıt gösteriliyor (toplam ${rows.length}).</div>`:''}`:'<div class="empty">Bu sporcu için yoklama kaydı yok.</div>'}`;
+}
+/* ============ ÖZEL DERS PAKETLERİ ÖZET PENCERESİ (yönetici: tümü, hoca: kendi öğrencileri) ============ */
+TITLES.plsum='Özel Ders Paketleri';
+{ const mk=(arr,after)=>{ if(!arr||arr.some(x=>x.id==='plsum')) return; const i=arr.findIndex(x=>x.id===after); arr.splice(i>=0?i+1:arr.length,0,{id:'plsum',label:'Özel Ders Paketleri',ic:'🎫'}); };
+  mk(NAV.admin,'makeups'); mk(NAV.coach,'makeups');
+  const g=NAV_GROUPS.admin.find(x=>x[1].indexOf('makeups')>-1); if(g&&g[1].indexOf('plsum')<0) g[1].splice(g[1].indexOf('makeups')+1,0,'plsum');
+  if(NAV_GROUPS.coach){ const g2=NAV_GROUPS.coach.find(x=>x[1].indexOf('makeups')>-1); if(g2&&g2[1].indexOf('plsum')<0) g2[1].splice(g2[1].indexOf('makeups')+1,0,'plsum'); } }
+let plsF={q:'',st:'active',coach:''};
+function plsRows(){
+  if(role!=='admin'&&role!=='coach') return []; const me=(DB.currentUser||{}).coachId, t=todayStr(); const rows=[];
+  (DB.plPackages||[]).forEach(p=>{ const a=DB.athletes.find(x=>x.id===p.athlete); if(!a) return;
+    const ls=(DB.privateLessons||[]).filter(l=>l.pkg===p.id&&(l.status==='Onaylandı'||l.status==='Onay bekliyor'));
+    if(role==='coach'&&a.coach!==me&&!ls.some(l=>l.coach===me)) return;
+    const done=ls.filter(l=>l.status==='Onaylandı'&&l.date<=t).length, planned=ls.length-done, left=p.hours-ls.length;
+    const last=ls.filter(l=>l.date<=t).map(l=>l.date).sort().pop()||''; const next=ls.filter(l=>l.date>t).map(l=>l.date).sort()[0]||'';
+    rows.push({p,a,ls,done,planned,left,last,next}); });
+  return rows;
+}
+function renderPlSummary(c){
+  if(role!=='admin'&&role!=='coach'){ c.innerHTML=''; return; } const all=plsRows(); const f=plsF; const adm=role==='admin';
+  let rows=all.filter(r=>f.st==='all'||(f.st==='active'?r.left>0:r.left<=0)); if(f.q) rows=rows.filter(r=>r.a.name.toLocaleLowerCase('tr').indexOf(f.q.toLocaleLowerCase('tr'))>-1); if(adm&&f.coach) rows=rows.filter(r=>r.a.coach===f.coach);
+  rows.sort((x,y)=>f.st==='done'?0:(x.left-y.left)||x.a.name.localeCompare(y.a.name,'tr'));
+  const act=all.filter(r=>r.left>0), low=act.filter(r=>r.left<=2);
+  c.innerHTML=`<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-bottom:14px;">
+   <div class="card"><div style="font-size:12px;color:var(--muted);">Devam eden paket</div><div style="font-size:24px;font-weight:800;">${act.length}</div></div>
+   <div class="card"><div style="font-size:12px;color:var(--muted);">Toplam kalan ders</div><div style="font-size:24px;font-weight:800;">${act.reduce((s,r)=>s+r.left,0)}</div></div>
+   <div class="card"><div style="font-size:12px;color:var(--muted);">Azalan (2 ders ve altı)</div><div style="font-size:24px;font-weight:800;color:${low.length?'var(--amber)':'inherit'};">${low.length}</div></div></div>
+  <div class="card" style="margin-bottom:14px;display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;">
+   <div class="field" style="margin:0;min-width:180px;"><label for="pls_q">Öğrenci ara</label><input id="pls_q" value="${escHtml(f.q)}" oninput="plsF.q=this.value;plsList()"></div>
+   <div class="field" style="margin:0;"><label for="pls_s">Durum</label><select id="pls_s" onchange="plsF.st=this.value;plsList()"><option value="active"${f.st==='active'?' selected':''}>Devam eden</option><option value="done"${f.st==='done'?' selected':''}>Biten</option><option value="all"${f.st==='all'?' selected':''}>Tümü</option></select></div>
+   ${adm?`<div class="field" style="margin:0;"><label for="pls_c">Hoca</label><select id="pls_c" onchange="plsF.coach=this.value;plsList()"><option value="">Tüm hocalar</option>${DB.coaches.map(co=>`<option value="${escHtml(co.id)}"${f.coach===co.id?' selected':''}>${escHtml(co.name)}</option>`).join('')}</select></div>`:''}</div>
+  <div id="pls_list"></div>
+  ${role==='coach'?'<div style="font-size:12px;color:var(--muted);margin-top:8px;">Yalnızca sizin öğrencileriniz ve sizin yaptığınız dersler gösterilir.</div>':''}`;
+  plsList();
+}
+function plsList(){
+  const box=document.getElementById('pls_list'); if(!box) return; const adm=role==='admin'; const f=plsF; const all=plsRows();
+  let rows=all.filter(r=>f.st==='all'||(f.st==='active'?r.left>0:r.left<=0)); if(f.q) rows=rows.filter(r=>r.a.name.toLocaleLowerCase('tr').indexOf(f.q.toLocaleLowerCase('tr'))>-1); if(adm&&f.coach) rows=rows.filter(r=>r.a.coach===f.coach);
+  rows.sort((x,y)=>f.st==='done'?0:(x.left-y.left)||x.a.name.localeCompare(y.a.name,'tr'));
+  box.innerHTML=rows.length?`<div class="tw"><table><thead><tr><th>Öğrenci</th>${adm?'<th>Hoca</th>':''}<th>Havuz</th><th>Tür</th><th>Alınış</th><th class="n">Paket</th><th class="n">Yapılan</th><th class="n">Planlı</th><th class="n">Kalan</th><th>Son / sıradaki ders</th>${adm?'<th class="n">Fiyat</th>':''}<th></th></tr></thead><tbody>
+   ${rows.map(r=>`<tr><td><b>${escHtml(r.a.name)}</b></td>${adm?`<td>${escHtml(r.a.coach?coachName(r.a.coach):'—')}</td>`:''}<td>${escHtml(r.p.pool||'')}</td><td>${escHtml(PL_SIZE_LABEL[r.p.size||1]||'Bireysel')}</td><td>${r.p.createdAt?escHtml(fmtDate(r.p.createdAt)):''}</td><td class="n">${r.p.hours}</td><td class="n">${r.done}</td><td class="n">${r.planned}</td>
+    <td class="n"><b style="color:${r.left<=0?'var(--muted)':r.left<=2?'var(--amber)':'inherit'};">${r.left}</b> ${r.left<=0?'<span class="badge grey">Bitti</span>':r.left<=2?'<span class="badge amber">Azaldı</span>':''}</td>
+    <td style="font-size:12.5px;">${r.last?escHtml(fmtDate(r.last)):'—'} / ${r.next?escHtml(fmtDate(r.next)):'—'}</td>${adm?`<td class="n">${r.p.price!=null?money(r.p.price):''}</td>`:''}<td><button class="btn sm" onclick="plsDetail('${r.p.id}')">Dersler</button></td></tr>`).join('')}</tbody></table></div>`:'<div class="card"><div class="empty">Bu filtrede paket yok</div></div>';
+}
+function plsDetail(pid){
+  const r=plsRows().find(x=>x.p.id===pid); if(!r) return; const t=todayStr(); const adm=role==='admin';
+  openDrawerHtml(`<div class="drawer-head"><div><div style="font-weight:800;font-size:16px;">${escHtml(r.a.name)}</div><div style="font-size:12.5px;color:var(--muted);">${escHtml(r.p.pool||'')} · ${escHtml(PL_SIZE_LABEL[r.p.size||1]||'')} · ${r.p.hours} ders · yapılan ${r.done} · planlı ${r.planned} · <b>kalan ${r.left}</b></div></div><button class="close-x" onclick="closeDrawer()">✕</button></div>
+  <div class="drawer-body" style="padding-top:14px;">${r.ls.length?r.ls.slice().sort((x,y)=>(x.date+String(x.hour).padStart(2,'0'))<(y.date+String(y.hour).padStart(2,'0'))?-1:1).map((l,i)=>`<div style="display:flex;justify-content:space-between;gap:8px;font-size:13px;padding:6px 0;border-bottom:1px solid var(--line);"><span>${i+1}. ${escHtml(fmtDate(l.date))} ${String(l.hour).padStart(2,'0')}:00${adm?' · '+escHtml(coachName(l.coach)):''}</span><span class="badge ${l.status==='Onay bekliyor'?'amber':l.date<=t?'green':'aqua'}">${l.status==='Onay bekliyor'?'Onay bekliyor':l.date<=t?'Yapıldı':'Planlı'}</span></div>`).join(''):'<div class="empty">Bu pakette henüz ders yok</div>'}</div>`);
 }
 /* ============ INIT ============ */
 boot();
