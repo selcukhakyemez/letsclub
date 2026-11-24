@@ -9272,19 +9272,21 @@ function dhBulkOpen(){
 function dhBulkDates(){
   const box=document.getElementById('dhb_dates'); if(!box) return; const gid=cV('dhb_g'); const g=DB.groups.find(x=>x.id===gid);
   if(!g){ box.innerHTML=''; return; } const t=todayStr(); const dn=['Paz','Pzt','Sal','Çar','Per','Cum','Cmt']; const days=[];
-  for(let i=0;i<=56;i++){ const ds=fbAddDays(t,i); if(groupOnDay(g,ds)&&!gCancelled(g,ds)) days.push(ds); }
-  if(!days.length){ box.innerHTML='<div style="font-size:12.5px;color:var(--muted);">Bu grubun önümüzdeki 8 haftada dersi yok.</div>'; return; }
-  const dows=Array.from(new Set(days.map(d=>parseYmd(d).getDay())));
-  box.innerHTML=`<div style="font-size:12.5px;margin:6px 0;">Ders günleri (sonraki 8 hafta)</div>
+  for(let i=-60;i<=56;i++){ const ds=fbAddDays(t,i); if(groupOnDay(g,ds)&&!gCancelled(g,ds)) days.push(ds); }
+  if(!days.length){ box.innerHTML='<div style="font-size:12.5px;color:var(--muted);">Bu grubun son 60 gün ve önümüzdeki 8 haftada dersi yok.</div>'; return; }
+  const dows=Array.from(new Set(days.filter(d=>d>=t).map(d=>parseYmd(d).getDay()))); const chip=d=>{const hs=dhOf(g,d); return `<label class="chk"><input type="checkbox" value="${d}" data-dow="${parseYmd(d).getDay()}" data-past="${d<t?1:0}"> ${escHtml(fmtDate(d))} ${dn[parseYmd(d).getDay()]}${hs.length?` <i style="color:var(--amber);">(${escHtml(hs.map(h=>coachName(h.coach)).join(', '))} <a href="#" onclick="dhBulkDel('${hs[0].id}');return false;" style="color:var(--red);" title="Yardımcıyı çıkar">✕</a>)</i>`:''}</label>`;}; const past=days.filter(d=>d<t), fut=days.filter(d=>d>=t);
+  box.innerHTML=`<div style="font-size:12.5px;margin:6px 0;">Gelecek dersler (sonraki 8 hafta)</div>
    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;">${dows.map(w=>`<button class="btn sm" onclick="dhBulkPick(${w})">Tüm ${dn[w]}</button>`).join('')}<button class="btn sm" onclick="dhBulkPick(-1)">Temizle</button></div>
-   <div id="dhb_list" style="display:flex;flex-wrap:wrap;gap:6px;">${days.map(d=>{const hs=dhOf(g,d); return `<label class="chk"><input type="checkbox" value="${d}" data-dow="${parseYmd(d).getDay()}"> ${escHtml(fmtDate(d))} ${dn[parseYmd(d).getDay()]}${hs.length?` <i style="color:var(--amber);">(${escHtml(hs.map(h=>coachName(h.coach)).join(', '))} <a href="#" onclick="dhBulkDel('${hs[0].id}');return false;" style="color:var(--red);" title="Yardımcıyı çıkar">✕</a>)</i>`:''}</label>`;}).join('')}</div>
-   <div style="font-size:12px;color:var(--muted);margin:8px 0;">Yardımcı hocaya bu derslerde ana hocanın tarifesiyle ders ücreti yazılır; yoklamayı o gün görür ve alabilir. Yoklamayı kimin aldığı ücreti etkilemez.</div>
+   <div id="dhb_list" style="display:flex;flex-wrap:wrap;gap:6px;">${fut.map(chip).join('')||'<span style="font-size:12.5px;color:var(--muted);">Yok</span>'}</div>
+   <div style="font-size:12.5px;margin:14px 0 6px;">Geçmiş dersler (son 60 gün) — unutulan atamalar için</div>
+   <div id="dhb_past" style="display:flex;flex-wrap:wrap;gap:6px;">${past.map(chip).join('')||'<span style="font-size:12.5px;color:var(--muted);">Yok</span>'}</div>
+   <div style="font-size:12px;color:var(--muted);margin:8px 0;">Yardımcı hocaya bu derslerde ana hocanın tarifesiyle ders ücreti yazılır (geçmiş derslerde o ayın hakedişine de eklenir); yoklamayı atandığı günden sonraki 14 gün boyunca görür ve alabilir. Yoklamayı kimin aldığı ücreti etkilemez.</div>
    <button class="btn primary" onclick="dhBulkSave()">Seçili günlere ata</button>`;
 }
-function dhBulkPick(w){ document.querySelectorAll('#dhb_list input').forEach(i=>{ i.checked=(w===-1)?false:(i.checked||Number(i.dataset.dow)===w); }); }
+function dhBulkPick(w){ document.querySelectorAll('#dhb_list input').forEach(i=>{ i.checked=(w===-1)?false:(i.checked||Number(i.dataset.dow)===w); }); if(w===-1) document.querySelectorAll('#dhb_past input').forEach(i=>{ i.checked=false; }); }
 function dhBulkDel(id){ if(!confirm('Yardımcı hoca bu dersten çıkarılsın mı?')) return; dhRemove(id); dhBulkDates(); render(); }
 function dhBulkSave(){
-  const gid=cV('dhb_g'), cid=cV('dhb_c'), res=document.getElementById('dhb_res'); const ds=Array.from(document.querySelectorAll('#dhb_list input:checked')).map(i=>i.value);
+  const gid=cV('dhb_g'), cid=cV('dhb_c'), res=document.getElementById('dhb_res'); const ds=Array.from(document.querySelectorAll('#dhb_list input:checked, #dhb_past input:checked')).map(i=>i.value);
   if(!cid){ res.style.color='var(--red)'; res.textContent='Yardımcı hocayı seçin.'; return; } if(!ds.length){ res.style.color='var(--red)'; res.textContent='En az bir gün işaretleyin.'; return; }
   const r=dhBulkAssign(gid,cid,ds);
   res.style.color=r.errors.length?'var(--red)':'var(--green)'; res.innerHTML=`<b>${r.added} ders atandı.</b>${r.errors.map(e=>'<br>'+escHtml(e)).join('')}`;
