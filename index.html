@@ -629,7 +629,7 @@ function render(){
   const fns={dashboard:renderDashboard,athletes:renderAthletes,parents:renderParents,groups:renderGroups,
     schedule:renderSchedule,trainplan:renderTrainPlan,weekly:renderWeekly,makeups:renderMakeups,times:renderTimes,levels:renderLevels,attendance:renderAttendance,development:renderDevelopment,competitions:renderCompetitions,
     crm:renderCRM,coaches:renderCoaches,payments:renderPayments,announcements:renderAnnouncements,tickets:renderTickets,
-    absences:(c=>renderAbsences(c)),reports:renderReports,settings:renderSettings,ai:renderAI,approvals:renderApprovals,insights:renderInsights,rentals:renderRentals,extpk:(c=>renderExtPk(c)),plsum:(c=>renderPlSummary(c)),finance:renderFinance,poolreport:renderPoolReport,dailylessons:renderDailyLessons,monthlylessons:renderMonthlyLessons,ratings:renderRatings,myratings:renderMyRatings,rate:renderRate,messages:renderMessages,surveys:renderSurveys,leaves:renderLeaves,discounts:renderDiscounts,devreport:renderDevReport,audit:renderAudit,payroll:renderPayroll,atthist:renderAttHistory,newitems:renderNewItems,privlesson:renderPrivLessons};
+    absences:(c=>renderAbsences(c)),reports:renderReports,settings:renderSettings,ai:renderAI,approvals:renderApprovals,insights:renderInsights,rentals:renderRentals,extpk:(c=>renderExtPk(c)),plsum:(c=>renderPlSummary(c)),expiring:(c=>renderExpiring(c)),finance:renderFinance,poolreport:renderPoolReport,dailylessons:renderDailyLessons,monthlylessons:renderMonthlyLessons,ratings:renderRatings,myratings:renderMyRatings,rate:renderRate,messages:renderMessages,surveys:renderSurveys,leaves:renderLeaves,discounts:renderDiscounts,devreport:renderDevReport,audit:renderAudit,payroll:renderPayroll,atthist:renderAttHistory,newitems:renderNewItems,privlesson:renderPrivLessons};
   c.innerHTML='';
   (fns[route]||renderDashboard)(c);
 }
@@ -6923,7 +6923,7 @@ function cMemPrice(id){
     const left=Math.ceil((parseYmd(m.end)-new Date())/864e5);
     body.insertAdjacentHTML('afterbegin',`<div class="note-banner" style="margin-bottom:10px;">${m.months} aylık üyelik · ${fmtDate(m.start)} – ${fmtDate(m.end)} ${left<0?'<b style="color:var(--red)">(süresi doldu)</b>':left<=14?`<b>(${left} gün kaldı)</b>`:''}${m.pending&&role==='admin'?` <button class="btn sm primary" onclick="cMemPrice('${a.id}')">Ücreti işle</button>`:''}${m.pending&&role!=='admin'?' · ücret yönetici tarafından belirlenecek':''}</div>`); }catch(e){} }; }
 /* ---- Bildirim: üyeliği bitmek üzere olanlar (yönetici) ---- */
-{ const _cn4=cNotifs; cNotifs=function(){ const L=_cn4(); if(role==='admin'){ try{ DB.athletes.filter(a=>a.status==='active'&&a.membership).forEach(a=>{ const left=Math.ceil((parseYmd(a.membership.end)-new Date())/864e5); if(left<=14) L.push({ic:'⏳',text:`${a.name}: ${a.membership.months} aylık üyelik ${left<0?'sona erdi':left+' gün sonra bitiyor'}`,to:'athletes'}); }); }catch(e){} } return L; }; }
+{ const _cn4=cNotifs; cNotifs=function(){ const L=_cn4(); if(role==='admin'){ try{ DB.athletes.filter(a=>a.status==='active'&&a.membership).forEach(a=>{ const left=Math.ceil((parseYmd(a.membership.end)-new Date())/864e5); if(left<=14) L.push({ic:'⏳',text:`${a.name}: ${a.membership.months} aylık üyelik ${left<0?'sona erdi':left+' gün sonra bitiyor'}`,to:'expiring'}); }); }catch(e){} } return L; }; }
 /* ---- Özel ders paketi seçenekleri: 6 / 8 / 10 / 20 ders ---- */
 function cAthPkgSection(){
   const isAdmin=role==='admin'; if(!(isAdmin||role==='coach')||!DB.pools.length) return '';
@@ -9493,6 +9493,50 @@ function plsDetail(pid){
   const r=plsRows().find(x=>x.p.id===pid); if(!r) return; const t=todayStr(); const adm=role==='admin';
   openDrawerHtml(`<div class="drawer-head"><div><div style="font-weight:800;font-size:16px;">${escHtml(r.a.name)}</div><div style="font-size:12.5px;color:var(--muted);">${escHtml(r.p.pool||'')} · ${escHtml(PL_SIZE_LABEL[r.p.size||1]||'')} · ${r.p.hours} ders · yapılan ${r.done} · planlı ${r.planned} · <b>kalan ${r.left}</b></div></div><button class="close-x" onclick="closeDrawer()">✕</button></div>
   <div class="drawer-body" style="padding-top:14px;">${r.ls.length?r.ls.slice().sort((x,y)=>(x.date+String(x.hour).padStart(2,'0'))<(y.date+String(y.hour).padStart(2,'0'))?-1:1).map((l,i)=>`<div style="display:flex;justify-content:space-between;gap:8px;font-size:13px;padding:6px 0;border-bottom:1px solid var(--line);"><span>${i+1}. ${escHtml(fmtDate(l.date))} ${String(l.hour).padStart(2,'0')}:00${adm?' · '+escHtml(coachName(l.coach)):''}</span><span class="badge ${l.status==='Onay bekliyor'?'amber':l.date<=t?'green':'aqua'}">${l.status==='Onay bekliyor'?'Onay bekliyor':l.date<=t?'Yapıldı':'Planlı'}</span></div>`).join(''):'<div class="empty">Bu pakette henüz ders yok</div>'}</div>`);
+}
+/* ============ GRUP ÜYELİĞİ BİTECEK / SON DERSLERİ KALAN SPORCULAR ============ */
+TITLES.expiring='Üyeliği Bitecek Sporcular';
+{ const mk=(arr,after)=>{ if(!arr||arr.some(x=>x.id==='expiring')) return; const i=arr.findIndex(x=>x.id===after); arr.splice(i>=0?i+1:arr.length,0,{id:'expiring',label:'Üyeliği Bitenler',ic:'⏳'}); };
+  mk(NAV.admin,'plsum'); mk(NAV.coach,'plsum');
+  const g=NAV_GROUPS.admin.find(x=>x[1].indexOf('plsum')>-1); if(g&&g[1].indexOf('expiring')<0) g[1].splice(g[1].indexOf('plsum')+1,0,'expiring');
+  if(NAV_GROUPS.coach){ const g2=NAV_GROUPS.coach.find(x=>x[1].indexOf('plsum')>-1); if(g2&&g2[1].indexOf('expiring')<0) g2[1].splice(g2[1].indexOf('plsum')+1,0,'expiring'); } }
+let expF={lim:'2',gid:'',q:''};
+function expLessonsLeft(a,g){ const m=a.membership; if(!m||!m.end||!g) return 0; const t=todayStr(); if(m.end<t) return 0; let n=0; const cap=fbAddDays(t,400);
+  for(let ds=t;ds<=m.end&&ds<=cap;ds=fbAddDays(ds,1)){ if(groupOnDay(g,ds)&&!gCancelled(g,ds)) n++; } return n; }
+function expRows(){
+  if(role!=='admin'&&role!=='coach') return {rows:[],none:0}; const t=todayStr(); const rows=[]; let none=0; const me=(DB.currentUser||{}).coachId;
+  const list=(role==='admin'?DB.athletes:visibleAthletes()).filter(a=>a.status==='active'&&a.group&&a.group!=='trial'&&a.group!=='private');
+  list.forEach(a=>{ const g=DB.groups.find(x=>x.id===a.group); if(!g) return; const m=a.membership; if(!m||!m.end||m.pending){ none++; return; }
+    const days=Math.ceil((parseYmd(m.end)-parseYmd(t))/864e5); const left=expLessonsLeft(a,g);
+    rows.push({a,g,m,days,left,over:m.end<t}); });
+  return {rows,none};
+}
+function expFiltered(){
+  const {rows,none}=expRows(); const f=expF; let r=rows;
+  if(f.gid) r=r.filter(x=>x.g.id===f.gid); if(f.q) r=r.filter(x=>x.a.name.toLocaleLowerCase('tr').indexOf(f.q.toLocaleLowerCase('tr'))>-1);
+  r=r.filter(x=>f.lim==='over'?x.over:f.lim==='14'?(!x.over&&x.days<=14):f.lim==='all'?true:(!x.over&&x.left<=Number(f.lim)));
+  r.sort((x,y)=>(x.over!==y.over?(x.over?-1:1):(x.left-y.left)||(x.days-y.days)||x.a.name.localeCompare(y.a.name,'tr')));
+  return {rows:r,none,all:rows};
+}
+function renderExpiring(c){
+  if(role!=='admin'&&role!=='coach'){ c.innerHTML=''; return; } const groups=visibleGroups(); const f=expF;
+  c.innerHTML=`<div id="exp_sum" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-bottom:14px;"></div>
+  <div class="card" style="margin-bottom:14px;display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;">
+   <div class="field" style="margin:0;"><label for="exp_l">Göster</label><select id="exp_l" onchange="expF.lim=this.value;expList()"><option value="2">Son 2 ders ve altı</option><option value="4">Son 4 ders ve altı</option><option value="14">Bitişine 14 gün kalan</option><option value="over">Süresi bitmiş</option><option value="all">Tüm üyelikler</option></select></div>
+   <div class="field" style="margin:0;"><label for="exp_g">Grup</label><select id="exp_g" onchange="expF.gid=this.value;expList()"><option value="">Tüm gruplar</option>${groups.map(g=>`<option value="${escHtml(g.id)}">${escHtml(g.name)}</option>`).join('')}</select></div>
+   <div class="field" style="margin:0;min-width:170px;"><label for="exp_q">Sporcu ara</label><input id="exp_q" value="${escHtml(f.q)}" oninput="expF.q=this.value;expList()"></div></div>
+  <div id="exp_list"></div>`;
+  document.getElementById('exp_l').value=f.lim; document.getElementById('exp_g').value=f.gid; expList();
+}
+function expList(){
+  const box=document.getElementById('exp_list'); if(!box) return; const {rows,none,all}=expFiltered(); const adm=role==='admin';
+  const s=document.getElementById('exp_sum'); if(s){ const last2=all.filter(x=>!x.over&&x.left<=2).length, soon=all.filter(x=>!x.over&&x.days<=14).length, ov=all.filter(x=>x.over).length;
+    s.innerHTML=`<div class="card"><div style="font-size:12px;color:var(--muted);">Son 2 dersi kalan</div><div style="font-size:24px;font-weight:800;color:${last2?'var(--amber)':'inherit'};">${last2}</div></div><div class="card"><div style="font-size:12px;color:var(--muted);">14 gün içinde bitecek</div><div style="font-size:24px;font-weight:800;">${soon}</div></div><div class="card"><div style="font-size:12px;color:var(--muted);">Süresi bitmiş</div><div style="font-size:24px;font-weight:800;color:${ov?'var(--red)':'inherit'};">${ov}</div></div>`; }
+  box.innerHTML=(rows.length?`<div class="tw"><table><thead><tr><th>Sporcu</th><th>Grup</th><th>Hoca</th><th>Üyelik</th><th>Bitiş</th><th class="n">Kalan gün</th><th class="n">Kalan ders</th><th>Durum</th><th></th></tr></thead><tbody>
+   ${rows.map(x=>`<tr><td><b>${escHtml(x.a.name)}</b></td><td>${escHtml(x.g.name)}</td><td>${escHtml(coachName(x.g.coach))}</td><td>${x.m.months} aylık</td><td>${escHtml(fmtDate(x.m.end))}${x.m.ext&&x.m.ext.n?' <small title="izinli/hasta dersler eklendi">+'+x.m.ext.n+'</small>':''}</td><td class="n">${x.over?'—':x.days}</td><td class="n"><b>${x.over?0:x.left}</b></td>
+   <td>${x.over?'<span class="badge red">Süresi bitti</span>':x.left<=2?'<span class="badge amber">Son '+x.left+' ders</span>':x.days<=14?'<span class="badge aqua">Yakında</span>':'<span class="badge green">Devam</span>'}</td><td><button class="btn sm" onclick="openAthlete('${x.a.id}')">Kart</button></td></tr>`).join('')}</tbody></table></div>`:'<div class="card"><div class="empty">Bu filtrede sporcu yok</div></div>')
+   +(none?`<div style="font-size:12px;color:var(--muted);margin-top:8px;">${none} aktif sporcunun üyelik süresi/bitiş tarihi tanımlı değil, listeye girmez.</div>`:'')
+   +(adm?'':'<div style="font-size:12px;color:var(--muted);margin-top:8px;">Yalnızca kendi gruplarınızdaki sporcular gösterilir.</div>');
 }
 /* ============ INIT ============ */
 boot();
