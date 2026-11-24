@@ -9257,8 +9257,12 @@ function rentAdjDel(aid){ rentalDelAdjust(rentPayId,rentCurYm(),aid); rentPayRef
 
 /* ============ Yardımcı hoca: gün seçerek toplu atama + geçmiş 14 gün yoklama erişimi ============ */
 const DH_PAST_DAYS=14;
-function dhMyGroupsWindow(){ const me=(DB.currentUser||{}).coachId; if(!me) return []; const lo=fbAddDays(todayStr(),-DH_PAST_DAYS), hi=todayStr(); const out=[];
-  (DB.dayHelpers||[]).forEach(h=>{ if(h.coach===me&&h.date>=lo&&h.date<=hi&&out.indexOf(h.group)<0) out.push(h.group); }); return out; }
+function dhMyGroupsWindow(){ const me=(DB.currentUser||{}).coachId; if(!me) return []; const t=todayStr(), lo=fbAddDays(t,-DH_PAST_DAYS), hi=fbAddDays(t,7); const out=[]; const add=g=>{ if(g&&out.indexOf(g)<0) out.push(g); };
+  (DB.dayHelpers||[]).forEach(h=>{ if(h.coach===me&&h.date>=lo&&h.date<=hi) add(h.group); });
+  (DB.coachSwaps||[]).forEach(x=>{ if(x.coach===me&&x.date>=lo&&x.date<=hi) add(x.group); });
+  (DB.coachLeaves||[]).forEach(l=>{ if(l.status!=='Onaylandı') return; (l.subs||[]).forEach(s=>{ if(s.coach===me&&fbAddDays(l.to,DH_PAST_DAYS)>=t&&fbAddDays(l.from,-7)<=t) add(s.group); }); });
+  (DB.groupMerges||[]).forEach(m=>{ if(m.coach===me&&m.to>=lo&&m.from<=hi) (m.groups||[]).forEach(add); });
+  return out; }
 { const _vg=visibleGroups; visibleGroups=function(){ const r=_vg(); if(role!=='coach') return r; const ex=dhMyGroupsWindow(); if(!ex.length) return r; return r.concat(DB.groups.filter(g=>ex.indexOf(g.id)>-1&&!r.some(x=>x.id===g.id))); };
   const _va=visibleAthletes; visibleAthletes=function(){ const r=_va(); if(role!=='coach') return r; const ex=dhMyGroupsWindow(); if(!ex.length) return r; return r.concat(DB.athletes.filter(a=>ex.indexOf(a.group)>-1&&r.indexOf(a)<0)); }; }
 function dhBulkOpen(){
