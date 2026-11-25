@@ -9608,13 +9608,16 @@ function asstBuildNav(){
   const grp=[['Genel',['dashboard','asstmode']],['Kayıtlar',['athletes','parents','groups','crm']],['Ders ve Yoklama',['schedule','privlesson','plsum','attendance','atthist','dailylessons','makeups','expiring']]];
   return {list,grp};
 }
-function asstEnter(){
+async function asstFlush(){ try{ if(SERVER&&SB.profile){ if(SB.timer){ clearTimeout(SB.timer); SB.timer=null; } await sbSyncNow(); await sbIdle(); } }catch(e){} }
+function asstRebase(){ try{ if(SERVER&&SB.profile) sbBaseline(); }catch(e){ console.error(e); } }
+async function asstEnter(){
   if(role!=='coach'||window.__asst||!asstActive()) return;
+  await asstFlush();
   ASST_SAVED.nav=NAV.admin; ASST_SAVED.grp=NAV_GROUPS.admin; const b=asstBuildNav();
-  NAV.admin=b.list; NAV_GROUPS.admin=b.grp; window.__asst=true; role='admin'; route='dashboard'; render();
+  NAV.admin=b.list; NAV_GROUPS.admin=b.grp; window.__asst=true; role='admin'; route='dashboard'; asstRebase(); render();
 }
-function asstExit(){
-  if(!window.__asst) return; window.__asst=false; role='coach'; if(ASST_SAVED.nav){ NAV.admin=ASST_SAVED.nav; NAV_GROUPS.admin=ASST_SAVED.grp; ASST_SAVED.nav=null; } route='dashboard'; render();
+async function asstExit(){
+  if(!window.__asst) return; await asstFlush(); window.__asst=false; role='coach'; if(ASST_SAVED.nav){ NAV.admin=ASST_SAVED.nav; NAV_GROUPS.admin=ASST_SAVED.grp; ASST_SAVED.nav=null; } route='dashboard'; asstRebase(); render();
 }
 function asstReset(){ if(window.__asst){ window.__asst=false; if(ASST_SAVED.nav){ NAV.admin=ASST_SAVED.nav; NAV_GROUPS.admin=ASST_SAVED.grp; ASST_SAVED.nav=null; } } }
 if(typeof sbSignOut==='function'){ const _so=sbSignOut; sbSignOut=async function(){ asstReset(); return _so.apply(this,arguments); }; }
