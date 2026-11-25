@@ -9562,8 +9562,8 @@ function attWhoDraw(){ const w=document.getElementById('attGridWrap'); if(!w) re
 if(C_COLLS.indexOf('coachPerms')<0) C_COLLS.push('coachPerms'); if(!SB_SPECS.some(s=>s.c==='coachPerms')) SB_SPECS.push({c:'coachPerms',t:'arr'});
 if(typeof AU_COLL==='object') AU_COLL.coachPerms='Yardımcı yönetici yetkisi';
 const ASST_PERMS=[['attendance','Yoklama alma ve düzeltme'],['athletes','Sporcu (ve veli) kaydı / düzenleme'],['schedule','Ders programı: telafi, yardımcı hoca atama, ders iptali, hoca değişimi'],['privateLessons','Özel ders girişi ve paketten ders düşme'],['leads','Deneme / aday sporcu kaydı']];
-const ASST_ROUTES={attendance:['attendance','atthist','dailylessons','expiring'],athletes:['athletes','parents','groups','expiring'],schedule:['schedule','makeups','groups','dailylessons'],privateLessons:['privlesson','plsum','athletes'],leads:['crm','athletes']};
-const ASST_COLLS={attendance:['attendanceLog','attMeta','makeups'],athletes:['athletes','parents','groups'],schedule:['dayHelpers','coachSwaps','classCancels','makeups','groupMerges'],privateLessons:['privateLessons','athletes'],leads:['leads','athletes']};
+const ASST_ROUTES={attendance:['attendance','atthist','dailylessons','expiring'],athletes:['athletes','parents','groups','expiring'],schedule:['schedule','makeups','groups','dailylessons','leaves'],privateLessons:['privlesson','plsum','athletes'],leads:['crm','athletes']};
+const ASST_COLLS={attendance:['attendanceLog','attMeta','makeups'],athletes:['athletes','parents','groups'],schedule:['dayHelpers','coachSwaps','classCancels','makeups','groupMerges','coachLeaves'],privateLessons:['privateLessons','athletes'],leads:['leads','athletes']};
 TITLES.asstmode='Yardımcı Yönetici';
 function asstTrueAdmin(){ return role==='admin'&&!window.__asst&&!(typeof isAccReal==='function'&&isAccReal()); }
 function asstMe(){ cEnsure(); const id=DB.currentUser&&DB.currentUser.coachId; return id?(DB.coachPerms||[]).find(x=>x.id===id)||null:null; }
@@ -9605,7 +9605,7 @@ function asstBuildNav(){
   const full=ASST_SAVED.nav, byId={}; full.filter(x=>x.id).forEach(x=>byId[x.id]=x);
   byId.asstmode={id:'asstmode',label:'Antrenör görünümüne dön',ic:'↩️'};
   const list=Array.from(ids).filter(i=>byId[i]).map(i=>byId[i]);
-  const grp=[['Genel',['dashboard','asstmode']],['Kayıtlar',['athletes','parents','groups','crm']],['Ders ve Yoklama',['schedule','privlesson','plsum','attendance','atthist','dailylessons','makeups','expiring']]];
+  const grp=[['Genel',['dashboard','asstmode']],['Kayıtlar',['athletes','parents','groups','crm']],['Ders ve Yoklama',['schedule','leaves','privlesson','plsum','attendance','atthist','dailylessons','makeups','expiring']]];
   return {list,grp};
 }
 async function asstFlush(){ try{ if(SERVER&&SB.profile){ if(SB.timer){ clearTimeout(SB.timer); SB.timer=null; } await sbSyncNow(); await sbIdle(); } }catch(e){} }
@@ -9635,11 +9635,10 @@ function renderAsstMode(c){
   ${asstActive()?'<button class="btn primary" onclick="asstEnter()">Yardımcı Yönetici moduna geç</button>':''}</div>`;
 }
 /* --- mod içi görünürlük ve yetkiler --- */
-{ const _vg=visibleGroups; visibleGroups=function(){ if(!window.__asst) return _vg(); let base; role='coach'; try{ base=_vg(); } finally{ role='admin'; }
-    const me=DB.currentUser.coachId; return DB.groups.filter(g=>base.some(b=>b.id===g.id)||asstGroupIn(g)||g.coach===me||g.assistant===me); }; }
-{ const _va=visibleAthletes; visibleAthletes=function(){ if(!window.__asst) return _va(); let base; role='coach'; try{ base=_va(); } finally{ role='admin'; }
+{ const _vg=visibleGroups; visibleGroups=function(){ if(!window.__asst) return _vg(); return DB.groups.filter(g=>asstGroupIn(g)); }; }
+{ const _va=visibleAthletes; visibleAthletes=function(){ if(!window.__asst) return _va();
     const gs=new Set(visibleGroups().map(g=>g.id)), P=asstPools();
-    return DB.athletes.filter(a=>base.some(b=>b.id===a.id)||gs.has(a.group)||(asstHas('privateLessons')&&a.kind==='private'&&(DB.plPackages||[]).some(k=>k.athlete===a.id&&P.indexOf(k.pool)>-1))||(asstHas('leads')&&a.status==='trial')); }; }
+    return DB.athletes.filter(a=>gs.has(a.group)||(asstHas('privateLessons')&&a.kind==='private'&&(DB.plPackages||[]).some(k=>k.athlete===a.id&&P.indexOf(k.pool)>-1))||(asstHas('leads')&&a.status==='trial')); }; }
 { const wrap=(n,f)=>{ const o=window[n]; if(typeof o!=='function') return; window[n]=function(){ return window.__asst?f.apply(this,arguments):o.apply(this,arguments); }; };
   wrap('canSeeFinance',()=>false); wrap('canManageGroups',()=>false); wrap('canManageCoaches',()=>false); wrap('isAdminRole',()=>false);
   wrap('canViewParent',()=>asstHas('athletes')); wrap('canAddAthlete',()=>asstHas('athletes')||asstHas('leads')||asstHas('privateLessons')); }
@@ -9655,10 +9654,19 @@ function renderAsstMode(c){
 { const o=plsRows; plsRows=function(){ const r=o.apply(this,arguments); if(!window.__asst) return r; const P=asstPools(); return r.filter(x=>P.indexOf(x.p.pool)>-1); }; }
 { const o=expRows; expRows=function(){ const r=o.apply(this,arguments); if(!window.__asst) return r; const ok=new Set(visibleGroups().map(g=>g.id)); return {rows:r.rows.filter(x=>ok.has(x.g.id)),none:r.none}; }; }
 function asstHideCols(root,names){ root.querySelectorAll('table').forEach(t=>{ const ths=Array.from(t.querySelectorAll('thead th')); ths.forEach((th,i)=>{ if(names.indexOf(th.textContent.trim())>-1){ t.querySelectorAll('tr').forEach(tr=>{ const c=tr.children[i]; if(c) c.remove(); }); } }); }); }
+
+/* --- yardımcı yönetici: günlük program ve izinler yalnızca yetkili havuzlar --- */
+function asstCoachOk(cid){ const gs=DB.groups.filter(g=>g.coach===cid); return gs.length>0&&gs.every(g=>asstGroupIn(g)); }
+function asstLeaveIn(l){ if(asstCoachOk(l.coach)) return true; const ids=new Set(visibleGroups().map(g=>g.id)); return (l.subs||[]).some(x=>ids.has(x.group)); }
+{ const o=accPoolNames; accPoolNames=function(){ const all=o.apply(this,arguments); return window.__asst?all.filter(p=>asstPools().indexOf(p)>-1):all; }; }
+{ const o=renderLeaves; renderLeaves=function(c){ if(!window.__asst) return o.apply(this,arguments); const full=DB.coachLeaves; DB.coachLeaves=(full||[]).filter(asstLeaveIn); try{ o.apply(this,arguments); } finally{ DB.coachLeaves=full; }
+    try{ c.querySelectorAll('#lc_coach option').forEach(op=>{ if(op.value&&!asstCoachOk(op.value)) op.remove(); }); }catch(e){} }; }
+{ const o=ccAdd; ccAdd=function(groupId,ds,reason,note,opts){ if(window.__asst) opts=Object.assign({},opts||{},{notify:false}); return o.call(this,groupId,ds,reason,note,opts); }; }
 const ASST_STRIP_RE=/^[A-Za-z_]*(Del|Delete|Remove|Rm)[A-Za-z_]*\(|^(payOpen|payNew|athPay|setPayView|cPkgPrice|cMemPrice|pkgSell|apkgSell|priceSave|rateSave|crdFz|crdDc|athDeleteUi|coachOpen|assignOpen|poolOpen|groupOpen|grpOpen|grpNew|grpEdit|accDel)/;
 function asstClean(root){
   if(!window.__asst||!root) return;
   asstHideCols(root,['Fiyat','Ücret','Tutar']);
+  root.querySelectorAll('input[id^="lcn_"],input#cc_nt').forEach(el=>{ (el.closest('label')||el).remove(); });
   root.querySelectorAll('[onclick]').forEach(el=>{ const o=el.getAttribute('onclick')||''; if(ASST_STRIP_RE.test(o)) el.remove(); });
   const gids=new Set(DB.groups.map(g=>g.id)), ok=new Set(visibleGroups().map(g=>g.id));
   root.querySelectorAll('select option').forEach(op=>{ if(op.value&&gids.has(op.value)&&!ok.has(op.value)) op.remove(); });
