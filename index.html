@@ -2671,7 +2671,10 @@ function removePackage(id){
   if(role!=='admin') return {ok:false,errors:['Yalnızca yönetici silebilir.']};
   const pk=(DB.plPackages||[]).find(p=>p.id===id); if(!pk) return {ok:false,errors:['Paket bulunamadı.']};
   if(pkgUsed(pk)>0) return {ok:false,errors:['Bu pakette kullanılmış veya bekleyen ders var; silinemez.']};
-  DB.plPackages=DB.plPackages.filter(p=>p.id!==id); save(); return {ok:true,errors:[]};
+  const lk=(DB.payments||[]).filter(p=>p.pkg===id);
+  if(lk.some(p=>p.status!=='pending'||p.paidDate)) return {ok:false,errors:['Bu paket için ödeme alınmış. Önce Ödemeler sayfasından o ödemeyi kaldırın, sonra paketi silin.']};
+  DB.payments=(DB.payments||[]).filter(p=>p.pkg!==id); /* ödenmemiş paket borcu da birlikte kalkar */
+  DB.plPackages=DB.plPackages.filter(p=>p.id!==id); try{ recalcBalances(); }catch(e){} save(); return {ok:true,errors:[]};
 }
 /* Havuz bazlı fiyat listesi: grup dersi (aylık aidat) ve özel ders (saat ücreti). Paket fiyatı = saat × özel ders saat ücreti */
 function poolExists(n){return typeof n==='string'&&DB.pools.some(p=>p.name===n);}
