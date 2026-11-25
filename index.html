@@ -8670,7 +8670,7 @@ openAthlete=function(id){
   const g=DB.groups.find(x=>x.id===a.group); const defPool=(g&&g.pool)||(DB.pools[0]&&DB.pools[0].name)||'';
   const active=a.status==='active';
   body.insertAdjacentHTML('beforeend',`<div class="section-title">Özel ders paketi</div><div class="card" style="margin-bottom:14px;">
-   ${pks.length?`<table style="width:100%;font-size:13px;margin-bottom:10px;"><thead><tr><th>Havuz</th><th>Paket</th><th>Kalan</th><th>Fiyat</th><th></th></tr></thead><tbody>${pks.map(p=>`<tr><td>${escHtml(p.pool||'')}</td><td>${p.hours} saat${(p.size>1)?' · '+escHtml(PL_SIZE_LABEL[p.size]||''):''}</td><td>${pkgRemaining(p)}</td><td>${p.pricePending?'<i>bekliyor</i>':money(p.price)}</td><td><button class="btn sm danger" onclick="apkgDel('${p.id}','${id}')">Sil</button></td></tr>`).join('')}</tbody></table>`:'<div style="font-size:13px;color:var(--muted);margin-bottom:10px;">Tanımlı paket yok.</div>'}
+   ${pks.length?`<table style="width:100%;font-size:13px;margin-bottom:10px;"><thead><tr><th>Havuz</th><th>Paket</th><th>Kalan</th><th>Fiyat</th><th></th></tr></thead><tbody>${pks.map(p=>`<tr><td>${escHtml(p.pool||'')}</td><td>${p.hours} saat${(p.size>1)?' · '+escHtml(PL_SIZE_LABEL[p.size]||''):''}</td><td>${pkgRemaining(p)}</td><td>${p.pricePending?'<i>bekliyor</i>':money(p.price)}</td><td><button class="btn sm danger" onclick="apkgDel('${p.id}','${id}')">Sil</button> <button class="btn sm" onclick="apkgEdit('${p.id}','${id}')">Düzenle</button> <button class="btn sm" onclick="apkgCancelLessons('${p.id}','${id}')">Planlı dersleri iptal et</button></td></tr>`).join('')}</tbody></table>`:'<div style="font-size:13px;color:var(--muted);margin-bottom:10px;">Tanımlı paket yok.</div>'}
    ${active?`<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;">
     <div class="field" style="margin:0;"><label for="apkg_pool">Havuz</label><select id="apkg_pool" onchange="apkgChanged()">${DB.pools.map(p=>`<option${p.name===defPool?' selected':''}>${escHtml(p.name)}</option>`).join('')}</select></div>
     <div class="field" style="margin:0;"><label for="apkg_size">Ders türü</label><select id="apkg_size" onchange="apkgChanged()"><option value="1">Bireysel</option><option value="2">İkili</option><option value="3">Üçlü</option></select></div>
@@ -9679,6 +9679,36 @@ function asstClean(root){
     _r.apply(this,arguments);
     if(window.__asst){ try{ const c=$('#content'); asstClean(c); if(route!=='asstmode') c.insertAdjacentHTML('afterbegin','<div style="margin-bottom:10px;font-size:12px;color:var(--muted);">🛡️ Yardımcı Yönetici modu · <a href="#" onclick="asstExit();return false;">Antrenör görünümüne dön</a></div>'); }catch(e){ console.error(e); } } }; }
 (function(){ try{ const mo=new MutationObserver(()=>{ if(window.__asst) asstClean(document.getElementById('drawer')); }); mo.observe(document.getElementById('drawer'),{childList:true,subtree:true}); }catch(e){} })();
+
+
+/* ============ ÖZEL DERS PAKETİ: düzenle (saat/fiyat) ve planlı dersleri toplu iptal ============ */
+function apkgEdit(pid,athId){
+  if(role!=='admin'||window.__asst) return; const pk=(DB.plPackages||[]).find(x=>x.id===pid); if(!pk) return; const used=pkgUsed(pk);
+  openDrawerHtml(`<div style="padding:22px;"><h2 style="margin:0 0 4px;">Paketi düzenle</h2>
+   <div style="color:var(--muted);font-size:13.5px;margin-bottom:14px;">${escHtml(athleteName(pk.athlete))} · ${escHtml(pk.pool||'')} · kullanılan/planlı: ${used} saat</div>
+   <div class="field"><label for="ape_h">Paket saati (en az ${Math.max(1,used)})</label><input type="number" id="ape_h" min="${Math.max(1,used)}" max="200" value="${pk.hours}"></div>
+   <div class="field"><label for="ape_p">Paket fiyatı (₺)</label><input type="number" id="ape_p" min="0" step="1" value="${pk.pricePending?'':(Number(pk.price)||0)}"></div>
+   <div style="font-size:12.5px;color:var(--muted);">Bağlı ödeme henüz alınmamışsa borç tutarı da yeni fiyata güncellenir. Ödeme alınmışsa ödeme kaydına dokunulmaz.</div>
+   <div id="ape_err" role="alert" style="color:var(--red);font-size:13px;min-height:18px;margin-top:6px;"></div>
+   <div style="display:flex;gap:8px;margin-top:8px;"><button class="btn primary" onclick="apkgEditSave('${pid}','${athId}')">Kaydet</button><button class="btn" onclick="closeDrawer()">Vazgeç</button></div></div>`);
+}
+function apkgEditSave(pid,athId){
+  if(role!=='admin'||window.__asst) return; const pk=(DB.plPackages||[]).find(x=>x.id===pid); if(!pk) return; const used=pkgUsed(pk); const err=document.getElementById('ape_err');
+  const h=Number(document.getElementById('ape_h').value), pr=Number(document.getElementById('ape_p').value);
+  if(!(Number.isInteger(h)&&h>=Math.max(1,used)&&h<=200)){ if(err) err.textContent='Saat '+Math.max(1,used)+' ile 200 arasında tam sayı olmalı (kullanılan/planlı dersin altına inemez).'; return; }
+  if(!(pr>=0)||pr>1e7){ if(err) err.textContent='Fiyatı kontrol edin.'; return; }
+  pk.hours=h; if(document.getElementById('ape_p').value!==''){ pk.price=pr; delete pk.pricePending; }
+  (DB.payments||[]).filter(p=>p.pkg===pid&&p.status==='pending'&&!p.paidDate).forEach(p=>{ if(document.getElementById('ape_p').value!=='') p.amount=pr; });
+  try{ recalcBalances(); }catch(e){} save(); closeDrawer(); render(); setTimeout(()=>openAthlete(athId),60);
+}
+function apkgCancelLessons(pid,athId){
+  if(role!=='admin'||window.__asst) return; const pk=(DB.plPackages||[]).find(x=>x.id===pid); if(!pk) return; const t=todayStr();
+  const list=(DB.privateLessons||[]).filter(l=>!l._stub&&l.pkg===pid&&(l.status==='Onay bekliyor'||l.status==='Onaylandı')&&String(l.date)>=t);
+  if(!list.length){ alert('Bu pakette bugünden sonrası için planlı ders yok. (Geçmiş tarihli dersler yapılmış sayılır, dokunulmadı.)'); return; }
+  if(!confirm(list.length+' planlı ders iptal edilsin mi? Geçmiş dersler etkilenmez; saatler boşalır ve paketin kalan hakkı geri gelir.')) return;
+  list.forEach(l=>{ l.status='İptal'; l.reason='Yanlış girilmiş kayıt — yönetici toplu iptal'; l.decidedAt=ymd(new Date()); l.decidedBy='admin'; });
+  save(); render(); setTimeout(()=>openAthlete(athId),60);
+}
 
 /* ============ INIT ============ */
 boot();
