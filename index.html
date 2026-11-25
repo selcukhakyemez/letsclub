@@ -7499,6 +7499,8 @@ saveGroup=function(c,editId){
   if(g&&Array.isArray(g.sched)&&blocks.length>1){ g.sched.forEach((s,i)=>{ const b=blocks[i]||{}; if(i>0&&b.pool&&b.pool!==g.pool){ s.pool=b.pool; s.lane=laneString(gBlkLanes(b.lane)); } else { delete s.pool; delete s.lane; } }); save(); }
   return r;
 };
+/* onaylı izindeki hocanın yerine kimse atanmadıysa o gün o ders için hakediş yazılmaz */
+function cLeaveNoSub(g,ds,cid){ return (DB.coachLeaves||[]).some(l=>l.coach===cid&&lcCovers(l,ds)&&!(l.subs||[]).some(x=>x.group===g.id)); }
 /* --- takım ders ücreti (1.000 ₺/ders) ve blok havuzuna göre hakediş --- */
 coachPayFor=function(cid,ym,pool){
   if(pool===undefined) pool=null;
@@ -7506,7 +7508,7 @@ coachPayFor=function(cid,ym,pool){
   const bump=(pn,k,n)=>{ if(per[pn]) per[pn][k]+=n; }; const hxN={}, hxA={};
   DB.groups.forEach(g=>{ monthDays(ym).forEach(ds=>{ if(!groupOnDay(g,ds)||gCancelled(g,ds)) return; const pn=gPoolOn(g,ds);
     if(mergeSkip(g,ds)) return;
-    if(effCoach(g,ds)===cid) bump(pn,gIsTeam(g)?'teamCount':'groupCount',1);
+    if(effCoach(g,ds)===cid&&!cLeaveNoSub(g,ds,cid)) bump(pn,gIsTeam(g)?'teamCount':'groupCount',1);
     else if(g.assistant===cid) bump(pn,'asstCount',1);
     if(effCoach(g,ds)!==cid&&(DB.dayHelpers||[]).some(h=>h.group===g.id&&h.date===ds&&h.coach===cid)){ const mc=effCoach(g,ds); hxN[pn]=(hxN[pn]||0)+1; hxA[pn]=(hxA[pn]||0)+(gIsTeam(g)?(rateOf(mc,'team',pn)||TEAM_SESSION_FEE):rateOf(mc,'group',pn)); } }); });
   const sess={}; (DB.privateLessons||[]).filter(p=>!p._stub&&p.coach===cid&&p.status==='Onaylandı'&&ymOf(p.date)===ym).forEach(p=>{ const k=p.sid||p.id; (sess[k]=sess[k]||{pool:lessonPool(p),n:0}).n++; });
