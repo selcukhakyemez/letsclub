@@ -629,7 +629,7 @@ function render(){
   const fns={dashboard:renderDashboard,athletes:renderAthletes,parents:renderParents,groups:renderGroups,
     schedule:renderSchedule,trainplan:renderTrainPlan,weekly:renderWeekly,makeups:renderMakeups,times:renderTimes,levels:renderLevels,attendance:renderAttendance,development:renderDevelopment,competitions:renderCompetitions,
     crm:renderCRM,coaches:renderCoaches,payments:renderPayments,announcements:renderAnnouncements,tickets:renderTickets,
-    absences:(c=>renderAbsences(c)),reports:renderReports,settings:renderSettings,ai:renderAI,approvals:renderApprovals,insights:renderInsights,rentals:renderRentals,extpk:(c=>renderExtPk(c)),plsum:(c=>renderPlSummary(c)),expiring:(c=>renderExpiring(c)),finance:renderFinance,poolreport:renderPoolReport,dailylessons:renderDailyLessons,monthlylessons:renderMonthlyLessons,ratings:renderRatings,myratings:renderMyRatings,rate:renderRate,messages:renderMessages,surveys:renderSurveys,leaves:renderLeaves,discounts:renderDiscounts,devreport:renderDevReport,audit:renderAudit,payroll:renderPayroll,atthist:renderAttHistory,newitems:renderNewItems,privlesson:renderPrivLessons};
+    absences:(c=>renderAbsences(c)),reports:renderReports,settings:renderSettings,ai:renderAI,approvals:renderApprovals,insights:renderInsights,rentals:renderRentals,extpk:(c=>renderExtPk(c)),plsum:(c=>renderPlSummary(c)),expiring:(c=>renderExpiring(c)),asstmode:(c=>renderAsstMode(c)),finance:renderFinance,poolreport:renderPoolReport,dailylessons:renderDailyLessons,monthlylessons:renderMonthlyLessons,ratings:renderRatings,myratings:renderMyRatings,rate:renderRate,messages:renderMessages,surveys:renderSurveys,leaves:renderLeaves,discounts:renderDiscounts,devreport:renderDevReport,audit:renderAudit,payroll:renderPayroll,atthist:renderAttHistory,newitems:renderNewItems,privlesson:renderPrivLessons};
   c.innerHTML='';
   (fns[route]||renderDashboard)(c);
 }
@@ -3797,7 +3797,7 @@ function sbScheduleSync(){ sbStatus('Kaydediliyor…','busy'); if(SB.timer) clea
 function sbIdle(){ return new Promise(res=>{ const t=()=>{ if(!SB.timer&&!SB.syncing&&!SB.retry) res(); else setTimeout(t,20); }; t(); }); }
 const sbEnc=encodeURIComponent;
 async function sbPush(d){
-  const admin=role==='admin';
+  const admin=role==='admin'&&!window.__asst;
   const writeBatch=async(items)=>{
     for(let i=0;i<items.length;i+=100){
       const part=items.slice(i,i+100);
@@ -3812,7 +3812,7 @@ async function sbPush(d){
     if(admin){ const r=await writeBatch(d.upds); if(!r.ok) return r; }
     else for(const x of d.upds){
       let payload=x.data;
-      if(x.c==='athletes'){ const b=JSON.parse(SB.base[x.k]); if(!x.data.leave) return {ok:false,status:403,rejected:true}; payload=Object.assign({},b,{leave:x.data.leave}); }
+      if(x.c==='athletes'&&!window.__asst){ const b=JSON.parse(SB.base[x.k]); if(!x.data.leave) return {ok:false,status:403,rejected:true}; payload=Object.assign({},b,{leave:x.data.leave}); }
       const r=await sbReq('PATCH','/rest/v1/documents?collection=eq.'+sbEnc(x.c)+'&id=eq.'+sbEnc(x.id),{data:payload},{Prefer:'return=representation'});
       if(!r.ok) return r;
       if(!Array.isArray(r.data)||!r.data.length) return {ok:false,status:403,rejected:true};
@@ -9556,6 +9556,109 @@ function attWhoDraw(){ const w=document.getElementById('attGridWrap'); if(!w) re
   const _ra=renderAttendance; renderAttendance=function(c){ _ra(c); try{ attWhoDraw(); ['attGroup','attDate'].forEach(id=>{ const el=document.getElementById(id); if(el){ const old=el.onchange; el.onchange=function(ev){ if(old) old.call(this,ev); attWhoDraw(); }; } }); }catch(e){ console.error(e); } };
   const _dab=dashAttBadge; dashAttBadge=function(g,ds){ const h=_dab(g,ds); return h.indexOf('Alındı')>-1?h+attWhoShort(g.id,ds):h; };
   const _sgs=showGroupSession; showGroupSession=function(gid,ds){ _sgs(gid,ds); try{ const line=attWhoLine(gid,ds); if(!line) return; const t=Array.from(document.querySelectorAll('#drawer .section-title')).find(e=>e.textContent.trim().indexOf('Yoklama')===0); if(t) t.insertAdjacentHTML('afterend','<div style="font-size:12.5px;color:var(--muted);margin-bottom:6px;">'+line+'</div>'); }catch(e){} }; }
+/* ============ YARDIMCI YÖNETİCİ: antrenör hesabına, yönetici tarafından havuz + yetki bazlı ek yetkiler ============ */
+if(C_COLLS.indexOf('coachPerms')<0) C_COLLS.push('coachPerms'); if(!SB_SPECS.some(s=>s.c==='coachPerms')) SB_SPECS.push({c:'coachPerms',t:'arr'});
+if(typeof AU_COLL==='object') AU_COLL.coachPerms='Yardımcı yönetici yetkisi';
+const ASST_PERMS=[['attendance','Yoklama alma ve düzeltme'],['athletes','Sporcu (ve veli) kaydı / düzenleme'],['schedule','Ders programı: telafi, yardımcı hoca atama, ders iptali, hoca değişimi'],['privateLessons','Özel ders girişi ve paketten ders düşme'],['leads','Deneme / aday sporcu kaydı']];
+const ASST_ROUTES={attendance:['attendance','atthist','dailylessons'],athletes:['athletes','parents','groups','expiring'],schedule:['schedule','makeups','groups','dailylessons'],privateLessons:['privlesson','plsum','athletes'],leads:['crm','athletes']};
+const ASST_COLLS={attendance:['attendanceLog','attMeta','makeups'],athletes:['athletes','parents','groups'],schedule:['dayHelpers','coachSwaps','classCancels','makeups','groupMerges'],privateLessons:['privateLessons','athletes'],leads:['leads','athletes']};
+TITLES.asstmode='Yardımcı Yönetici';
+function asstTrueAdmin(){ return role==='admin'&&!window.__asst&&!(typeof isAccReal==='function'&&isAccReal()); }
+function asstMe(){ cEnsure(); const id=DB.currentUser&&DB.currentUser.coachId; return id?(DB.coachPerms||[]).find(x=>x.id===id)||null:null; }
+function asstPools(){ const m=asstMe(); return m&&Array.isArray(m.pools)?m.pools:[]; }
+function asstHas(p){ const m=asstMe(); return !!(m&&m.perms&&m.perms[p]===true&&asstPools().length); }
+function asstActive(){ return ASST_PERMS.some(x=>asstHas(x[0])); }
+function asstGroupIn(g){ const P=asstPools(); if(!g||!P.length) return false; if(P.indexOf(g.pool)>-1) return true; return (Array.isArray(g.sched)?g.sched:[]).some(b=>b&&P.indexOf(b.pool)>-1); }
+/* --- yönetici: yetki ayarı --- */
+function asstCfgOpen(cid){
+  if(!asstTrueAdmin()) return; const co=DB.coaches.find(x=>x.id===cid); if(!co) return; cEnsure();
+  const cur=(DB.coachPerms||[]).find(x=>x.id===cid)||{pools:[],perms:{}};
+  openDrawerHtml(`<div class="drawer-head"><div><div style="font-weight:800;font-size:16px;">Yardımcı yönetici yetkileri</div><div style="font-size:12.5px;color:var(--muted);">${escHtml(co.name)}</div></div><button class="close-x" onclick="closeDrawer()">✕</button></div>
+  <div class="drawer-body" style="padding-top:14px;">
+  <div class="note-banner" style="margin-bottom:12px;">Bu antrenör kendi hesabıyla girer; aşağıda seçtiğiniz havuzlar ve yetkiler için ek bir "Yardımcı Yönetici" paneli açılır. Hiçbir kaydı silemez; fiyat, ödeme, hakediş, finans, havuz/grup tanımı ve kullanıcı yönetimi kapalıdır.</div>
+  <div class="section-title">Hangi havuzlarda?</div>
+  ${DB.pools.map(p=>`<label style="display:flex;gap:8px;padding:4px 0;"><input type="checkbox" class="asp_pool" value="${escHtml(p.name)}"${cur.pools.indexOf(p.name)>-1?' checked':''}> ${escHtml(p.name)}</label>`).join('')||'<div class="empty">Havuz tanımlı değil</div>'}
+  <div class="section-title" style="margin-top:14px;">Yetkiler</div>
+  ${ASST_PERMS.map(x=>`<label style="display:flex;gap:8px;padding:4px 0;"><input type="checkbox" class="asp_perm" value="${x[0]}"${cur.perms&&cur.perms[x[0]]===true?' checked':''}> ${escHtml(x[1])}</label>`).join('')}
+  <div id="asp_res" role="alert" style="font-size:12.5px;margin:10px 0;"></div>
+  <button class="btn primary" onclick="asstCfgSave('${escHtml(cid)}')">Kaydet</button>
+  <div style="font-size:12px;color:var(--muted);margin-top:8px;">Hiç havuz veya hiç yetki seçilmezse yardımcı yetkisi kaldırılır.</div></div>`);
+}
+function asstCfgSave(cid){
+  if(!asstTrueAdmin()) return; cEnsure();
+  const pools=Array.from(document.querySelectorAll('.asp_pool:checked')).map(x=>x.value).filter(v=>DB.pools.some(p=>p.name===v));
+  const perms={}; Array.from(document.querySelectorAll('.asp_perm:checked')).forEach(x=>{ if(ASST_PERMS.some(p=>p[0]===x.value)) perms[x.value]=true; });
+  const i=DB.coachPerms.findIndex(x=>x.id===cid);
+  if(!pools.length||!Object.keys(perms).length){ if(i>-1) DB.coachPerms.splice(i,1); }
+  else if(i>-1) DB.coachPerms[i]={id:cid,pools,perms}; else DB.coachPerms.push({id:cid,pools,perms});
+  save(); closeDrawer(); render();
+}
+{ const _rc=renderCoaches; renderCoaches=function(c){ _rc.apply(this,arguments); try{ if(!asstTrueAdmin()) return; cEnsure();
+    c.querySelectorAll('button[onclick^="assignOpen("]').forEach(b=>{ const m=/assignOpen\('([^']+)'\)/.exec(b.getAttribute('onclick')); if(!m||b.parentElement.querySelector('.asp-btn')) return;
+      const on=(DB.coachPerms||[]).some(x=>x.id===m[1]); b.insertAdjacentHTML('afterend',`<button class="btn sm asp-btn" onclick="asstCfgOpen('${m[1]}')">Yardımcı yetkisi${on?' ✓':''}</button>`); }); }catch(e){ console.error(e); } }; }
+/* --- antrenör: mod geçişi --- */
+const ASST_SAVED={nav:null,grp:null};
+function asstBuildNav(){
+  const ids=new Set(['dashboard','asstmode','attendance_view']); ASST_PERMS.forEach(p=>{ if(asstHas(p[0])) (ASST_ROUTES[p[0]]||[]).forEach(r=>ids.add(r)); }); ids.add('athletes'); ids.add('groups');
+  const full=ASST_SAVED.nav, byId={}; full.filter(x=>x.id).forEach(x=>byId[x.id]=x);
+  byId.asstmode={id:'asstmode',label:'Antrenör görünümüne dön',ic:'↩️'};
+  const list=Array.from(ids).filter(i=>byId[i]).map(i=>byId[i]);
+  const grp=[['Genel',['dashboard','asstmode']],['Kayıtlar',['athletes','parents','groups','crm']],['Ders ve Yoklama',['schedule','privlesson','plsum','attendance','atthist','dailylessons','makeups','expiring']]];
+  return {list,grp};
+}
+function asstEnter(){
+  if(role!=='coach'||window.__asst||!asstActive()) return;
+  ASST_SAVED.nav=NAV.admin; ASST_SAVED.grp=NAV_GROUPS.admin; const b=asstBuildNav();
+  NAV.admin=b.list; NAV_GROUPS.admin=b.grp; window.__asst=true; role='admin'; route='dashboard'; render();
+}
+function asstExit(){
+  if(!window.__asst) return; window.__asst=false; role='coach'; if(ASST_SAVED.nav){ NAV.admin=ASST_SAVED.nav; NAV_GROUPS.admin=ASST_SAVED.grp; ASST_SAVED.nav=null; } route='dashboard'; render();
+}
+function asstReset(){ if(window.__asst){ window.__asst=false; if(ASST_SAVED.nav){ NAV.admin=ASST_SAVED.nav; NAV_GROUPS.admin=ASST_SAVED.grp; ASST_SAVED.nav=null; } } }
+if(typeof sbSignOut==='function'){ const _so=sbSignOut; sbSignOut=async function(){ asstReset(); return _so.apply(this,arguments); }; }
+function asstNavSync(){
+  if(role!=='coach'||window.__asst) return; const has=NAV.coach.some(x=>x.id==='asstmode'), on=asstActive();
+  if(on&&!has) NAV.coach.push({id:'asstmode',label:'Yardımcı Yönetici',ic:'🛡️'});
+  if(!on&&has){ const i=NAV.coach.findIndex(x=>x.id==='asstmode'); NAV.coach.splice(i,1); if(route==='asstmode') route='dashboard'; }
+}
+function renderAsstMode(c){
+  if(window.__asst){ c.innerHTML=`<div class="card"><b>Yardımcı Yönetici moddasınız.</b><p style="font-size:13px;color:var(--muted);">Normal antrenör görünümünüze dönmek için düğmeyi kullanın.</p><button class="btn primary" onclick="asstExit()">Antrenör görünümüne dön</button></div>`; return; }
+  const m=asstMe(); c.innerHTML=`<div class="card"><div style="font-weight:800;font-size:16px;">Yardımcı Yönetici Paneli</div>
+  <p style="font-size:13px;color:var(--muted);">Yönetici size şu havuzlarda ek yetki verdi: <b>${escHtml(asstPools().join(', ')||'—')}</b></p>
+  <ul style="font-size:13px;">${ASST_PERMS.filter(p=>asstHas(p[0])).map(p=>`<li>${escHtml(p[1])}</li>`).join('')||'<li>Yetki tanımlı değil</li>'}</ul>
+  <p style="font-size:12.5px;color:var(--muted);">Silme, fiyat, ödeme, hakediş ve finans işlemleri bu modda kapalıdır.</p>
+  ${asstActive()?'<button class="btn primary" onclick="asstEnter()">Yardımcı Yönetici moduna geç</button>':''}</div>`;
+}
+/* --- mod içi görünürlük ve yetkiler --- */
+{ const _vg=visibleGroups; visibleGroups=function(){ if(!window.__asst) return _vg(); let base; role='coach'; try{ base=_vg(); } finally{ role='admin'; }
+    const me=DB.currentUser.coachId; return DB.groups.filter(g=>base.some(b=>b.id===g.id)||asstGroupIn(g)||g.coach===me||g.assistant===me); }; }
+{ const _va=visibleAthletes; visibleAthletes=function(){ if(!window.__asst) return _va(); let base; role='coach'; try{ base=_va(); } finally{ role='admin'; }
+    const gs=new Set(visibleGroups().map(g=>g.id)), P=asstPools();
+    return DB.athletes.filter(a=>base.some(b=>b.id===a.id)||gs.has(a.group)||(asstHas('privateLessons')&&a.kind==='private'&&(DB.plPackages||[]).some(k=>k.athlete===a.id&&P.indexOf(k.pool)>-1))||(asstHas('leads')&&a.status==='trial')); }; }
+{ const wrap=(n,f)=>{ const o=window[n]; if(typeof o!=='function') return; window[n]=function(){ return window.__asst?f.apply(this,arguments):o.apply(this,arguments); }; };
+  wrap('canSeeFinance',()=>false); wrap('canManageGroups',()=>false); wrap('canManageCoaches',()=>false); wrap('isAdminRole',()=>false);
+  wrap('canViewParent',()=>asstHas('athletes')); wrap('canAddAthlete',()=>asstHas('athletes')||asstHas('leads')||asstHas('privateLessons')); }
+{ const o=cMe; cMe=function(){ return window.__asst?'coach:'+DB.currentUser.coachId:o.apply(this,arguments); }; }
+{ const o=auActor; auActor=function(){ if(!window.__asst) return o.apply(this,arguments); const id=DB.currentUser.coachId; return {role:'coach',who:'coach:'+id,name:coachName(id)+' (yardımcı yönetici)'}; }; }
+{ const o=sbWritable; sbWritable=function(c){ if(!window.__asst) return o(c); if((SB_WRITE.coach||[]).indexOf(c)>-1&&c!=='plPackages') return true; return ASST_PERMS.some(p=>asstHas(p[0])&&ASST_COLLS[p[0]].indexOf(c)>-1); }; }
+{ const o=renderDashboard; renderDashboard=function(c){ if(!window.__asst) return o.apply(this,arguments);
+    const gs=visibleGroups(), ath=visibleAthletes(); let today=[]; try{ today=(cTodayGroups()||[]).filter(x=>{ const g=x&&(x.g||x); return g&&gs.some(y=>y.id===g.id); }); }catch(e){}
+    c.innerHTML=`<div class="note-banner"><b>Yardımcı Yönetici</b> — ${escHtml(coachName(DB.currentUser.coachId))} · Havuzlar: <b>${escHtml(asstPools().join(', '))}</b></div>
+    <div class="grid kpi"><div class="card"><div class="label">Gruplar</div><div class="val">${gs.length}</div></div><div class="card"><div class="label">Sporcular</div><div class="val">${ath.length}</div></div><div class="card"><div class="label">Bugünkü ders</div><div class="val">${today.length}</div></div></div>
+    <div class="card" style="margin-top:12px;"><div style="font-weight:700;margin-bottom:6px;">Yetkileriniz</div><ul style="font-size:13px;">${ASST_PERMS.filter(p=>asstHas(p[0])).map(p=>`<li>${escHtml(p[1])}</li>`).join('')}</ul></div>`; }; }
+const ASST_STRIP_RE=/^[A-Za-z_]*(Del|Delete|Remove|Rm)[A-Za-z_]*\(|^(payOpen|payNew|athPay|setPayView|cPkgPrice|cMemPrice|pkgSell|apkgSell|priceSave|rateSave|crdFz|crdDc|athDeleteUi|coachOpen|assignOpen|poolOpen|groupOpen|grpOpen|grpNew|grpEdit|accDel)/;
+function asstClean(root){
+  if(!window.__asst||!root) return;
+  root.querySelectorAll('[onclick]').forEach(el=>{ const o=el.getAttribute('onclick')||''; if(ASST_STRIP_RE.test(o)) el.remove(); });
+  const gids=new Set(DB.groups.map(g=>g.id)), ok=new Set(visibleGroups().map(g=>g.id));
+  root.querySelectorAll('select option').forEach(op=>{ if(op.value&&gids.has(op.value)&&!ok.has(op.value)) op.remove(); });
+}
+{ const _r=render; render=function(){ asstNavSync();
+    if(window.__asst&&!asstActive()){ asstExit(); return; }
+    _r.apply(this,arguments);
+    if(window.__asst){ try{ const c=$('#content'); asstClean(c); if(route!=='asstmode') c.insertAdjacentHTML('afterbegin','<div style="margin-bottom:10px;font-size:12px;color:var(--muted);">🛡️ Yardımcı Yönetici modu · <a href="#" onclick="asstExit();return false;">Antrenör görünümüne dön</a></div>'); }catch(e){ console.error(e); } } }; }
+(function(){ try{ const mo=new MutationObserver(()=>{ if(window.__asst) asstClean(document.getElementById('drawer')); }); mo.observe(document.getElementById('drawer'),{childList:true,subtree:true}); }catch(e){} })();
+
 /* ============ INIT ============ */
 boot();
 </script>
