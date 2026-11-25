@@ -9560,7 +9560,7 @@ function attWhoDraw(){ const w=document.getElementById('attGridWrap'); if(!w) re
 if(C_COLLS.indexOf('coachPerms')<0) C_COLLS.push('coachPerms'); if(!SB_SPECS.some(s=>s.c==='coachPerms')) SB_SPECS.push({c:'coachPerms',t:'arr'});
 if(typeof AU_COLL==='object') AU_COLL.coachPerms='Yardımcı yönetici yetkisi';
 const ASST_PERMS=[['attendance','Yoklama alma ve düzeltme'],['athletes','Sporcu (ve veli) kaydı / düzenleme'],['schedule','Ders programı: telafi, yardımcı hoca atama, ders iptali, hoca değişimi'],['privateLessons','Özel ders girişi ve paketten ders düşme'],['leads','Deneme / aday sporcu kaydı']];
-const ASST_ROUTES={attendance:['attendance','atthist','dailylessons'],athletes:['athletes','parents','groups','expiring'],schedule:['schedule','makeups','groups','dailylessons'],privateLessons:['privlesson','plsum','athletes'],leads:['crm','athletes']};
+const ASST_ROUTES={attendance:['attendance','atthist','dailylessons','expiring'],athletes:['athletes','parents','groups','expiring'],schedule:['schedule','makeups','groups','dailylessons'],privateLessons:['privlesson','plsum','athletes'],leads:['crm','athletes']};
 const ASST_COLLS={attendance:['attendanceLog','attMeta','makeups'],athletes:['athletes','parents','groups'],schedule:['dayHelpers','coachSwaps','classCancels','makeups','groupMerges'],privateLessons:['privateLessons','athletes'],leads:['leads','athletes']};
 TITLES.asstmode='Yardımcı Yönetici';
 function asstTrueAdmin(){ return role==='admin'&&!window.__asst&&!(typeof isAccReal==='function'&&isAccReal()); }
@@ -9646,9 +9646,14 @@ function renderAsstMode(c){
     c.innerHTML=`<div class="note-banner"><b>Yardımcı Yönetici</b> — ${escHtml(coachName(DB.currentUser.coachId))} · Havuzlar: <b>${escHtml(asstPools().join(', '))}</b></div>
     <div class="grid kpi"><div class="card"><div class="label">Gruplar</div><div class="val">${gs.length}</div></div><div class="card"><div class="label">Sporcular</div><div class="val">${ath.length}</div></div><div class="card"><div class="label">Bugünkü ders</div><div class="val">${today.length}</div></div></div>
     <div class="card" style="margin-top:12px;"><div style="font-weight:700;margin-bottom:6px;">Yetkileriniz</div><ul style="font-size:13px;">${ASST_PERMS.filter(p=>asstHas(p[0])).map(p=>`<li>${escHtml(p[1])}</li>`).join('')}</ul></div>`; }; }
+
+{ const o=plsRows; plsRows=function(){ const r=o.apply(this,arguments); if(!window.__asst) return r; const P=asstPools(); return r.filter(x=>P.indexOf(x.p.pool)>-1); }; }
+{ const o=expRows; expRows=function(){ const r=o.apply(this,arguments); if(!window.__asst) return r; const ok=new Set(visibleGroups().map(g=>g.id)); return {rows:r.rows.filter(x=>ok.has(x.g.id)),none:r.none}; }; }
+function asstHideCols(root,names){ root.querySelectorAll('table').forEach(t=>{ const ths=Array.from(t.querySelectorAll('thead th')); ths.forEach((th,i)=>{ if(names.indexOf(th.textContent.trim())>-1){ t.querySelectorAll('tr').forEach(tr=>{ const c=tr.children[i]; if(c) c.remove(); }); } }); }); }
 const ASST_STRIP_RE=/^[A-Za-z_]*(Del|Delete|Remove|Rm)[A-Za-z_]*\(|^(payOpen|payNew|athPay|setPayView|cPkgPrice|cMemPrice|pkgSell|apkgSell|priceSave|rateSave|crdFz|crdDc|athDeleteUi|coachOpen|assignOpen|poolOpen|groupOpen|grpOpen|grpNew|grpEdit|accDel)/;
 function asstClean(root){
   if(!window.__asst||!root) return;
+  asstHideCols(root,['Fiyat','Ücret','Tutar']);
   root.querySelectorAll('[onclick]').forEach(el=>{ const o=el.getAttribute('onclick')||''; if(ASST_STRIP_RE.test(o)) el.remove(); });
   const gids=new Set(DB.groups.map(g=>g.id)), ok=new Set(visibleGroups().map(g=>g.id));
   root.querySelectorAll('select option').forEach(op=>{ if(op.value&&gids.has(op.value)&&!ok.has(op.value)) op.remove(); });
