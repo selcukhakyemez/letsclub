@@ -10008,6 +10008,59 @@ function rtIsSut(g){ return !!g&&g.branch==='Sutopu'; }
       if(brF==='Sutopu'){ f.querySelectorAll('.p').forEach(x=>x.classList.remove('active')); p.classList.add('active'); }
     }catch(e){ console.error(e); } }; }
 
+/* ============ SEKMELER + UZUN LİSTELERİ AÇILIR KUTUYA ÇEVİRME ============ */
+const HUB_TABS=[
+ [['attendance','Yoklama Al'],['atthist','Geçmiş Yoklamalar'],['absences','Devamsızlık']],
+ [['privlesson','Özel Dersler'],['plsum','Paketler']],
+ [['schedule','Haftalık Program'],['dailylessons','Günlük Dersler'],['makeups','Telafi']],
+ [['leaves','İzinler'],['payroll','Puantaj / Hakediş'],['ratings','Ders Puanları']],
+ [['approvals','Onaylar'],['newitems','Yeni Kayıtlar']],
+ [['messages','Mesajlar'],['announcements','Duyurular'],['tickets','Talepler'],['surveys','Anketler']],
+ [['finance','Gelir / Gider'],['payments','Ödemeler'],['discounts','Dondurma / İndirim']],
+ [['rentals','Havuz Kiralama'],['extpk','Dış Antrenör Paketleri']],
+ [['development','Gelişim'],['devreport','Gelişim Raporu']],
+ [['times','Süre ve Rekor'],['levels','Seviye Geçişi'],['competitions','Yarışmalar']],
+ [['athletes','Sporcular'],['parents','Veliler'],['groups','Gruplar'],['crm','Adaylar (CRM)']]];
+const LC_RE=/geçmiş|son kararlar|Gönderilen Mesajlar|Verilen hediyeler|İptal Edilen|Yapılan Deneme|Yanıtladığınız|Devam etmeyenler|Son ödemeler|İzin kayıtları|Sonuçlanan|Tamamlanan/i;
+const LC_OPEN=new Set();
+function hubTabsHtml(){
+  const g=HUB_TABS.find(t=>t.some(x=>x[0]===route)); if(!g) return '';
+  const L=g.filter(x=>hubItem(x[0])); if(L.length<2) return '';
+  return `<div class="pillbar hubtabs">${L.map(x=>`<div class="p${x[0]===route?' active':''}" onclick="hubGo('${x[0]}')">${escHtml(x[1])}</div>`).join('')}</div>`;
+}
+function lcCount(grp){ let n=0; grp.forEach(e=>{ const r=e.querySelectorAll?e.querySelectorAll('tbody tr').length:0; n+=r||(e.classList&&e.classList.contains('card')?1:0); }); return n; }
+function lcCollapse(c){
+  Array.from(c.children).forEach(el=>{
+    if(!el.classList||!el.classList.contains('section-title')||el.dataset.lc) return;
+    const t=el.textContent.replace(/\s+/g,' ').trim(); if(!LC_RE.test(t)) return;
+    const grp=[]; let n=el.nextElementSibling; while(n&&!n.classList.contains('section-title')&&!n.classList.contains('lcdet')){ grp.push(n); n=n.nextElementSibling; }
+    const cnt=lcCount(grp); if(!grp.length||cnt<6) return;
+    const d=document.createElement('details'); d.className='lcdet'; d.dataset.lc='1'; const key=route+'|'+t; if(LC_OPEN.has(key)) d.open=true;
+    d.addEventListener('toggle',()=>{ if(d.open) LC_OPEN.add(key); else LC_OPEN.delete(key); });
+    const s=document.createElement('summary'); s.textContent=t.replace(/\s*\(\d+\)\s*$/,'')+' ('+cnt+')'; d.appendChild(s);
+    c.insertBefore(d,el); grp.forEach(e=>d.appendChild(e)); el.remove(); });
+  const kids=Array.from(c.children); let run=[];
+  const flush=()=>{ if(run.length>15){ const last=run[run.length-1]; if(!(last.nextElementSibling&&last.nextElementSibling.classList.contains('lcmore'))){ const hid=run.slice(10); hid.forEach(e=>e.classList.add('lchid'));
+      const b=document.createElement('button'); b.className='btn lcmore'; b.textContent='Daha fazla göster ('+hid.length+')'; b.onclick=()=>{ hid.forEach(e=>e.classList.remove('lchid')); b.remove(); }; last.after(b); } } run=[]; };
+  kids.forEach(e=>{ if(e.classList&&e.classList.contains('card')&&!e.classList.contains('hubtile')&&!e.classList.contains('hubchip')) run.push(e); else if(!(e.classList&&e.classList.contains('lcmore'))) flush(); }); flush();
+  if(route==='audit'||route==='atthist'){ c.querySelectorAll('table').forEach(tb=>{ const rows=Array.from(tb.querySelectorAll('tbody tr')); if(rows.length<=40||tb.dataset.lcr) return; tb.dataset.lcr='1'; const hid=rows.slice(30); hid.forEach(r=>r.classList.add('lchid'));
+      const b=document.createElement('button'); b.className='btn lcmore'; b.style.margin='10px'; b.textContent='Daha fazla göster ('+hid.length+')'; b.onclick=()=>{ hid.forEach(r=>r.classList.remove('lchid')); b.remove(); }; (tb.closest('.card')||tb).after(b); }); }
+}
+function hubChrome(){
+  const c=document.getElementById('content'); if(!c||!c.isConnected) return;
+  if(!(route==='home'||/^hub_/.test(route)||route==='summary'||route==='dashboard')) { try{ lcCollapse(c); }catch(e){ console.error(e); } }
+  if(!hubOn()||route==='home') return;
+  if(!c.querySelector('.hubcrumb')){ const h=/^hub_/.test(route)?HUBS.find(x=>'hub_'+x.id===route):hubOf(route); const it=hubItem(route);
+    c.insertAdjacentHTML('afterbegin',`<div class="hubcrumb"><a href="#" onclick="hubGo('home');return false;">🏠 Ana Sayfa</a>${h?` › <a href="#" onclick="hubGo('hub_${h.id}');return false;">${escHtml(h.label)}</a>`:''}${(it&&!/^hub_/.test(route)&&!(h&&h.items.length===1))?` › <b>${escHtml(it.label)}</b>`:''}</div>`); }
+  if(!c.querySelector('.hubtabs')&&!/^hub_/.test(route)){ const t=hubTabsHtml(); const cr=c.querySelector('.hubcrumb'); if(t&&cr) cr.insertAdjacentHTML('afterend',t); }
+}
+(function(){ const st=document.createElement('style'); st.textContent=`.lchid{display:none!important}.lcdet{margin:14px 0}.lcdet>summary{cursor:pointer;font-weight:800;font-size:15px;padding:12px 14px;background:var(--card,#fff);border:1px solid var(--line,#dde);border-radius:12px;list-style:none}.lcdet>summary::-webkit-details-marker{display:none}.lcdet>summary::before{content:'▸ ';color:var(--muted)}.lcdet[open]>summary::before{content:'▾ '}.lcdet[open]>summary{margin-bottom:10px}.lcmore{display:block;margin:10px auto}.hubtabs{margin:0 0 14px;overflow-x:auto;flex-wrap:nowrap}.hubtabs .p{white-space:nowrap}@media print{.lchid{display:table-row!important}.lcmore{display:none!important}}`; document.head.appendChild(st);
+  let busy=false, tm=null; const run=()=>{ if(busy) return; busy=true; try{ obs.disconnect(); hubChrome(); }catch(e){ console.error(e); } finally{ busy=false; const c=document.getElementById('content'); if(c) obs.observe(c,{childList:true}); } };
+  const obs=new MutationObserver(()=>{ clearTimeout(tm); tm=setTimeout(run,0); });
+  const attach=()=>{ const c=document.getElementById('content'); if(c) obs.observe(c,{childList:true}); }; attach();
+  window.__hubChrome=run; })();
+{ const o=render; render=function(){ o.apply(this,arguments); try{ window.__hubChrome(); }catch(e){ console.error(e); } }; }
+
 /* ============ INIT ============ */
 boot();
 </script>
