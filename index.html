@@ -629,7 +629,7 @@ function render(){
   const fns={dashboard:renderDashboard,athletes:renderAthletes,parents:renderParents,groups:renderGroups,
     schedule:renderSchedule,trainplan:renderTrainPlan,weekly:renderWeekly,makeups:renderMakeups,times:renderTimes,levels:renderLevels,attendance:renderAttendance,development:renderDevelopment,competitions:renderCompetitions,
     crm:renderCRM,coaches:renderCoaches,payments:renderPayments,announcements:renderAnnouncements,tickets:renderTickets,
-    absences:(c=>renderAbsences(c)),reports:renderReports,settings:renderSettings,ai:renderAI,approvals:renderApprovals,insights:renderInsights,rentals:renderRentals,extpk:(c=>renderExtPk(c)),plsum:(c=>renderPlSummary(c)),expiring:(c=>renderExpiring(c)),asstmode:(c=>renderAsstMode(c)),finance:renderFinance,poolreport:renderPoolReport,dailylessons:renderDailyLessons,monthlylessons:renderMonthlyLessons,ratings:renderRatings,myratings:renderMyRatings,rate:renderRate,messages:renderMessages,surveys:renderSurveys,leaves:renderLeaves,discounts:renderDiscounts,devreport:renderDevReport,audit:renderAudit,payroll:renderPayroll,atthist:renderAttHistory,newitems:renderNewItems,privlesson:renderPrivLessons};
+    absences:(c=>renderAbsences(c)),reports:renderReports,settings:renderSettings,ai:renderAI,approvals:renderApprovals,insights:renderInsights,rentals:renderRentals,extpk:(c=>renderExtPk(c)),plsum:(c=>renderPlSummary(c)),expiring:(c=>renderExpiring(c)),agecats:(c=>renderAgeCats(c)),branchrep:(c=>renderBranchRep(c)),asstmode:(c=>renderAsstMode(c)),finance:renderFinance,poolreport:renderPoolReport,dailylessons:renderDailyLessons,monthlylessons:renderMonthlyLessons,ratings:renderRatings,myratings:renderMyRatings,rate:renderRate,messages:renderMessages,surveys:renderSurveys,leaves:renderLeaves,discounts:renderDiscounts,devreport:renderDevReport,audit:renderAudit,payroll:renderPayroll,atthist:renderAttHistory,newitems:renderNewItems,privlesson:renderPrivLessons};
   c.innerHTML='';
   (fns[route]||renderDashboard)(c);
 }
@@ -7476,7 +7476,7 @@ function gIsTeam(g){ return !!g&&g.level==='Takım'; }
 function gPoolOn(g,ds){ const b=ds?gBlockOn(g,ds):null; return (b&&b.pool)||g.pool; }
 function gLaneOn(g,ds){ const b=ds?gBlockOn(g,ds):null; return (b&&b.pool&&b.lane!=null)?b.lane:g.lane; }
 function gHasPool(g,pn){ return g.pool===pn||gBlocks(g).some(b=>b.pool===pn); }
-function gEarnRate(cid,g,ds){ const pn=gPoolOn(g,ds); return gIsTeam(g)?(rateOf(cid,'team',pn)||TEAM_SESSION_FEE):rateOf(cid,'group',pn); }
+function gEarnRate(cid,g,ds){ const pn=gPoolOn(g,ds); if(g.branch==='Sutopu') return rateOf(cid,'groupSut',pn); return gIsTeam(g)?(rateOf(cid,'team',pn)||TEAM_SESSION_FEE):rateOf(cid,'group',pn); }
 /* --- program bloklarında havuz/kulvar alanı --- */
 const _grpBlockHtml2=grpBlockHtml;
 grpBlockHtml=function(b){
@@ -7507,23 +7507,23 @@ function cLeaveNoSub(g,ds,cid){ return (DB.coachLeaves||[]).some(l=>l.coach===ci
 /* --- takım ders ücreti (1.000 ₺/ders) ve blok havuzuna göre hakediş --- */
 coachPayFor=function(cid,ym,pool){
   if(pool===undefined) pool=null;
-  const per={}; DB.pools.forEach(p=>{per[p.name]={groupCount:0,teamCount:0,asstCount:0,privateCount:0,private2Count:0,private3Count:0,otherCount:0};});
+  const per={}; DB.pools.forEach(p=>{per[p.name]={groupCount:0,teamCount:0,sutCount:0,asstCount:0,privateCount:0,private2Count:0,private3Count:0,otherCount:0};});
   const bump=(pn,k,n)=>{ if(per[pn]) per[pn][k]+=n; }; const hxN={}, hxA={};
   DB.groups.forEach(g=>{ monthDays(ym).forEach(ds=>{ if(!groupOnDay(g,ds)||gCancelled(g,ds)) return; const pn=gPoolOn(g,ds);
     if(mergeSkip(g,ds)) return;
-    if(effCoach(g,ds)===cid&&!cLeaveNoSub(g,ds,cid)) bump(pn,gIsTeam(g)?'teamCount':'groupCount',1);
+    if(effCoach(g,ds)===cid&&!cLeaveNoSub(g,ds,cid)) bump(pn,g.branch==='Sutopu'?'sutCount':(gIsTeam(g)?'teamCount':'groupCount'),1);
     else if(g.assistant===cid) bump(pn,'asstCount',1);
-    if(effCoach(g,ds)!==cid&&(DB.dayHelpers||[]).some(h=>h.group===g.id&&h.date===ds&&h.coach===cid)){ const mc=effCoach(g,ds); hxN[pn]=(hxN[pn]||0)+1; hxA[pn]=(hxA[pn]||0)+(gIsTeam(g)?(rateOf(mc,'team',pn)||TEAM_SESSION_FEE):rateOf(mc,'group',pn)); } }); });
+    if(effCoach(g,ds)!==cid&&(DB.dayHelpers||[]).some(h=>h.group===g.id&&h.date===ds&&h.coach===cid)){ const mc=effCoach(g,ds); hxN[pn]=(hxN[pn]||0)+1; hxA[pn]=(hxA[pn]||0)+(g.branch==='Sutopu'?rateOf(mc,'groupSut',pn):(gIsTeam(g)?(rateOf(mc,'team',pn)||TEAM_SESSION_FEE):rateOf(mc,'group',pn))); } }); });
   const sess={}; (DB.privateLessons||[]).filter(p=>!p._stub&&p.coach===cid&&p.status==='Onaylandı'&&ymOf(p.date)===ym).forEach(p=>{ const k=p.sid||p.id; (sess[k]=sess[k]||{pool:lessonPool(p),n:0}).n++; });
   Object.values(sess).forEach(s=>{ bump(s.pool,s.n>=3?'private3Count':s.n===2?'private2Count':'privateCount',1); });
   (DB.extraSessions||[]).filter(x=>x.coach===cid&&ymOf(x.date)===ym).forEach(x=>bump(x.pool,'otherCount',x.count));
   const byPool={}; let gc=0,ac=0,pc=0,p2=0,p3=0,oc=0,ga=0,aa=0,pa=0,oa=0,tc=0;
   Object.keys(per).forEach(pn=>{
     if(pool!==null&&pn!==pool) return; const x=per[pn];
-    const a=r2(x.groupCount*rateOf(cid,'group',pn)+x.teamCount*(rateOf(cid,'team',pn)||TEAM_SESSION_FEE)+(hxA[pn]||0)), s=r2(x.asstCount*rateOf(cid,'asst',pn));
+    const sutA=r2(x.sutCount*rateOf(cid,'groupSut',pn)); const a=r2(x.groupCount*rateOf(cid,'group',pn)+x.teamCount*(rateOf(cid,'team',pn)||TEAM_SESSION_FEE)+(hxA[pn]||0)+sutA), s=r2(x.asstCount*rateOf(cid,'asst',pn));
     const b=r2(x.privateCount*rateOf(cid,'private',pn)+x.private2Count*rateOf(cid,'private2',pn)+x.private3Count*rateOf(cid,'private3',pn));
-    const c=r2(x.otherCount*rateOf(cid,'other',pn)); const pcn=x.privateCount+x.private2Count+x.private3Count; const gcn=x.groupCount+x.teamCount+(hxN[pn]||0);
-    byPool[pn]={groupCount:gcn,teamCount:x.teamCount,asstCount:x.asstCount,privateCount:pcn,private2Count:x.private2Count,private3Count:x.private3Count,otherCount:x.otherCount,groupAmt:a,asstAmt:s,privateAmt:b,otherAmt:c,total:r2(a+s+b+c)};
+    const c=r2(x.otherCount*rateOf(cid,'other',pn)); const pcn=x.privateCount+x.private2Count+x.private3Count; const gcn=x.groupCount+x.teamCount+x.sutCount+(hxN[pn]||0);
+    byPool[pn]={sutCount:x.sutCount,sutAmt:sutA,groupCount:gcn,teamCount:x.teamCount,asstCount:x.asstCount,privateCount:pcn,private2Count:x.private2Count,private3Count:x.private3Count,otherCount:x.otherCount,groupAmt:a,asstAmt:s,privateAmt:b,otherAmt:c,total:r2(a+s+b+c)};
     gc+=gcn; tc+=x.teamCount; ac+=x.asstCount; pc+=pcn; p2+=x.private2Count; p3+=x.private3Count; oc+=x.otherCount; ga+=a; aa+=s; pa+=b; oa+=c;
   });
   ga=r2(ga); aa=r2(aa); pa=r2(pa); oa=r2(oa);
@@ -9727,6 +9727,162 @@ function apkgCancelLessons(pid,athId){
     const rest=all.filter(l=>!used.has(l.id));
     if(rest.length) out+=`<div class="card" style="margin-bottom:10px;"><div style="font-size:13px;margin-bottom:6px;"><b>Pakete bağlı olmayan özel dersler</b></div><div class="tw" style="max-height:260px;overflow:auto;"><table><thead><tr><th>Tarih</th><th>Saat</th><th>Hoca</th><th>Durum</th></tr></thead><tbody>${lessonRows(rest)}</tbody></table></div></div>`;
     return h+out; }catch(e){ console.error(e); return h; } }; }
+
+/* ============ SUTOPU: branş, yaş kategorileri, branşa göre aidat ve hakediş ============ */
+if(C_COLLS.indexOf('ageCats')<0) C_COLLS.push('ageCats'); if(!SB_SPECS.some(s=>s.c==='ageCats')) SB_SPECS.push({c:'ageCats',t:'arr'});
+if(typeof AU_COLL==='object') AU_COLL.ageCats='Yaş kategorisi';
+const BRANCHES=['Yüzme','Sutopu'];
+const AGECAT_DEFAULT=[{id:'ac10',name:'U10',max:10},{id:'ac12',name:'U12',max:12},{id:'ac14',name:'U14',max:14},{id:'ac16',name:'U16',max:16},{id:'ac18',name:'U18',max:18},{id:'acY',name:'Yetişkin',max:null}];
+TITLES.agecats='Yaş Kategorileri'; TITLES.branchrep='Branş Raporu';
+function acList(){ cEnsure(); const l=(DB.ageCats&&DB.ageCats.length)?DB.ageCats:AGECAT_DEFAULT; return l.slice().sort((a,b)=>(a.max==null?1e9:a.max)-(b.max==null?1e9:b.max)); }
+function acById(id){ return acList().find(x=>x.id===id)||null; }
+function athBranches(a){ return Array.isArray(a&&a.branches)?a.branches.filter(b=>BRANCHES.indexOf(b)>-1):[]; }
+function athAgeYears(a){ const y=parseInt(String(a&&a.dob||'').slice(0,4),10); return y>1900?(new Date().getFullYear()-y):null; }
+function acAuto(a){ const n=athAgeYears(a); if(n==null) return null; const l=acList(); return l.find(x=>x.max!=null&&n<=x.max)||l.find(x=>x.max==null)||null; }
+function athAgeCat(a){ return (a&&a.ageCat&&acById(a.ageCat))||acAuto(a); }
+function payBranch(p){ if(p&&p.branch) return p.branch; const a=DB.athletes.find(x=>x.id===(p&&p.athlete)); const b=athBranches(a); return (b.length===1&&b[0]==='Sutopu')?'Sutopu':'Yüzme'; }
+/* --- fiyat: Sutopu aidatı ayrı --- */
+{ const _tp=termPrice; termPrice=function(pool,m,branch){ branch=branch||window.__termBranch||''; if(branch==='Sutopu'){ m=Number(m); const P=(DB.poolPrices||{})[pool]||{}; return m===1?(Number(P.groupSut)||0):(Number((P.termsSut||{})[m])||0); } return _tp(pool,m); }; }
+function cWithBranch(br,fn){ const o=window.__termBranch; window.__termBranch=br||''; try{ return fn(); } finally{ window.__termBranch=o; } }
+{ const o=payAuto; payAuto=function(){ const e=document.getElementById('py_br'); return cWithBranch(e?e.value:'',()=>o.apply(this,arguments)); }; }
+{ const o=cAthTermHint; cAthTermHint=function(){ const g=document.getElementById('af_group'); const grp=g&&DB.groups.find(x=>x.id===g.value); return cWithBranch(grp&&grp.branch,()=>o.apply(this,arguments)); }; }
+{ const o=cAthTermApply; cAthTermApply=function(athId){ const a=DB.athletes.find(x=>x.id===athId), g=a&&DB.groups.find(x=>x.id===a.group); const r=cWithBranch(g&&g.branch,()=>o.apply(this,arguments)); if(a&&a.membership&&g&&g.branch==='Sutopu'){ a.membership.branch='Sutopu'; save(); } return r; }; }
+{ const o=cMemPrice; cMemPrice=function(id){ const a=DB.athletes.find(x=>x.id===id); return cWithBranch(a&&a.membership&&a.membership.branch,()=>o.apply(this,arguments)); }; }
+{ const o=cMemPay; cMemPay=function(a,m,pool,start,price){ o.apply(this,arguments); if(a&&a.membership&&a.membership.branch==='Sutopu'){ const p=DB.payments[DB.payments.length-1]; if(p&&p.athlete===a.id) p.branch='Sutopu'; } }; }
+{ const o=savePayment; savePayment=function(c,editId){ const r=o.apply(this,arguments); try{ const e=document.getElementById('py_br'); if(r&&r.ok&&e&&role==='admin'){ const p=DB.payments.find(x=>x.id===r.id); if(p){ if(e.value==='Sutopu') p.branch='Sutopu'; else delete p.branch; save(); } } }catch(x){} return r; }; }
+{ const o=payOpen; payOpen=function(editId){ o.apply(this,arguments); try{ const f=document.getElementById('py_pool'); if(!f||document.getElementById('py_br')) return; const p=editId?DB.payments.find(x=>x.id===editId):null;
+    f.closest('.field').insertAdjacentHTML('afterend',`<div class="field"><label for="py_br">Branş</label><select id="py_br" onchange="payAuto()"><option value="">Yüzme / genel</option><option value="Sutopu"${p&&p.branch==='Sutopu'?' selected':''}>Sutopu</option></select></div>`);
+    if(!p){ const ath=document.getElementById('py_ath'); const sync=()=>{ const a=DB.athletes.find(x=>x.id===ath.value); const b=athBranches(a); const s=document.getElementById('py_br'); if(s&&b.length===1&&b[0]==='Sutopu') s.value='Sutopu'; };
+      ath.addEventListener('change',sync); } }catch(e){ console.error(e); } }; }
+/* --- hakediş: Sutopu grup dersi ücreti ayrı --- */
+if(!RATE_ALL.some(t=>t[0]==='groupSut')) RATE_ALL.push(['groupSut','Sutopu grup dersi']);
+/* --- Yaş Kategorileri sayfası --- */
+function acMaterialize(){ cEnsure(); if(!DB.ageCats||!DB.ageCats.length) DB.ageCats=AGECAT_DEFAULT.map(x=>Object.assign({},x)); }
+function renderAgeCats(c){
+  const l=acList(); const inp='padding:6px 8px;border:1px solid var(--line);border-radius:8px;';
+  c.innerHTML=`<div class="card"><b>Yaş kategorileri (Sutopu)</b><div style="font-size:12.5px;color:var(--muted);margin:4px 0 10px;">Sporcunun kategorisi doğum yılından otomatik belirlenir: yaş = bu yıl − doğum yılı. Her kategoriye girilen <b>üst yaş sınırı</b>na kadar olan sporcular o kategoridedir. Üst sınırı boş bırakılan kategori “ve üstü”dür (en fazla bir tane). Sporcu kartından tek tek elle de değiştirebilirsiniz.</div>
+   <div style="overflow-x:auto;"><table><thead><tr><th>Kategori adı</th><th>Üst yaş sınırı</th><th></th></tr></thead><tbody>
+   ${l.map(x=>`<tr><td><input id="ac_n_${x.id}" maxlength="20" style="${inp}width:150px;" value="${escHtml(x.name)}"></td><td><input id="ac_m_${x.id}" type="number" min="3" max="80" style="${inp}width:90px;" value="${x.max==null?'':x.max}" placeholder="boş = ve üstü"></td><td><button class="btn sm danger" onclick="acDel('${x.id}')">Sil</button></td></tr>`).join('')}
+   <tr><td><input id="ac_n_new" maxlength="20" style="${inp}width:150px;" placeholder="Yeni kategori"></td><td><input id="ac_m_new" type="number" min="3" max="80" style="${inp}width:90px;" placeholder="boş = ve üstü"></td><td></td></tr></tbody></table></div>
+   <div id="ac_res" role="alert" style="font-size:12.5px;margin:8px 0;"></div><button class="btn primary" onclick="acSave()">Kaydet</button></div>`;
+}
+function acSave(){
+  if(role!=='admin'||window.__asst) return; acMaterialize(); const res=document.getElementById('ac_res'); const out=[];
+  const err=m=>{ if(res){ res.style.color='var(--red)'; res.textContent=m; } };
+  for(const x of DB.ageCats){ const n=String(document.getElementById('ac_n_'+x.id).value||'').trim(), mv=String(document.getElementById('ac_m_'+x.id).value||'').trim();
+    if(!n) return err('Kategori adı boş olamaz.'); if(mv!==''&&!(Number.isInteger(Number(mv))&&Number(mv)>=3&&Number(mv)<=80)) return err(n+': üst yaş sınırı 3–80 arası tam sayı olmalı.');
+    out.push({id:x.id,name:n.slice(0,20),max:mv===''?null:Number(mv)}); }
+  const nn=String(document.getElementById('ac_n_new').value||'').trim(), nm=String(document.getElementById('ac_m_new').value||'').trim();
+  if(nn||nm){ if(!nn) return err('Yeni kategorinin adını yazın.'); if(nm!==''&&!(Number.isInteger(Number(nm))&&Number(nm)>=3&&Number(nm)<=80)) return err('Yeni kategori: üst yaş sınırı 3–80 arası tam sayı olmalı.');
+    out.push({id:'ac'+Date.now().toString(36)+Math.floor(Math.random()*100),name:nn.slice(0,20),max:nm===''?null:Number(nm)}); }
+  const names=out.map(x=>x.name.toLowerCase()); if(new Set(names).size!==names.length) return err('Aynı isimde iki kategori olamaz.');
+  if(out.filter(x=>x.max==null).length>1) return err('Üst sınırı boş (“ve üstü”) en fazla bir kategori olabilir.');
+  const maxs=out.filter(x=>x.max!=null).map(x=>x.max); if(new Set(maxs).size!==maxs.length) return err('İki kategorinin üst yaş sınırı aynı olamaz.');
+  DB.ageCats=out; save(); render(); const r2_=document.getElementById('ac_res'); if(r2_){ r2_.style.color='var(--green)'; r2_.textContent='Kaydedildi.'; }
+}
+function acDel(id){
+  if(role!=='admin'||window.__asst) return; acMaterialize(); if(DB.ageCats.length<=1){ alert('En az bir kategori kalmalı.'); return; }
+  const x=DB.ageCats.find(k=>k.id===id); if(!x) return; const used=DB.groups.filter(g=>g.ageCat===id).length+DB.athletes.filter(a=>a.ageCat===id).length;
+  if(!confirm(`"${x.name}" kategorisi silinsin mi?${used?`\n\n${used} grup/sporcudaki elle seçilmiş atama kaldırılır (sporcular yaşa göre otomatik kategoriye döner).`:''}`)) return;
+  DB.ageCats=DB.ageCats.filter(k=>k.id!==id); DB.groups.forEach(g=>{ if(g.ageCat===id) g.ageCat=''; }); DB.athletes.forEach(a=>{ if(a.ageCat===id) a.ageCat=''; }); save(); render();
+}
+/* --- Branş raporu --- */
+let brRepYm='';
+function renderBranchRep(c){
+  if(!brRepYm) brRepYm=todayStr().slice(0,7); const ym=brRepYm; const B={}; BRANCHES.forEach(b=>B[b]={paid:0,pending:0,overdue:0,coach:0,ath:0,grp:0});
+  DB.payments.forEach(p=>{ const b=B[payBranch(p)]; if(!b) return; if(p.status==='paid'){ if(ymOf(p.paidDate||p.due)===ym) b.paid+=Number(p.amount)||0; } else if(p.status==='overdue') b.overdue+=Number(p.amount)||0; else b.pending+=Number(p.amount)||0; });
+  DB.coaches.forEach(co=>{ try{ const pay=coachPayFor(co.id,ym); Object.keys(pay.byPool||{}).forEach(pn=>{ const x=pay.byPool[pn]; B.Sutopu.coach+=x.sutAmt||0; B['Yüzme'].coach+=(x.total||0)-(x.sutAmt||0); }); }catch(e){} });
+  DB.athletes.filter(a=>a.status==='active').forEach(a=>{ const bs=athBranches(a); if(bs.indexOf('Sutopu')>-1) B.Sutopu.ath++; if(bs.indexOf('Yüzme')>-1||!bs.length) B['Yüzme'].ath++; });
+  DB.groups.forEach(g=>{ if(g.branch==='Sutopu') B.Sutopu.grp++; else B['Yüzme'].grp++; });
+  c.innerHTML=`<div class="card"><b>Branş raporu</b> <select id="br_ym" style="margin-left:8px;padding:6px 8px;border:1px solid var(--line);border-radius:8px;" onchange="brRepYm=this.value;renderBranchRep($('#content'))">${monthOptions(ym)}</select>
+   <div style="font-size:12.5px;color:var(--muted);margin:6px 0 10px;">Tahsilat seçilen ayın alınan ödemeleridir. Bekleyen/gecikmiş borç tüm zamanların açık borcudur. Hakediş, seçilen ayın hesaplanan antrenör ücretidir. Branşı belirtilmemiş sporcular Yüzme sayılır.</div>
+   <div style="overflow-x:auto;"><table><thead><tr><th>Branş</th><th class="n">Aktif sporcu</th><th class="n">Grup</th><th class="n">Tahsilat</th><th class="n">Bekleyen</th><th class="n">Gecikmiş</th><th class="n">Antrenör hakedişi</th><th class="n">Fark (tahsilat − hakediş)</th></tr></thead><tbody>
+   ${BRANCHES.map(k=>{ const b=B[k]; return `<tr><td><b>${k}</b></td><td class="n">${b.ath}</td><td class="n">${b.grp}</td><td class="n">${money(b.paid)}</td><td class="n">${money(b.pending)}</td><td class="n">${money(b.overdue)}</td><td class="n">${money(b.coach)}</td><td class="n">${money(b.paid-b.coach)}</td></tr>`; }).join('')}</tbody></table></div></div>`;
+}
+/* --- menü --- */
+{ const mk=(id,label,ic,after)=>{ if(NAV.admin.some(x=>x.id===id)) return; const i=NAV.admin.findIndex(x=>x.id===after); NAV.admin.splice(i>=0?i+1:NAV.admin.length,0,{id,label,ic}); const g=NAV_GROUPS.admin.find(x=>x[1].indexOf(after)>-1); if(g&&g[1].indexOf(id)<0) g[1].splice(g[1].indexOf(after)+1,0,id); };
+  mk('agecats','Yaş Kategorileri','🏷️','groups'); mk('branchrep','Branş Raporu','⚖️','agecats'); }
+/* --- grup formu: branş + yaş kategorisi --- */
+{ const o=grpOpen; grpOpen=function(editId,pre){ o.apply(this,arguments); try{ const anchor=document.getElementById('gf_result'); if(!anchor||document.getElementById('gb_branch')) return; const g=pre||(editId?DB.groups.find(x=>x.id===editId):null)||{};
+    anchor.insertAdjacentHTML('beforebegin',`<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:10px 0;"><div class="field" style="margin:0;"><label for="gb_branch">Branş</label><select id="gb_branch" onchange="document.getElementById('gb_agew').style.display=this.value==='Sutopu'?'':'none'"><option value="">Yüzme / belirtilmemiş</option><option value="Sutopu"${g.branch==='Sutopu'?' selected':''}>Sutopu</option></select></div>
+     <div class="field" id="gb_agew" style="margin:0;${g.branch==='Sutopu'?'':'display:none;'}"><label for="gb_age">Yaş kategorisi</label><select id="gb_age"><option value="">Seçilmedi</option>${acList().map(x=>`<option value="${x.id}"${g.ageCat===x.id?' selected':''}>${escHtml(x.name)}</option>`).join('')}</select></div></div>`); }catch(e){ console.error(e); } }; }
+{ const o=saveGroup; saveGroup=function(c,editId){ const r=o.apply(this,arguments); try{ const b=document.getElementById('gb_branch'); if(r&&r.ok&&b){ const g=DB.groups.find(x=>x.id===r.id); if(g){ if(b.value==='Sutopu') g.branch='Sutopu'; else delete g.branch; const a=document.getElementById('gb_age'); if(b.value==='Sutopu'&&a&&a.value) g.ageCat=a.value; else delete g.ageCat; save(); } } }catch(e){ console.error(e); } return r; }; }
+{ const o=renderGroups; renderGroups=function(c){ o.apply(this,arguments); try{ c.querySelectorAll('button[onclick^="showGroupMembers("]').forEach(bt=>{ const m=/showGroupMembers\('([^']+)'\)/.exec(bt.getAttribute('onclick')); const g=m&&DB.groups.find(x=>x.id===m[1]); if(!g||g.branch!=='Sutopu') return; const card=bt.closest('.card'); const t=card&&card.querySelector('b'); if(!t||card.querySelector('.brtag')) return; const ac=g.ageCat&&acById(g.ageCat);
+      t.insertAdjacentHTML('afterend',` <span class="badge aqua brtag">Sutopu${ac?' · '+escHtml(ac.name):''}</span>`); }); }catch(e){ console.error(e); } }; }
+/* --- sporcu kaydı: grubun branşı sporcuya işlenir --- */
+{ const o=submitAthlete; submitAthlete=function(c,editId,extra){ const r=o.apply(this,arguments); try{ if(r&&r.ok){ const id=editId||r.id; const a=DB.athletes.find(x=>x.id===id); const g=a&&DB.groups.find(x=>x.id===a.group); if(a&&g&&g.branch&&athBranches(a).indexOf(g.branch)<0){ a.branches=athBranches(a).concat([g.branch]); save(); } } }catch(e){ console.error(e); } return r; }; }
+/* --- sporcu kartı: branş ve yaş kategorisi --- */
+function abrSave(id){
+  if(role!=='admin'||window.__asst) return; const a=DB.athletes.find(x=>x.id===id); if(!a) return;
+  a.branches=BRANCHES.filter(b=>{ const e=document.getElementById('abr_'+b); return e&&e.checked; });
+  const s=document.getElementById('abr_ac'); if(s) a.ageCat=a.branches.indexOf('Sutopu')>-1?s.value:''; if(!a.ageCat) delete a.ageCat; if(!a.branches.length) delete a.branches;
+  save(); render(); setTimeout(()=>openAthlete(id),60);
+}
+{ const o=openAthlete; openAthlete=function(id){ o(id); try{ const a=DB.athletes.find(x=>x.id===id); const body=document.querySelector('#drawer .drawer-body'); if(!a||!body||!$('#drawer').classList.contains('open')||body.querySelector('#abr_box')) return;
+    const bs=athBranches(a), adm=role==='admin'&&!window.__asst, cat=athAgeCat(a), auto=acAuto(a), yrs=athAgeYears(a);
+    const info=bs.indexOf('Sutopu')>-1?`Yaş kategorisi: <b>${cat?escHtml(cat.name):'—'}</b>${a.ageCat?' (elle seçildi)':auto?` (doğum yılına göre otomatik${yrs!=null?', '+yrs+' yaş':''})`:' — doğum tarihi yok'}`:'';
+    body.insertAdjacentHTML('beforeend',`<div id="abr_box"><div class="section-title">Branş</div><div class="card" style="margin-bottom:14px;">
+     ${adm?`<div style="display:flex;gap:16px;flex-wrap:wrap;">${BRANCHES.map(b=>`<label style="display:flex;gap:6px;align-items:center;"><input type="checkbox" id="abr_${b}"${bs.indexOf(b)>-1?' checked':''}> ${b}</label>`).join('')}</div>
+      <div class="field" style="margin:10px 0 0;max-width:260px;"><label for="abr_ac">Sutopu yaş kategorisi</label><select id="abr_ac"><option value="">Otomatik${auto?' ('+escHtml(auto.name)+')':''}</option>${acList().map(x=>`<option value="${x.id}"${a.ageCat===x.id?' selected':''}>${escHtml(x.name)}</option>`).join('')}</select></div>
+      <div style="font-size:12.5px;color:var(--muted);margin-top:8px;">${info||'Sporcunun hangi branşlarda olduğunu işaretleyin. İkisi birden işaretlenebilir.'}</div>
+      <button class="btn primary sm" style="margin-top:10px;" onclick="abrSave('${id}')">Kaydet</button>`
+      :`<div>${bs.length?bs.map(b=>`<span class="badge aqua">${b}</span>`).join(' '):'<span style="color:var(--muted);font-size:13px;">Belirtilmemiş</span>'}</div><div style="font-size:12.5px;margin-top:6px;">${info}</div>`}</div></div>`); }catch(e){ console.error(e); } }; }
+/* --- sporcu listesi: branş / kategori süzgeci, etiket ve toplu branş atama --- */
+let brF='', acF='';
+function brApply(){ $$('#athBody tr.rowlink').forEach(tr=>{ const m=/openAthlete\('([^']+)'\)/.exec(tr.getAttribute('onclick')||''); if(!m) return; const a=DB.athletes.find(x=>x.id===m[1]); if(!a) return; const bs=athBranches(a);
+    let hide=false; if(brF==='Yüzme') hide=!(bs.indexOf('Yüzme')>-1); else if(brF==='Sutopu') hide=bs.indexOf('Sutopu')<0; else if(brF==='none') hide=bs.length>0;
+    if(!hide&&acF){ const c=athAgeCat(a); hide=bs.indexOf('Sutopu')<0||!c||c.id!==acF; }
+    tr.classList.toggle('brhid',hide);
+    const td=tr.querySelector('td'); if(td&&bs.indexOf('Sutopu')>-1&&!td.querySelector('.brtag')){ const c=athAgeCat(a); td.insertAdjacentHTML('beforeend',` <span class="badge aqua brtag" style="font-size:10.5px;">Sutopu${c?' · '+escHtml(c.name):''}</span>`); } }); }
+if(!document.getElementById('brStyle')){ const st=document.createElement('style'); st.id='brStyle'; st.textContent='tr.brhid{display:none!important}'; document.head.appendChild(st); }
+{ const o=renderAthletes; renderAthletes=function(c){ o.apply(this,arguments); try{ if(role!=='admin'&&role!=='coach') return; const f=c.querySelector('#athFilters'); if(!f||c.querySelector('#brF')) return;
+    f.insertAdjacentHTML('beforebegin',`<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:8px 0;"><span style="font-size:12.5px;color:var(--muted);">Branş:</span>
+     <select id="brF" onchange="brF=this.value;brApply()" style="padding:6px 8px;border:1px solid var(--line);border-radius:8px;"><option value="">Tümü</option><option value="Yüzme"${brF==='Yüzme'?' selected':''}>Yüzme</option><option value="Sutopu"${brF==='Sutopu'?' selected':''}>Sutopu</option><option value="none"${brF==='none'?' selected':''}>Branşı belirtilmemiş</option></select>
+     <select id="acF" onchange="acF=this.value;brApply()" style="padding:6px 8px;border:1px solid var(--line);border-radius:8px;"><option value="">Tüm Sutopu kategorileri</option>${acList().map(x=>`<option value="${x.id}"${acF===x.id?' selected':''}>${escHtml(x.name)}</option>`).join('')}</select>
+     ${role==='admin'&&!window.__asst?'<button class="btn sm" onclick="brBulkOpen()">Toplu branş ata</button>':''}</div>`);
+    const body=$('#athBody'); if(body){ new MutationObserver(brApply).observe(body,{childList:true}); } brApply(); }catch(e){ console.error(e); } }; }
+function brBulkOpen(){
+  if(role!=='admin'||window.__asst) return;
+  openDrawerHtml(`<div class="drawer-head"><div style="font-weight:800;font-size:16px;">Toplu branş ata</div><button class="close-x" onclick="closeDrawer()">✕</button></div><div class="drawer-body" style="padding-top:14px;">
+   <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;"><input id="bb_q" placeholder="Ad ile ara" oninput="brBulkList()" style="padding:6px 8px;border:1px solid var(--line);border-radius:8px;flex:1;min-width:140px;">
+    <select id="bb_g" onchange="brBulkList()" style="padding:6px 8px;border:1px solid var(--line);border-radius:8px;"><option value="">Tüm gruplar</option>${DB.groups.map(g=>`<option value="${escHtml(g.id)}">${escHtml(g.name)}</option>`).join('')}</select></div>
+   <div style="margin-bottom:8px;"><button class="btn sm" onclick="brBulkAll(true)">Listedekileri seç</button> <button class="btn sm" onclick="brBulkAll(false)">Seçimi temizle</button> <span id="bb_cnt" style="font-size:12.5px;color:var(--muted);"></span></div>
+   <div id="bb_list" style="max-height:44vh;overflow:auto;border:1px solid var(--line);border-radius:10px;padding:6px 10px;"></div>
+   <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;"><button class="btn primary sm" onclick="brBulkDo('add','Sutopu')">Sutopu ekle</button><button class="btn sm" onclick="brBulkDo('add','Yüzme')">Yüzme ekle</button><button class="btn sm" onclick="brBulkDo('only','Sutopu')">Yalnız Sutopu yap</button><button class="btn sm" onclick="brBulkDo('only','Yüzme')">Yalnız Yüzme yap</button><button class="btn sm" onclick="brBulkDo('clear','')">Branşı temizle</button></div>
+   <div id="bb_res" style="font-size:12.5px;margin-top:8px;"></div></div>`); brBulkList();
+}
+function brBulkList(){
+  const q=trLower((document.getElementById('bb_q')||{}).value||''), gid=(document.getElementById('bb_g')||{}).value||''; const keep=new Set(Array.from(document.querySelectorAll('#bb_list input:checked')).map(x=>x.value));
+  const l=DB.athletes.filter(a=>a.status!=='trial'&&(!gid||a.group===gid)&&(!q||trLower(a.name).indexOf(q)>-1)).sort((x,y)=>String(x.name).localeCompare(String(y.name),'tr')).slice(0,400);
+  const el=document.getElementById('bb_list'); if(!el) return; el.innerHTML=l.map(a=>{ const bs=athBranches(a); return `<label style="display:flex;gap:8px;padding:4px 0;font-size:13.5px;align-items:center;"><input type="checkbox" value="${escHtml(a.id)}"${keep.has(a.id)?' checked':''} onchange="brBulkCount()"> <span>${escHtml(a.name)}</span> <span style="color:var(--muted);font-size:12px;">${bs.join(' + ')||'—'}</span></label>`; }).join('')||'<div class="empty">Sporcu yok</div>'; brBulkCount();
+}
+function brBulkCount(){ const n=document.querySelectorAll('#bb_list input:checked').length; const e=document.getElementById('bb_cnt'); if(e) e.textContent=n+' sporcu seçili'; }
+function brBulkAll(v){ document.querySelectorAll('#bb_list input').forEach(i=>{ i.checked=v; }); brBulkCount(); }
+function brBulkDo(mode,b){
+  if(role!=='admin'||window.__asst) return; const ids=Array.from(document.querySelectorAll('#bb_list input:checked')).map(x=>x.value); const res=document.getElementById('bb_res');
+  if(!ids.length){ if(res){ res.style.color='var(--red)'; res.textContent='Önce sporcu seçin.'; } return; }
+  if(!confirm(ids.length+' sporcunun branşı değiştirilsin mi?')) return;
+  ids.forEach(id=>{ const a=DB.athletes.find(x=>x.id===id); if(!a) return; let bs=athBranches(a);
+    if(mode==='add'){ if(bs.indexOf(b)<0) bs=bs.concat([b]); } else if(mode==='only') bs=[b]; else bs=[];
+    if(bs.length) a.branches=bs; else delete a.branches; if(bs.indexOf('Sutopu')<0) delete a.ageCat; });
+  save(); closeDrawer(); render();
+}
+/* --- Finans > Havuz Fiyatları: Sutopu aidatı --- */
+{ const o=renderFinance; renderFinance=function(c){ o.apply(this,arguments); try{ if(role!=='admin'||finTab!=='prices'||window.__asst) return; const inp='padding:6px 8px;border:1px solid var(--line);border-radius:8px;width:110px;';
+    c.insertAdjacentHTML('beforeend',`<div class="card" style="margin-top:16px;"><b>Sutopu aidat fiyatları (₺)</b>
+     <div style="font-size:12.5px;color:var(--muted);margin:4px 0 10px;">Sutopu grubundaki sporcular için aylık aidat ve dönemlik üyelik toplam fiyatı. Boş bırakılan fiyat “girilmemiş” sayılır; aidat tutarı otomatik gelmez, elle girebilirsiniz.</div>
+     <div style="overflow-x:auto;"><table><thead><tr><th>Havuz</th><th>Aylık aidat</th>${TERM_MONTHS.map(m=>`<th>${m} aylık (toplam)</th>`).join('')}<th></th></tr></thead><tbody>
+     ${DB.pools.map((pl,pi)=>{ const P=(DB.poolPrices||{})[pl.name]||{}; return `<tr><td>${escHtml(pl.name)}</td><td><input id="sp_g${pi}" inputmode="decimal" style="${inp}" value="${P.groupSut||''}"></td>${TERM_MONTHS.map(m=>`<td><input id="sp_t${pi}_${m}" inputmode="decimal" style="${inp}" value="${(P.termsSut||{})[m]||''}"></td>`).join('')}<td><button class="btn sm primary" onclick="spSave(${pi})">Kaydet</button></td></tr>`; }).join('')}</tbody></table></div><div id="sp_res" style="font-size:12.5px;margin-top:6px;"></div></div>`); }catch(e){ console.error(e); } }; }
+function spSave(pi){
+  if(role!=='admin'||window.__asst) return; const pl=DB.pools[pi]; const res=document.getElementById('sp_res'); if(!pl) return;
+  const num=id=>{ const s=String((document.getElementById(id)||{}).value||'').trim().replace(',','.'); if(s==='') return 0; const n=Number(s); return (isFinite(n)&&n>=0&&n<=1e7)?r2(n):NaN; };
+  const g=num('sp_g'+pi); const terms={}; let bad=isNaN(g);
+  TERM_MONTHS.forEach(m=>{ const v=num('sp_t'+pi+'_'+m); if(isNaN(v)) bad=true; else if(v>0) terms[m]=v; });
+  if(bad){ if(res){ res.style.color='var(--red)'; res.textContent='Fiyatlar 0 ile 10.000.000 ₺ arasında sayı olmalı.'; } return; }
+  DB.poolPrices=DB.poolPrices||{}; const cur=Object.assign({group:0,private:0},DB.poolPrices[pl.name]||{});
+  if(g>0) cur.groupSut=g; else delete cur.groupSut; if(Object.keys(terms).length) cur.termsSut=terms; else delete cur.termsSut; DB.poolPrices[pl.name]=cur; save();
+  if(res){ res.style.color='var(--green)'; res.textContent=pl.name+' Sutopu fiyatları kaydedildi.'; }
+}
 
 /* ============ INIT ============ */
 boot();
