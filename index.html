@@ -9937,6 +9937,30 @@ function hubBarRender(){ const bar=document.getElementById('hubbar'); if(!bar) r
   bar.innerHTML=t.map(x=>{ const h=HUBS.find(k=>'hub_'+k.id===x[0]); const b=h?hubBadge(h):0; return `<a class="${cur===x[0]?'on':''}" onclick="hubGo('${x[0]}')"><span class="i">${x[1]}</span>${x[2]}${b?`<span class="hubbadge">${b}</span>`:''}</a>`; }).join(''); }
 { const o=render; render=function(){ o.apply(this,arguments); try{ hubBarRender(); }catch(e){ console.error(e); } }; }
 
+/* ============ SUTOPU: kayıt türü düğmesi + sporcu listesi hızlı filtresi ============ */
+function rtIsSut(g){ return !!g&&g.branch==='Sutopu'; }
+{ const o=rtApply; rtApply=function(){ const gsel=document.getElementById('af_group'), bar=document.getElementById('rt_bar'); if(!gsel||!bar) return o.apply(this,arguments);
+    const t=window.__rtType||'group'; const sut=t==='sutopu';
+    if(sut) window.__rtType='group'; try{ o.apply(this,arguments); } finally{ window.__rtType=t; }
+    bar.querySelectorAll('button').forEach(b=>{ const on=b.dataset.t===t; b.className='btn sm'+(on?' primary':''); b.setAttribute('aria-pressed',on?'true':'false'); });
+    if(t==='group'||sut){ [...gsel.options].forEach(op=>{ if(!op.value||op.value==='private'||op.value==='trial') return; const g=DB.groups.find(x=>x.id===op.value); const isS=rtIsSut(g); const hide=sut?!isS:isS; op.hidden=hide; op.disabled=hide; });
+      const cur=gsel.options[gsel.selectedIndex]; if(cur&&cur.disabled) gsel.value=''; } }; }
+{ const o=athOpen; athOpen=function(editId,pre){ o.apply(this,arguments);
+    try{ if(editId) return; const bar=document.getElementById('rt_bar'); if(!bar||bar.querySelector('[data-t="sutopu"]')) return;
+      const first=bar.querySelector('[data-t="group"]'); if(first) first.textContent='Yüzme grubu';
+      bar.insertAdjacentHTML('beforeend','<button type="button" class="btn sm" data-t="sutopu" onclick="rtSet(\'sutopu\')">Sutopu</button>');
+      const g=document.getElementById('af_group'); const gr=g&&DB.groups.find(x=>x.id===g.value);
+      if(rtIsSut(gr)) window.__rtType='sutopu'; afToggle(); }catch(e){ console.error(e); } }; }
+{ const o=renderAthletes; renderAthletes=function(c){ o.apply(this,arguments);
+    try{ if(role!=='admin'&&role!=='coach') return; const f=c.querySelector('#athFilters'); if(!f||f.querySelector('[data-f="__sut"]')) return;
+      const n=DB.athletes.filter(a=>canViewAthlete(a.id)&&athBranches(a).indexOf('Sutopu')>-1).length;
+      const p=document.createElement('div'); p.className='p'; p.dataset.f='__sut'; p.textContent='Sutopu ('+n+')'; f.appendChild(p);
+      const sync=()=>{ const s=document.getElementById('brF'); if(s) s.value=brF; brApply(); };
+      f.querySelectorAll('.p').forEach(x=>{ if(x===p) return; x.addEventListener('click',()=>{ if(brF==='Sutopu'){ brF=''; acF=''; const a=document.getElementById('acF'); if(a) a.value=''; sync(); } }); });
+      p.onclick=()=>{ const all=f.querySelector('[data-f="all"]'); if(all) all.click(); brF='Sutopu'; f.querySelectorAll('.p').forEach(x=>x.classList.remove('active')); p.classList.add('active'); sync(); };
+      if(brF==='Sutopu'){ f.querySelectorAll('.p').forEach(x=>x.classList.remove('active')); p.classList.add('active'); }
+    }catch(e){ console.error(e); } }; }
+
 /* ============ INIT ============ */
 boot();
 </script>
