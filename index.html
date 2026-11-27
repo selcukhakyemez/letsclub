@@ -10189,13 +10189,19 @@ function payBanner(){
 { const o=hubChips; hubChips=function(){ const L=o.apply(this,arguments); try{ if(role==='parent'&&hubItem('payments')){ const od=(DB.payments||[]).filter(p=>p.status==='overdue'); if(od.length) L.unshift(['💳','Geciken ödeme',od.length+' · '+money(od.reduce((s,p)=>s+(Number(p.amount)||0),0)),'payments',1]); } }catch(e){} return L; }; }
 /* uyarı merkezi */
 function alertRows(){
-  const k=hubKey(), R=[]; const has=r=>!!hubItem(r); const ds=todayStr();
+  const k=hubKey(), R=[]; const has=r=>!!hubItem(r);
   const add=(ic,t,n,go)=>{ if(n>0) R.push({ic,t,n,go}); };
-  try{ if(k==='admin'||k==='coach'||k==='asst'){ if(has('attendance')) add('⚠️','Yoklaması alınmayan ders (bugün)',coachPendingAtt?coachPendingAtt():0,"hubGo('attendance')");
-    add('🚫','Derse gelemeyecek sporcu (bugün ve yaklaşan)',absnUpcoming().length,'absnDrawer()');
-    if(has('absences')){ const L=absenceAlerts().filter(a=>!absSeenByMe(absKey(a))); add('📉','Devamsızlığı artan sporcu (görmediğiniz)',L.length,"hubGo('absences')"); }
-    if(has('expiring')){ const all=expFiltered().all; add('⏳','Üyeliği bitmiş veya son 2 dersi kalan',all.filter(x=>x.over||x.left<=2).length,"hubGo('expiring')"); } } }catch(e){ console.error(e); }
-  try{ if(k==='admin'){ add('💳','Geciken ödeme',hubOver().length,"hubGo('payments')"); add('🏊','Antrenörü atanmamış özel ders sporcusu',unassignedPriv().length,"hubGo('athletes')"); } else if(role==='accountant') add('💳','Geciken ödeme',hubOver().length,"hubGo('payments')"); }catch(e){ console.error(e); }
+  const tryAdd=f=>{ try{ f(); }catch(e){ console.error(e); } };
+  if(k==='admin'||k==='coach'||k==='asst'){
+    tryAdd(()=>{ let m=missingAttendance(14); if(k==='coach'){ const me=(DB.currentUser||{}).coachId; m=m.filter(x=>effCoach(x.g,x.ds)===me); } else if(k==='asst'){ const ids=new Set(visibleGroups().map(g=>g.id)); m=m.filter(x=>ids.has(x.g.id)); }
+      add('⚠️','Yoklaması alınmamış ders (son 14 gün)',m.length,"hubGo('summary')"); });
+    tryAdd(()=>add('🚫','Derse gelemeyecek sporcu (bugün ve yaklaşan)',absnUpcoming().length,'absnDrawer()'));
+    if(has('absences')) tryAdd(()=>{ const L=absenceAlerts().filter(a=>!absSeenByMe(absKey(a))); add('📉','Devamsızlığı artan sporcu (görmediğiniz)',L.length,"hubGo('absences')"); });
+    if(has('expiring')) tryAdd(()=>{ const all=expFiltered().all; const n=all.filter(x=>x.over||x.left<=2).length; add('⏳','Grup üyeliği bitmiş veya son 2 dersi kalan',n,"expF.lim='2';expF.gid='';expF.q='';hubGo('expiring')"); });
+    if(has('plsum')) tryAdd(()=>{ const low=plsRows().filter(r=>r.left>0&&r.left<=2).length; add('🎫','Özel ders paketi azalan (2 ders ve altı)',low,"hubGo('plsum')"); });
+  }
+  if(k==='admin'){ tryAdd(()=>add('💳','Geciken ödeme',hubOver().length,"hubGo('payments')")); tryAdd(()=>add('🏊','Antrenörü atanmamış özel ders sporcusu',unassignedPriv().length,"hubGo('athletes')")); }
+  else if(role==='accountant') tryAdd(()=>add('💳','Geciken ödeme',hubOver().length,"hubGo('payments')"));
   return R;
 }
 { const o=renderHome; renderHome=function(c){ o.apply(this,arguments); try{ const k=hubKey(); let h='';
