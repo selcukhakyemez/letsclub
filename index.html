@@ -9943,7 +9943,7 @@ function hubStrip(){ N=NAV[role]; return N; }
 function hubOf(r){ return HUBS.find(h=>h.items.indexOf(r)>-1)||null; }
 function hubItem(id){ return (NAV[role]||[]).find(x=>x.id===id); }
 function hubOver(){ try{ return DB.payments.filter(p=>p.status==='overdue'); }catch(e){ return []; } }
-function hubBadge(h){ let n=0; h.items.forEach(i=>{ try{ n+=Number(navBadge(i))||0; }catch(e){} }); if(h.id==='finans'&&(hubKey()==='admin'||role==='accountant')) n+=hubOver().length; return n; }
+function hubBadge(h){ let n=0; h.items.forEach(i=>{ try{ n+=Number(navBadge(i))||0; }catch(e){} }); if(h.id==='finans'&&(hubKey()==='admin'||role==='accountant'||role==='parent')) n+=hubOver().length; return n; }
 function hubGo(r){ route=r; render(); try{ window.scrollTo(0,0); }catch(e){} }
 function hubTile(h){ const b=hubBadge(h), tgt=h.items.length===1?h.items[0]:'hub_'+h.id; return `<div class="card hubtile" role="button" tabindex="0" style="--hc:${h.color};" onclick="hubGo('${tgt}')" onkeydown="if(event.key==='Enter')hubGo('${tgt}')">${b?`<span class="hubbadge">${b}</span>`:''}<div class="hubic">${h.ic}</div><div class="hubname">${escHtml(h.label)}</div><div class="hubsub">${h.items.map(i=>{ const it=hubItem(i); return it?escHtml(it.label):''; }).filter(Boolean).slice(0,4).join(' · ')}</div></div>`; }
 function hubChips(){
@@ -9965,7 +9965,7 @@ function renderHome(c){
 }
 function renderHub(c,id){
   const h=HUBS.find(x=>x.id===id); if(!h){ hubGo('home'); return; }
-  c.innerHTML=`<div class="hubgrid sm">${h.items.map(i=>{ const it=hubItem(i); if(!it) return ''; let b=0; try{ b=Number(navBadge(i))||0; }catch(e){} if(i==='payments'&&(hubKey()==='admin'||role==='accountant')) b=hubOver().length;
+  c.innerHTML=`<div class="hubgrid sm">${h.items.map(i=>{ const it=hubItem(i); if(!it) return ''; let b=0; try{ b=Number(navBadge(i))||0; }catch(e){} if(i==='payments'&&(hubKey()==='admin'||role==='accountant'||role==='parent')) b=hubOver().length;
     return `<div class="card hubtile" role="button" tabindex="0" style="--hc:${h.color};" onclick="hubGo('${i}')" onkeydown="if(event.key==='Enter')hubGo('${i}')">${b?`<span class="hubbadge">${b}</span>`:''}<div class="hubic">${it.ic}</div><div class="hubname">${escHtml(it.label)}</div><div class="hubsub">${escHtml(HUB_DESC[i]||'')}</div></div>`; }).join('')}</div>`;
 }
 function hubOldNav(on){ try{ localStorage.setItem('oldnav',on?'1':'0'); }catch(e){} if(on) route='dashboard'; render(); }
@@ -10099,6 +10099,7 @@ function famGoalHtml(k){
     try{ if((role==='parent'||role==='athlete')&&!c.querySelector('.famsum')){ const kids=visibleAthletes(); if(!kids.length) return;
       const h=kids.map(k=>`<div class="card famsum" style="margin-bottom:16px;"><div class="section-title" style="margin-top:0;">${escHtml(k.name)} — devam, paket ve gelişim</div>
         <div style="font-weight:700;font-size:13px;margin:6px 0;">📅 Derse devam</div>${famAttHtml(k)}
+        <div style="margin-top:8px;">${famAbnHtml(k)}</div>
         ${famPkgHtml(k)?`<div style="font-weight:700;font-size:13px;margin:12px 0 6px;">🎫 Özel ders hakkı</div>${famPkgHtml(k)}`:''}
         <div style="font-weight:700;font-size:13px;margin:12px 0 6px;">🏅 Rekorlar</div>${famRecHtml(k)}${famGoalHtml(k)}</div>`).join('');
       const t=Array.from(c.querySelectorAll('.section-title')).find(x=>/^Duyurular/.test(x.textContent.trim())); if(t) t.insertAdjacentHTML('beforebegin',h); else c.insertAdjacentHTML('beforeend',h); }
@@ -10113,7 +10114,7 @@ function coachTodayCard(){
   const ds=todayStr(), gs=coachTodayList(); const me=(DB.currentUser||{}).coachId; const canAtt=!!hubItem('attendance');
   const rows=gs.map(g=>{ const canc=gCancelled(g,ds), taken=attTaken(g.id,ds), late=!taken&&!canc&&attLate(g,ds), n=(()=>{ try{ return cRoster(g.id,ds).length; }catch(e){ return ''; } })();
     const act=canc?'<span class="badge red">İptal</span>':taken?`<button class="btn sm ghost" ${canAtt?`onclick="attQuick('${g.id}')"`:'disabled'}>✓ Alındı</button>`:(canAtt?`<button class="btn sm primary" onclick="attQuick('${g.id}')">Yoklama al</button>`:'<span class="badge amber">Bekliyor</span>');
-    return `<div style="display:flex;gap:10px;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--line);flex-wrap:wrap;"><div><b>${escHtml(gTimeOn(g,ds))}</b> · ${escHtml(g.name)}<div style="font-size:12px;color:var(--muted);">${escHtml(gPoolOn(g,ds))}${n!==''?' · '+n+' sporcu':''}${late?' · <span style="color:var(--red);font-weight:700;">yoklama alınmadı</span>':''}</div></div>${act}</div>`; }).join('');
+    return `<div style="display:flex;gap:10px;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--line);flex-wrap:wrap;"><div><b>${escHtml(gTimeOn(g,ds))}</b> · ${escHtml(g.name)}<div style="font-size:12px;color:var(--muted);">${escHtml(gPoolOn(g,ds))}${n!==''?' · '+n+' sporcu':''}${late?' · <span style="color:var(--red);font-weight:700;">yoklama alınmadı</span>':''}${absnTodayTxt(g.id,ds)}</div></div>${act}</div>`; }).join('');
   const pl=(DB.privateLessons||[]).filter(l=>l.date===ds&&l.status==='Onaylandı'&&!l._stub&&(!me||l.coach===me||window.__asst)).sort((a,b)=>a.hour-b.hour);
   const plh=pl.length?`<div style="padding:10px 0;border-bottom:1px solid var(--line);font-size:13.5px;">🏊 <b>Özel ders (${pl.length}):</b> ${pl.map(l=>String(l.hour).padStart(2,'0')+':00 '+escHtml((athleteName(l.athlete)||'').split(' ')[0])).join(' · ')}</div>`:'';
   let mk=[]; try{ mk=visibleMakeups().filter(m=>m.planDate===ds&&m.status!=='Tamamlandı'&&m.status!=='İptal'); }catch(e){}
@@ -10134,10 +10135,73 @@ function attPaint(){
   w.querySelectorAll('.attn-item').forEach(row=>{ const sel=row.querySelector('select'); if(!sel) return; let b=row.querySelector('.attq');
     if(!b){ b=document.createElement('button'); b.type='button'; b.className='attq'; b.setAttribute('aria-label','Geldi / gelmedi'); b.onclick=()=>{ sel.value=(sel.value==='Gelmedi')?'Katıldı':'Gelmedi'; sel.dispatchEvent(new Event('change',{bubbles:true})); }; row.insertBefore(b,sel); }
     const v=sel.value, pres=ATT_PRESENT.indexOf(v)>-1; b.textContent=pres?'✓':(v==='Gelmedi'?'✗':'•'); b.className='attq '+(pres?'ok':(v==='Gelmedi'?'no':'ot')); row.classList.toggle('attabs',v==='Gelmedi');
+    try{ if(!row.dataset.abn){ row.dataset.abn='1'; const gid=document.getElementById('attGroup').value, dt=document.getElementById('attDate').value; if(!((DB.attendanceLog||{})[gid+'|'+dt])){ const n=absnFor(gid,dt).find(x=>x.athlete===sel.dataset.a); if(n){ sel.value=(n.reason==='Hasta')?'Hastalık':'İzinli'; row.insertAdjacentHTML('beforeend','<span class="badge amber" style="margin-left:6px;" title="Veli bildirdi">bildirildi</span>'); } } } }catch(e){}
+    const v2=sel.value, pres2=ATT_PRESENT.indexOf(v2)>-1; b.textContent=pres2?'✓':(v2==='Gelmedi'?'✗':'•'); b.className='attq '+(pres2?'ok':(v2==='Gelmedi'?'no':'ot')); row.classList.toggle('attabs',v2==='Gelmedi');
     if(pres) cnt.p++; else if(v==='Gelmedi') cnt.g++; else cnt.o++; });
   const e=document.getElementById('attCnt'); if(e) e.innerHTML=`<b style="color:var(--green,#16a34a);">${cnt.p} geldi</b> · <b style="color:var(--red,#dc2626);">${cnt.g} gelmedi</b>${cnt.o?` · ${cnt.o} izinli/hasta`:''} <span style="font-size:12px;">— adın yanındaki daireye dokunarak geldi/gelmedi değiştirin</span>`;
 }
 (function(){ const st=document.createElement('style'); st.textContent='.attq{width:38px;height:38px;border-radius:50%;border:2px solid var(--line);background:var(--card,#fff);font-size:18px;font-weight:800;cursor:pointer;margin-right:6px;flex:none;line-height:1}.attq.ok{border-color:#16a34a;color:#16a34a;background:rgba(34,160,90,.12)}.attq.no{border-color:#dc2626;color:#dc2626;background:rgba(220,70,70,.14)}.attq.ot{border-color:#9ca3af;color:#6b7280}.attn-item.attabs{background:rgba(220,70,70,.07)}'; document.head.appendChild(st); })();
+
+/* ============ UYARI MERKEZİ + VELİ ÖDEME HATIRLATMA + "DERSE GELEMEYECEĞİZ" BİLDİRİMİ ============ */
+if(C_COLLS.indexOf('absNotices')<0) C_COLLS.push('absNotices'); if(!SB_SPECS.some(s=>s.c==='absNotices')) SB_SPECS.push({c:'absNotices',t:'arr'});
+['parent','athlete'].forEach(r=>{ if(SB_WRITE[r]&&SB_WRITE[r].indexOf('absNotices')<0) SB_WRITE[r].push('absNotices'); }); if(typeof AU_COLL==='object') AU_COLL.absNotices='Devamsızlık bildirimi';
+function absnAll(){ try{ cEnsure(); }catch(e){} return (DB.absNotices||[]).filter(n=>n.status==='Bildirildi'); }
+function absnFor(gid,ds){ return absnAll().filter(n=>n.group===gid&&n.date===ds); }
+function absnTodayTxt(gid,ds){ const L=absnFor(gid,ds); return L.length?' · <span style="color:var(--amber);font-weight:700;">gelemeyecek: '+L.map(n=>escHtml(String(athleteName(n.athlete)||'').split(' ')[0])+' ('+escHtml(n.reason||'')+')').join(', ')+'</span>':''; }
+function absnUpcoming(){ const t=todayStr(); return absnAll().filter(n=>n.date>=t).sort((a,b)=>a.date<b.date?-1:1); }
+/* veli tarafı */
+function famAbnHtml(k){
+  if(!(role==='parent'||role==='athlete')||!k.group) return '';
+  const mine=absnUpcoming().filter(n=>n.athlete===k.id);
+  return `<button class="btn sm" onclick="absnOpen('${k.id}')">🚫 Derse gelemeyeceğiz</button>`+(mine.length?`<div style="margin-top:8px;font-size:13px;">${mine.map(n=>`<div style="display:flex;justify-content:space-between;gap:8px;padding:4px 0;"><span>${escHtml(fmtDate(n.date))} · ${escHtml(n.reason||'')}${n.note?' · '+escHtml(n.note):''}</span><a href="#" onclick="absnUndo('${n.id}');return false;" style="color:var(--red);">Geri al</a></div>`).join('')}</div>`:'');
+}
+function absnOpen(aid){
+  const a=DB.athletes.find(x=>x.id===aid), g=a&&DB.groups.find(x=>x.id===a.group); if(!g) return; const have=new Set(absnUpcoming().filter(n=>n.athlete===aid).map(n=>n.date)); const opts=[]; const d0=new Date();
+  for(let i=0;i<21;i++){ const d=new Date(d0.getFullYear(),d0.getMonth(),d0.getDate()+i); const ds=ymd(d); let blk=null; try{ blk=gBlockOn(g,ds); }catch(e){} if(!blk||have.has(ds)) continue; try{ if(gCancelled(g,ds)) continue; }catch(e){} opts.push({ds,t:gTimeOn(g,ds),p:gPoolOn(g,ds)}); }
+  openDrawerHtml(`<div class="drawer-head"><h3 style="margin:0;">Derse gelemeyeceğiz</h3><button class="btn sm" onclick="closeDrawer()">Kapat</button></div><div style="padding:14px;">
+   <p style="font-size:13px;color:var(--muted);margin-top:0;">${escHtml(a.name)} · ${escHtml(g.name)}. Antrenörünüz yoklamada görür, telafi için sizinle iletişime geçilebilir.</p>
+   ${opts.length?`<div class="field"><label>Hangi dersler?</label>${opts.map(o=>`<label style="display:flex;gap:8px;align-items:center;padding:6px 0;"><input type="checkbox" class="abn_d" value="${o.ds}"> ${escHtml(fmtDate(o.ds))} · ${escHtml(o.t)} · ${escHtml(o.p)}</label>`).join('')}</div>
+   <div class="field"><label for="abn_r">Neden?</label><select id="abn_r"><option>Hasta</option><option>Seyahat</option><option>Okul / sınav</option><option>Diğer</option></select></div>
+   <div class="field"><label for="abn_n">Not (isteğe bağlı)</label><input id="abn_n" maxlength="120"></div>
+   <button class="btn primary" onclick="absnSave('${aid}')">Bildir</button> <span id="abn_res" style="font-size:13px;color:var(--red);"></span>`:'<div class="empty">Önümüzdeki 3 hafta için bildirilecek ders yok.</div>'}</div>`);
+}
+function absnSave(aid){
+  const a=DB.athletes.find(x=>x.id===aid); if(!a||!a.group) return; const ds=Array.from(document.querySelectorAll('.abn_d:checked')).map(x=>x.value); const res=document.getElementById('abn_res');
+  if(!ds.length){ if(res) res.textContent='En az bir ders seçin.'; return; }
+  cEnsure(); const reason=document.getElementById('abn_r').value, note=String(document.getElementById('abn_n').value||'').trim().slice(0,120); const par=(DB.currentUser||{}).parentId||'';
+  ds.forEach((d,i)=>DB.absNotices.push({id:'ab_'+Date.now().toString(36)+i+Math.random().toString(36).slice(2,5),athlete:aid,group:a.group,date:d,reason,note,parent:par,status:'Bildirildi',at:new Date().toISOString()}));
+  save(); closeDrawer(); render(); alert('Bildirildi. Teşekkürler.');
+}
+function absnUndo(id){ const n=(DB.absNotices||[]).find(x=>x.id===id); if(!n||!confirm('Bildirimi geri almak istiyor musunuz?')) return; n.status='Geri alındı'; save(); render(); }
+/* yönetici / antrenör: yaklaşan bildirimler */
+function absnDrawer(){
+  const L=absnUpcoming(); const by={}; L.forEach(n=>{ (by[n.date]=by[n.date]||[]).push(n); });
+  openDrawerHtml(`<div class="drawer-head"><h3 style="margin:0;">Gelemeyecek sporcular</h3><button class="btn sm" onclick="closeDrawer()">Kapat</button></div><div style="padding:14px;">${L.length?Object.keys(by).sort().map(d=>`<div class="section-title" style="margin-top:12px;">${escHtml(fmtDate(d))}</div>${by[d].map(n=>{ const g=DB.groups.find(x=>x.id===n.group); return `<div style="padding:6px 0;border-bottom:1px solid var(--line);font-size:13.5px;"><b>${escHtml(athleteName(n.athlete))}</b> · ${escHtml(g?g.name:'')} <span class="badge amber">${escHtml(n.reason||'')}</span>${n.note?'<div style="font-size:12px;color:var(--muted);">'+escHtml(n.note)+'</div>':''}</div>`; }).join('')}`).join(''):'<div class="empty">Yaklaşan bildirim yok</div>'}</div>`);
+}
+/* veli ödeme hatırlatma */
+function payBanner(){
+  if(role!=='parent') return ''; const t=todayStr(); const P=(DB.payments||[]); const od=P.filter(p=>p.status==='overdue'); const soon=P.filter(p=>p.status==='pending'&&p.due>=t&&p.due<=ymd(new Date(Date.now()+7*864e5))).sort((a,b)=>a.due<b.due?-1:1);
+  if(!od.length&&!soon.length) return '';
+  const sum=od.reduce((s,p)=>s+(Number(p.amount)||0),0);
+  return `<div class="card" role="button" tabindex="0" onclick="hubGo('payments')" style="cursor:pointer;margin-bottom:14px;border-left:4px solid ${od.length?'var(--red,#dc2626)':'var(--amber,#d97706)'};">${od.length?`<b style="color:var(--red);">⚠ Geciken ödemeniz var</b><div style="font-size:13.5px;margin-top:2px;">${od.length} ödeme · toplam ${escHtml(money(sum))}. Ödemeleri görmek için dokunun.</div>`:''}${soon.length?`<div style="font-size:13.5px;margin-top:${od.length?'6':'0'}px;">📅 <b>Yaklaşan ödeme:</b> ${soon.slice(0,2).map(p=>escHtml(fmtDate(p.due))+' · '+escHtml(money(p.amount))).join(' · ')}</div>`:''}</div>`;
+}
+{ const o=renderDashboard; renderDashboard=function(c){ o.apply(this,arguments); try{ if(role==='parent'&&!c.querySelector('.paybanner')){ const h=payBanner(); if(h) c.insertAdjacentHTML('afterbegin',h.replace('class="card"','class="card paybanner"')); } }catch(e){ console.error(e); } }; }
+{ const o=hubChips; hubChips=function(){ const L=o.apply(this,arguments); try{ if(role==='parent'&&hubItem('payments')){ const od=(DB.payments||[]).filter(p=>p.status==='overdue'); if(od.length) L.unshift(['💳','Geciken ödeme',od.length+' · '+money(od.reduce((s,p)=>s+(Number(p.amount)||0),0)),'payments',1]); } }catch(e){} return L; }; }
+/* uyarı merkezi */
+function alertRows(){
+  const k=hubKey(), R=[]; const has=r=>!!hubItem(r); const ds=todayStr();
+  const add=(ic,t,n,go)=>{ if(n>0) R.push({ic,t,n,go}); };
+  try{ if(k==='admin'||k==='coach'||k==='asst'){ if(has('attendance')) add('⚠️','Yoklaması alınmayan ders (bugün)',coachPendingAtt?coachPendingAtt():0,"hubGo('attendance')");
+    add('🚫','Derse gelemeyecek sporcu (bugün ve yaklaşan)',absnUpcoming().length,'absnDrawer()');
+    if(has('absences')){ const L=absenceAlerts().filter(a=>!absSeenByMe(absKey(a))); add('📉','Devamsızlığı artan sporcu (görmediğiniz)',L.length,"hubGo('absences')"); }
+    if(has('expiring')){ const all=expFiltered().all; add('⏳','Üyeliği bitmiş veya son 2 dersi kalan',all.filter(x=>x.over||x.left<=2).length,"hubGo('expiring')"); } } }catch(e){ console.error(e); }
+  try{ if(k==='admin'){ add('💳','Geciken ödeme',hubOver().length,"hubGo('payments')"); add('🏊','Antrenörü atanmamış özel ders sporcusu',unassignedPriv().length,"hubGo('athletes')"); } else if(role==='accountant') add('💳','Geciken ödeme',hubOver().length,"hubGo('payments')"); }catch(e){ console.error(e); }
+  return R;
+}
+{ const o=renderHome; renderHome=function(c){ o.apply(this,arguments); try{ const k=hubKey(); let h='';
+    if(role==='parent'){ h=payBanner(); } else if(k==='admin'||k==='coach'||k==='asst'||role==='accountant'){ const R=alertRows();
+      h=`<div class="card" style="margin-top:14px;"><div class="section-title" style="margin-top:0;">Uyarı merkezi</div>${R.length?R.map(r=>`<div role="button" tabindex="0" onclick="${r.go}" style="display:flex;gap:10px;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--line);cursor:pointer;"><span>${r.ic} ${escHtml(r.t)}</span><span class="badge red">${r.n}</span></div>`).join(''):'<div style="font-size:13.5px;color:var(--green,#16a34a);">✅ Şu an dikkat gerektiren bir şey yok.</div>'}</div>`; }
+    if(!h) return; const g=c.querySelector('.hubgrid'); if(g) g.insertAdjacentHTML('beforebegin',h); else c.insertAdjacentHTML('beforeend',h); }catch(e){ console.error(e); } }; }
 
 /* ============ INIT ============ */
 boot();
