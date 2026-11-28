@@ -10275,6 +10275,38 @@ function apPoolSet(id){
         <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;"><select id="apc_p" style="flex:1;min-width:160px;">${DB.pools.map(p=>`<option value="${escHtml(p.name)}"${p.name===cur?' selected':''}>${escHtml(p.name)}</option>`).join('')}</select><button class="btn sm primary" onclick="apPoolSet('${id}')">Havuzu değiştir</button></div>
         <div style="font-size:12.5px;margin-top:6px;"><label style="display:block;"><input type="radio" name="apc_sc" value="fut" checked> Bugünden itibaren (geçmiş dersler eski havuzda kalır)</label><label style="display:block;"><input type="radio" name="apc_sc" value="all"> Geçmiş dahil tüm dersler</label></div></div>`); }catch(e){ console.error(e); } }; }
 
+/* ============ ANTRENÖR: ders programı çizelgesinde boş saate dokunup özel ders ekleme ============ */
+function plSlotOpen(ds,h){
+  if(role!=='coach') return; const aths=visibleAthletes().filter(a=>a.status==='active').slice().sort((a,b)=>a.name.localeCompare(b.name,'tr')); if(!aths.length){ alert('Ders ekleyebileceğiniz sporcu yok.'); return; }
+  const priv=aths.filter(a=>a.kind==='private'), rest=aths.filter(a=>a.kind!=='private'); const o=a=>`<option value="${escHtml(a.id)}">${escHtml(a.name)}</option>`;
+  const opts='<option value="">— seçin —</option>'+(priv.length?`<optgroup label="Özel ders sporcuları">${priv.map(o).join('')}</optgroup>`:'')+(rest.length?`<optgroup label="Diğer sporcular">${rest.map(o).join('')}</optgroup>`:'');
+  const dn=parseYmd(ds); const dname=DAYNAMES[(dn.getDay()+6)%7];
+  openDrawerHtml(`<div class="drawer-head"><h3 style="margin:0;">Özel ders ekle</h3><button class="btn sm" onclick="closeDrawer()">Kapat</button></div><div style="padding:14px;">
+   <div style="font-weight:700;margin-bottom:10px;">${escHtml(dname)} ${escHtml(fmtDate(ds))} · ${h}:00-${h+1}:00</div>
+   <div class="field"><label for="ps_type">Ders türü</label><select id="ps_type" onchange="plSlotType()"><option value="1">Bireysel</option><option value="2">İkili</option><option value="3">Üçlü</option></select></div>
+   <div class="field"><label for="ps_a1">Sporcu</label><select id="ps_a1">${opts}</select></div>
+   <div class="field" id="ps_w2" style="display:none;"><label for="ps_a2">2. sporcu</label><select id="ps_a2">${opts}</select></div>
+   <div class="field" id="ps_w3" style="display:none;"><label for="ps_a3">3. sporcu</label><select id="ps_a3">${opts}</select></div>
+   <div class="field"><label for="ps_n">Not (isteğe bağlı)</label><input id="ps_n" maxlength="200"></div>
+   <div style="font-size:12.5px;color:var(--muted);">Ders hemen takvime girer, yöneticiye bilgi gider. Sporcunun paketi yoksa "paketsiz" işaretlenir.</div>
+   <div id="ps_res" role="alert" style="color:var(--red);font-size:13px;min-height:18px;margin:8px 0;"></div>
+   <button class="btn primary" onclick="plSlotSubmit('${ds}',${h})">Dersi ekle</button></div>`);
+}
+function plSlotType(){ const n=Number((document.getElementById('ps_type')||{}).value)||1; ['ps_w2','ps_w3'].forEach((id,i)=>{ const e=document.getElementById(id); if(e) e.style.display=(n>=i+2)?'':'none'; }); }
+function plSlotSubmit(ds,h){
+  const v=id=>(document.getElementById(id)||{}).value||''; const n=Number(v('ps_type'))||1; const ids=[v('ps_a1'),n>=2?v('ps_a2'):'',n>=3?v('ps_a3'):''].filter(Boolean); const res=document.getElementById('ps_res');
+  if(ids.length!==n||new Set(ids).size!==n){ if(res) res.textContent=n===1?'Sporcu seçin.':n+' farklı sporcu seçin.'; return; }
+  const r=cPlSessionAdd(ids,ds,h,v('ps_n'),'',''); if(!r.ok){ if(res) res.textContent=r.errors.join(' '); return; }
+  plMsg=PL_SIZE_LABEL[r.size]+' özel ders eklendi'+(r.unpackaged?' ('+r.unpackaged+' sporcu için paketsiz olarak işaretlendi).':'.'); closeDrawer(); plRefresh();
+}
+{ const o=renderSchedule; renderSchedule=function(c){ o.apply(this,arguments);
+    try{ if(role!=='coach'||!c) return; const mStart=ymd(new Date(new Date().getFullYear(),new Date().getMonth(),1));
+      const wire=(cell,ds,h)=>{ if(!cell||ds<mStart||h<PL_FIRST||h>PL_LAST) return; cell.classList.add('slotadd'); cell.title='Bu saate özel ders ekle'; cell.addEventListener('click',e=>{ if(e.target.closest('.evt')) return; plSlotOpen(ds,h); }); if(!cell.querySelector('.evt,.dv-empty')||cell.querySelector('.dv-empty')) cell.insertAdjacentHTML('beforeend','<span class="slotplus" aria-hidden="true">+</span>'); };
+      const cal=c.querySelector('.cal'); if(cal){ const ws=weekStart(schedWeek); const kids=Array.from(cal.children); for(let i=0;i<kids.length;i++){ if(!kids[i].classList.contains('tcell')) continue; const h=parseInt(kids[i].textContent,10); for(let j=1;j<=7;j++){ const cell=kids[i+j]; if(!cell||!cell.classList.contains('slot')) continue; const d=new Date(ws); d.setDate(ws.getDate()+j-1); wire(cell,ymd(d),h); } } }
+      const dv=c.querySelector('.dv'); if(dv){ const t=new Date(); const dd=new Date(t.getFullYear(),t.getMonth(),t.getDate()+schedDayOff); const ds=ymd(dd); dv.querySelectorAll('.dv-row').forEach(r=>{ const tc=r.querySelector('.tcell'), cell=r.querySelector('.dv-cell'); if(tc&&cell) wire(cell,ds,parseInt(tc.textContent,10)); }); }
+    }catch(e){ console.error(e); } }; }
+(function(){ const st=document.createElement('style'); st.textContent='.slotadd{cursor:pointer;position:relative}.slotadd:hover{background:rgba(13,148,136,.08)}.slotplus{color:var(--muted);opacity:.35;font-weight:700;font-size:15px;display:block;text-align:center;line-height:1.2}.slotadd:hover .slotplus{opacity:1;color:var(--aqua,#0d9488)}'; document.head.appendChild(st); })();
+
 /* ============ INIT ============ */
 boot();
 </script>
