@@ -10352,6 +10352,23 @@ function plSlotSubmit(ds,h){
   };
 })();
 
+/* ===== blk47: devam oranı ve "son değerlendirme" gerçek veriden ===== */
+(function(){
+  function liveAtt(id){ try{ const s=attFam(id); if(!s||!s.months) return null; const cur=todayStr().slice(0,7); const yms=Object.keys(s.months).filter(m=>m<=cur).sort().slice(-3); let p=0,t=0; yms.forEach(m=>{ p+=s.months[m].p||0; t+=s.months[m].t||0; }); return t?p/t:null; }catch(e){ return null; } }
+  window.attRefresh=function(){ try{ (DB.athletes||[]).forEach(a=>{ const v=liveAtt(a.id); if(v!==null) a.attendance=Math.round(v*100)/100; }); }catch(e){} };
+  window.lastEvalOf=function(id){ let d=''; try{ const n=dvNoteOf(id); if(n&&n.at) d=n.at; (DB.records||[]).forEach(r=>{ if(r.athlete===id&&r.date&&r.date>d) d=r.date; }); }catch(e){} return d; };
+  const o=render; render=function(){ attRefresh(); return o.apply(this,arguments); };
+  renderDevelopment=function(c){
+    const list=DB.athletes.filter(a=>a.status==='active'&&canViewAthlete(a.id));
+    c.innerHTML=`<div class="card" style="padding:0;"><table><thead><tr><th>Sporcu</th><th>Seviye</th><th>Devam (son 3 ay)</th><th>Son Değerlendirme</th><th></th></tr></thead><tbody>
+    ${list.map(a=>{ const v=liveAtt(a.id), pc=v===null?null:Math.round(v*100), le=lastEvalOf(a.id);
+      return `<tr class="rowlink" onclick="openAthlete('${a.id}')"><td class="name-cell">${av('athlete:'+a.id,a.name)}${escHtml(a.name)}</td><td>${escHtml(a.level||'')}</td>
+      <td>${pc===null?'<span style="color:var(--muted)">kayıt yok</span>':'%'+pc+'<div class="progress"><div style="width:'+pc+'%"></div></div>'}</td>
+      <td>${le?escHtml(fmtDate(le)):'<span style="color:var(--muted)">—</span>'}</td><td class="btn ghost sm">Detay →</td></tr>`; }).join('')}
+    </tbody></table></div>`;
+  };
+})();
+
 /* ============ INIT ============ */
 boot();
 </script>
