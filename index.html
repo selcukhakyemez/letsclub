@@ -10250,6 +10250,28 @@ function renderDayChanges(c){
   ${days.length?`<div class="card" style="padding:0;overflow-x:auto;"><table><thead><tr><th>Gün</th><th class="n">Hoca değişimi</th><th class="n">Yardımcı</th><th class="n">İzinli</th><th class="n">İptal</th></tr></thead><tbody>${hist}</tbody></table></div><div style="font-size:12px;color:var(--muted);margin-top:6px;">Bir güne dokunarak o günün ayrıntısını açın. Daha eski günler için yukarıdan tarih seçin.</div>`:'<div class="card" style="color:var(--muted);">Bu aralıkta değişiklik kaydı yok.</div>'}`;
 }
 
+/* ============ ÖZEL DERS SPORCUSUNUN HAVUZUNU DEĞİŞTİRME (yönetici) ============ */
+{ const o=lessonPool; lessonPool=function(pl){ try{ if(pl&&pl.poolFix) return pl.poolFix; if(pl&&!pl.pkg&&pl.pool&&DB.pools.some(x=>x.name===pl.pool)) return pl.pool; }catch(e){} return o.apply(this,arguments); }; }
+function apCurPool(a){ const pk=(DB.plPackages||[]).filter(p=>p.athlete===a.id&&p.pool); return a.privPool||(pk[0]&&pk[0].pool)||''; }
+function apPoolSet(id){
+  if(role!=='admin'||window.__asst) return; const a=DB.athletes.find(x=>x.id===id); if(!a) return; const np=(document.getElementById('apc_p')||{}).value||''; const scopeAll=((document.querySelector('input[name="apc_sc"]:checked')||{}).value==='all');
+  if(!DB.pools.some(p=>p.name===np)){ alert('Havuz seçin.'); return; } const old=apCurPool(a); const pks=(DB.plPackages||[]).filter(p=>p.athlete===id);
+  if(np===old&&!pks.some(p=>p.pool!==np)){ alert('Sporcu zaten bu havuzda.'); return; }
+  const t=todayStr(); const ls=(DB.privateLessons||[]).filter(l=>!l._stub&&l.athlete===id&&l.status!=='İptal'); const fut=ls.filter(l=>String(l.date)>=t).length;
+  if(!confirm(a.name+' özel ders havuzu "'+(old||'—')+'" → "'+np+'" olarak değişsin mi?\n\n'+(scopeAll?'Geçmiş dahil TÜM dersler ('+ls.length+') yeni havuza taşınır; geçmiş aylardaki hakediş ve havuz raporları da değişir.':'Bugün ve sonrası ('+fut+' ders) yeni havuza geçer; geçmiş dersler eski havuzda kalır.')+'\nÖdenmemiş paket borçları yeni havuza yazılır.'+(scopeAll?' Ödenmiş tahsilatlar da yeni havuza taşınır.':' Ödenmiş tahsilatlar eski havuzda kalır.')+'\n\nHavuz kapasitesi / kulvar doluluğu yeniden kontrol edilmez.')) return;
+  const pkIds=new Set(pks.map(p=>p.id)); const pays=(DB.payments||[]).filter(p=>p.athlete===id&&p.pkg&&pkIds.has(p.pkg)); const paid=p=>p.status==='paid'||!!p.paidDate;
+  if(!scopeAll){ ls.forEach(l=>{ if(String(l.date)<t&&!l.poolFix) l.poolFix=lessonPool(l); }); pays.filter(p=>paid(p)&&p.pool===undefined).forEach(p=>{ p.pool=payPool(p); }); }
+  else ls.forEach(l=>{ delete l.poolFix; });
+  pks.forEach(p=>{ p.pool=np; }); ls.filter(l=>scopeAll||String(l.date)>=t).forEach(l=>{ l.pool=np; });
+  pays.filter(p=>scopeAll||!paid(p)).forEach(p=>{ p.pool=np; });
+  a.privPool=np; try{ recalcBalances(); }catch(e){} save(); render(); setTimeout(()=>openAthlete(id),60);
+}
+{ const o=openAthlete; openAthlete=function(id){ o.apply(this,arguments); try{ if(role!=='admin'||window.__asst) return; const a=DB.athletes.find(x=>x.id===id); const sel=document.getElementById('apc_c'); if(!a||a.kind!=='private'||!sel||document.getElementById('apc_p')) return;
+      const cur=apCurPool(a); const card=sel.parentElement.parentElement;
+      card.insertAdjacentHTML('beforeend',`<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--line);"><div style="font-size:13px;margin-bottom:6px;"><b>Havuzu değiştir</b> <span style="color:var(--muted);">(şimdiki: ${escHtml(cur||'—')})</span></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;"><select id="apc_p" style="flex:1;min-width:160px;">${DB.pools.map(p=>`<option value="${escHtml(p.name)}"${p.name===cur?' selected':''}>${escHtml(p.name)}</option>`).join('')}</select><button class="btn sm primary" onclick="apPoolSet('${id}')">Havuzu değiştir</button></div>
+        <div style="font-size:12.5px;margin-top:6px;"><label style="display:block;"><input type="radio" name="apc_sc" value="fut" checked> Bugünden itibaren (geçmiş dersler eski havuzda kalır)</label><label style="display:block;"><input type="radio" name="apc_sc" value="all"> Geçmiş dahil tüm dersler</label></div></div>`); }catch(e){ console.error(e); } }; }
+
 /* ============ INIT ============ */
 boot();
 </script>
