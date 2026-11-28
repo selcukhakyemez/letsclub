@@ -629,7 +629,7 @@ function render(){
   const fns={dashboard:renderDashboard,athletes:renderAthletes,parents:renderParents,groups:renderGroups,
     schedule:renderSchedule,trainplan:renderTrainPlan,weekly:renderWeekly,makeups:renderMakeups,times:renderTimes,levels:renderLevels,attendance:renderAttendance,development:renderDevelopment,competitions:renderCompetitions,
     crm:renderCRM,coaches:renderCoaches,payments:renderPayments,announcements:renderAnnouncements,tickets:renderTickets,
-    absences:(c=>renderAbsences(c)),reports:renderReports,settings:renderSettings,ai:renderAI,approvals:renderApprovals,insights:renderInsights,rentals:renderRentals,extpk:(c=>renderExtPk(c)),plsum:(c=>renderPlSummary(c)),expiring:(c=>renderExpiring(c)),agecats:(c=>renderAgeCats(c)),branchrep:(c=>renderBranchRep(c)),home:(c=>renderHome(c)),summary:(c=>renderDashboard(c)),hub_sporcular:(c=>renderHub(c,'sporcular')),hub_dersler:(c=>renderHub(c,'dersler')),hub_gelisim:(c=>renderHub(c,'gelisim')),hub_antrenorler:(c=>renderHub(c,'antrenorler')),hub_finans:(c=>renderHub(c,'finans')),hub_iletisim:(c=>renderHub(c,'iletisim')),hub_onaylar:(c=>renderHub(c,'onaylar')),hub_sistem:(c=>renderHub(c,'sistem')),asstmode:(c=>renderAsstMode(c)),finance:renderFinance,poolreport:renderPoolReport,dailylessons:renderDailyLessons,monthlylessons:renderMonthlyLessons,ratings:renderRatings,myratings:renderMyRatings,rate:renderRate,messages:renderMessages,surveys:renderSurveys,leaves:renderLeaves,discounts:renderDiscounts,devreport:renderDevReport,audit:renderAudit,payroll:renderPayroll,atthist:renderAttHistory,newitems:renderNewItems,privlesson:renderPrivLessons};
+    absences:(c=>renderAbsences(c)),reports:renderReports,settings:renderSettings,ai:renderAI,approvals:renderApprovals,insights:renderInsights,rentals:renderRentals,extpk:(c=>renderExtPk(c)),plsum:(c=>renderPlSummary(c)),expiring:(c=>renderExpiring(c)),agecats:(c=>renderAgeCats(c)),branchrep:(c=>renderBranchRep(c)),home:(c=>renderHome(c)),daychanges:(c=>renderDayChanges(c)),summary:(c=>renderDashboard(c)),hub_sporcular:(c=>renderHub(c,'sporcular')),hub_dersler:(c=>renderHub(c,'dersler')),hub_gelisim:(c=>renderHub(c,'gelisim')),hub_antrenorler:(c=>renderHub(c,'antrenorler')),hub_finans:(c=>renderHub(c,'finans')),hub_iletisim:(c=>renderHub(c,'iletisim')),hub_onaylar:(c=>renderHub(c,'onaylar')),hub_sistem:(c=>renderHub(c,'sistem')),asstmode:(c=>renderAsstMode(c)),finance:renderFinance,poolreport:renderPoolReport,dailylessons:renderDailyLessons,monthlylessons:renderMonthlyLessons,ratings:renderRatings,myratings:renderMyRatings,rate:renderRate,messages:renderMessages,surveys:renderSurveys,leaves:renderLeaves,discounts:renderDiscounts,devreport:renderDevReport,audit:renderAudit,payroll:renderPayroll,atthist:renderAttHistory,newitems:renderNewItems,privlesson:renderPrivLessons};
   c.innerHTML='';
   (fns[route]||renderDashboard)(c);
 }
@@ -9566,7 +9566,7 @@ function attWhoDraw(){ const w=document.getElementById('attGridWrap'); if(!w) re
 if(C_COLLS.indexOf('coachPerms')<0) C_COLLS.push('coachPerms'); if(!SB_SPECS.some(s=>s.c==='coachPerms')) SB_SPECS.push({c:'coachPerms',t:'arr'});
 if(typeof AU_COLL==='object') AU_COLL.coachPerms='Yardımcı yönetici yetkisi';
 const ASST_PERMS=[['attendance','Yoklama alma ve düzeltme'],['athletes','Sporcu (ve veli) kaydı / düzenleme'],['schedule','Ders programı: telafi, yardımcı hoca atama, ders iptali, hoca değişimi'],['privateLessons','Özel ders girişi ve paketten ders düşme'],['leads','Deneme / aday sporcu kaydı']];
-const ASST_ROUTES={attendance:['attendance','atthist','dailylessons','expiring'],athletes:['athletes','parents','groups','expiring'],schedule:['schedule','makeups','groups','dailylessons','leaves'],privateLessons:['privlesson','plsum','athletes'],leads:['crm','athletes']};
+const ASST_ROUTES={attendance:['attendance','atthist','dailylessons','expiring'],athletes:['athletes','parents','groups','expiring'],schedule:['schedule','makeups','groups','dailylessons','daychanges','leaves'],privateLessons:['privlesson','plsum','athletes'],leads:['crm','athletes']};
 const ASST_COLLS={attendance:['attendanceLog','attMeta','makeups'],athletes:['athletes','parents','groups'],schedule:['dayHelpers','coachSwaps','classCancels','makeups','groupMerges','coachLeaves'],privateLessons:['privateLessons','athletes'],leads:['leads','athletes']};
 TITLES.asstmode='Yardımcı Yönetici';
 function asstTrueAdmin(){ return role==='admin'&&!window.__asst&&!(typeof isAccReal==='function'&&isAccReal()); }
@@ -9609,7 +9609,7 @@ function asstBuildNav(){
   const full=ASST_SAVED.nav, byId={}; full.filter(x=>x.id).forEach(x=>byId[x.id]=x);
   byId.asstmode={id:'asstmode',label:'Antrenör görünümüne dön',ic:'↩️'};
   const list=Array.from(ids).filter(i=>byId[i]).map(i=>byId[i]);
-  const grp=[['Genel',['dashboard','asstmode']],['Kayıtlar',['athletes','parents','groups','crm']],['Ders ve Yoklama',['schedule','leaves','privlesson','plsum','attendance','atthist','dailylessons','makeups','expiring']]];
+  const grp=[['Genel',['dashboard','asstmode']],['Kayıtlar',['athletes','parents','groups','crm']],['Ders ve Yoklama',['schedule','leaves','privlesson','plsum','attendance','atthist','dailylessons','daychanges','makeups','expiring']]];
   return {list,grp};
 }
 async function asstFlush(){ try{ if(SERVER&&SB.profile){ if(SB.timer){ clearTimeout(SB.timer); SB.timer=null; } await sbSyncNow(); await sbIdle(); } }catch(e){} }
@@ -9889,7 +9889,7 @@ function spSave(pi){
 const HUBS=[];
 const HUB_ADM=[
  {id:'sporcular',label:'Sporcular',ic:'🏊',color:'#2563eb',items:['athletes','parents','groups','crm']},
- {id:'dersler',label:'Dersler',ic:'📅',color:'#0d9488',items:['schedule','privlesson','plsum','attendance','absences','dailylessons','atthist','trainplan','makeups','expiring']},
+ {id:'dersler',label:'Dersler',ic:'📅',color:'#0d9488',items:['schedule','privlesson','plsum','attendance','absences','dailylessons','daychanges','atthist','trainplan','makeups','expiring']},
  {id:'gelisim',label:'Gelişim',ic:'📈',color:'#7c3aed',items:['times','levels','development','devreport','competitions']},
  {id:'antrenorler',label:'Antrenörler',ic:'🧑‍🏫',color:'#ea580c',items:['coaches','leaves','payroll','ratings']},
  {id:'finans',label:'Finans',ic:'💰',color:'#16a34a',items:['finance','payments','discounts','rentals','extpk','branchrep']},
@@ -10013,7 +10013,7 @@ function rtIsSut(g){ return !!g&&g.branch==='Sutopu'; }
 const HUB_TABS=[
  [['attendance','Yoklama Al'],['atthist','Geçmiş Yoklamalar'],['absences','Devamsızlık']],
  [['privlesson','Özel Dersler'],['plsum','Paketler']],
- [['schedule','Haftalık Program'],['dailylessons','Günlük Dersler'],['makeups','Telafi']],
+ [['schedule','Haftalık Program'],['dailylessons','Günlük Dersler'],['daychanges','Günlük Değişiklikler'],['makeups','Telafi']],
  [['leaves','İzinler'],['payroll','Puantaj / Hakediş'],['ratings','Ders Puanları']],
  [['approvals','Onaylar'],['newitems','Yeni Kayıtlar']],
  [['messages','Mesajlar'],['announcements','Duyurular'],['tickets','Talepler'],['surveys','Anketler']],
@@ -10208,6 +10208,47 @@ function alertRows(){
     if(role==='parent'){ h=payBanner(); } else if(k==='admin'||k==='coach'||k==='asst'||role==='accountant'){ const R=alertRows();
       h=`<div class="card" style="margin-top:14px;"><div class="section-title" style="margin-top:0;">Uyarı merkezi</div>${R.length?R.map(r=>`<div role="button" tabindex="0" onclick="${r.go}" style="display:flex;gap:10px;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--line);cursor:pointer;"><span>${r.ic} ${escHtml(r.t)}</span><span class="badge red">${r.n}</span></div>`).join(''):'<div style="font-size:13.5px;color:var(--green,#16a34a);">✅ Şu an dikkat gerektiren bir şey yok.</div>'}</div>`; }
     if(!h) return; const g=c.querySelector('.hubgrid'); if(g) g.insertAdjacentHTML('beforebegin',h); else c.insertAdjacentHTML('beforeend',h); }catch(e){ console.error(e); } }; }
+
+{ if(!NAV.admin.some(x=>x.id==='daychanges')){ const i=NAV.admin.findIndex(x=>x.id==='dailylessons'); NAV.admin.splice(i>=0?i+1:NAV.admin.length,0,{id:'daychanges',label:'Günlük Değişiklikler',ic:'🔄'}); }
+  const g=NAV_GROUPS.admin.find(x=>x[0]==='Ders ve Antrenman'); if(g&&g[1].indexOf('daychanges')<0){ const j=g[1].indexOf('dailylessons'); g[1].splice(j>=0?j+1:g[1].length,0,'daychanges'); } }
+/* ============ GÜNLÜK DEĞİŞİKLİKLER: hoca değişimi, yardımcı hoca, izinli hoca, iptal (gün gün geçmişle) ============ */
+TITLES.daychanges='Günlük Değişiklikler'; HUB_DESC.daychanges='Hoca değişimi, yardımcı, izinli hoca';
+const dcSel={ds:null};
+function dcDay(ds){
+  const ids=new Set(visibleGroups().map(g=>g.id)); const gOf=id=>DB.groups.find(x=>x.id===id);
+  const swaps=(DB.coachSwaps||[]).filter(s=>s.date===ds&&ids.has(s.group));
+  const helpers=(DB.dayHelpers||[]).filter(h=>h.date===ds&&ids.has(h.group));
+  const cancels=(DB.classCancels||[]).filter(x=>x.date===ds&&ids.has(x.group));
+  const leaves=[]; (DB.coachLeaves||[]).filter(l=>lcCovers(l,ds)).forEach(l=>{
+    if(window.__asst&&!asstLeaveIn(l)) return;
+    const gs=DB.groups.filter(g=>g.coach===l.coach&&groupOnDay(g,ds)&&ids.has(g.id)); if(!gs.length&&!(l.subs||[]).length&&window.__asst) return;
+    leaves.push({l,rows:gs.map(g=>{ const sw=swapOf(g,ds), sb=(l.subs||[]).find(x=>x.group===g.id); return {g,sub:sw?sw.coach:(sb?sb.coach:''),canc:gCancelled(g,ds)}; })}); });
+  return {swaps,helpers,cancels,leaves,total:swaps.length+helpers.length+cancels.length+leaves.length};
+}
+function dcMove(n){ dcSel.ds=fbAddDays(dcSel.ds||todayStr(),n); renderDayChanges($('#content')); }
+function dcSet(ds){ dcSel.ds=ds; renderDayChanges($('#content')); try{ window.scrollTo(0,0); }catch(e){} }
+function renderDayChanges(c){
+  if(role!=='admin'){ c.innerHTML='<div class="empty">Bu sayfa yöneticiye açıktır.</div>'; return; }
+  const t=todayStr(); if(!dcSel.ds) dcSel.ds=t; const ds=dcSel.ds; const D=dcDay(ds); const gl=g=>escHtml(g.name)+' <span style="color:var(--muted);font-size:12px;">· '+escHtml(gTimeOn(g,ds))+' · '+escHtml(gPoolOn(g,ds))+'</span>';
+  const kpi=(l,v,w)=>`<div class="card"><div class="label">${l}</div><div class="val"${w&&v?' style="color:var(--amber);"':''}>${v}</div></div>`;
+  const sec=(title,body,n)=>`<div class="section-title">${title} (${n})</div>${n?`<div class="card" style="padding:0;overflow-x:auto;">${body}</div>`:'<div class="card" style="color:var(--muted);font-size:13.5px;">Kayıt yok.</div>'}`;
+  const row=h=>`<div style="padding:10px 14px;border-bottom:1px solid var(--line);font-size:13.5px;">${h}</div>`;
+  const leaveHtml=D.leaves.map(x=>row(`<b>${escHtml(coachName(x.l.coach))}</b> <span class="badge amber">${escHtml(x.l.category||'İzinli')}</span> <span style="color:var(--muted);font-size:12px;">${escHtml(fmtDate(x.l.from))} – ${escHtml(fmtDate(x.l.to))}</span>${x.rows.length?x.rows.map(r=>`<div style="margin:4px 0 0 12px;">${gl(r.g)} → ${r.canc?'<span class="badge red">Ders iptal</span>':r.sub?'<b>'+escHtml(coachName(r.sub))+'</b> girdi':'<span style="color:var(--red);font-weight:700;">yerine hoca yok</span>'}</div>`).join(''):'<div style="margin:4px 0 0 12px;color:var(--muted);font-size:12.5px;">Bu gün dersi yok.</div>'}`)).join('');
+  const swapHtml=D.swaps.map(s=>{ const g=DB.groups.find(x=>x.id===s.group); return row(`${g?gl(g):''}<div style="margin-top:2px;"><b>${escHtml(coachName(s.orig))}</b> → <b>${escHtml(coachName(s.coach))}</b>${s.note?' <span style="color:var(--muted);font-size:12.5px;">· '+escHtml(s.note)+'</span>':''}</div>`); }).join('');
+  const helpHtml=D.helpers.map(h=>{ const g=DB.groups.find(x=>x.id===h.group); return row(`${g?gl(g):''}<div style="margin-top:2px;">Yardımcı: <b>${escHtml(coachName(h.coach))}</b> <span style="color:var(--muted);font-size:12.5px;">· ana hoca ${escHtml(g?coachName(effCoach(g,ds)):'')}</span></div>`); }).join('');
+  const canHtml=D.cancels.map(x=>{ const g=DB.groups.find(y=>y.id===x.group); return row(`${g?gl(g):''}<div style="margin-top:2px;"><span class="badge red">İptal</span> ${escHtml(x.reason||'')}${x.note?' · '+escHtml(x.note):''}</div>`); }).join('');
+  const days=[]; for(let i=-45;i<=7;i++){ const d=fbAddDays(t,i); const x=dcDay(d); if(x.total) days.push({d,x}); } days.sort((a,b)=>a.d<b.d?1:-1);
+  const hist=days.map(r=>`<tr style="cursor:pointer;${r.d===ds?'background:rgba(13,148,136,.10);':''}" onclick="dcSet('${r.d}')"><td>${escHtml(fmtDate(r.d))}${r.d===t?' <span class="badge green">Bugün</span>':''}</td><td class="n">${r.x.swaps.length||'—'}</td><td class="n">${r.x.helpers.length||'—'}</td><td class="n">${r.x.leaves.length||'—'}</td><td class="n">${r.x.cancels.length||'—'}</td></tr>`).join('');
+  c.innerHTML=`<div class="card" style="margin-bottom:16px;display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;">
+   <button class="btn" onclick="dcMove(-1)" aria-label="Önceki gün">‹</button>
+   <div class="field" style="margin:0;"><label for="dc_d">Tarih</label><input type="date" id="dc_d" value="${ds}" onchange="dcSet(this.value||dcSel.ds)"></div>
+   <button class="btn" onclick="dcMove(1)" aria-label="Sonraki gün">›</button>
+   <button class="btn ghost" onclick="dcSet(todayStr())">Bugün</button></div>
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;">${kpi('İzinli hoca',D.leaves.length,1)}${kpi('Hoca değişimi',D.swaps.length)}${kpi('Yardımcı hoca',D.helpers.length)}${kpi('İptal edilen ders',D.cancels.length,1)}</div>
+  ${sec('İzinli hocalar',leaveHtml,D.leaves.length)}${sec('Hoca değişiklikleri',swapHtml,D.swaps.length)}${sec('Yardımcı hoca atamaları',helpHtml,D.helpers.length)}${sec('İptal edilen dersler',canHtml,D.cancels.length)}
+  <div class="section-title">Gün gün değişiklikler (son 45 gün ve önümüzdeki hafta)</div>
+  ${days.length?`<div class="card" style="padding:0;overflow-x:auto;"><table><thead><tr><th>Gün</th><th class="n">Hoca değişimi</th><th class="n">Yardımcı</th><th class="n">İzinli</th><th class="n">İptal</th></tr></thead><tbody>${hist}</tbody></table></div><div style="font-size:12px;color:var(--muted);margin-top:6px;">Bir güne dokunarak o günün ayrıntısını açın. Daha eski günler için yukarıdan tarih seçin.</div>`:'<div class="card" style="color:var(--muted);">Bu aralıkta değişiklik kaydı yok.</div>'}`;
+}
 
 /* ============ INIT ============ */
 boot();
