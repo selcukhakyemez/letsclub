@@ -10132,6 +10132,9 @@ function coachTodayCard(){
       new MutationObserver(attPaint).observe(w,{childList:true}); attPaint(); }catch(e){ console.error(e); } }; }
 function attPaint(){
   const w=document.getElementById('attGridWrap'); if(!w) return; const cnt={p:0,g:0,o:0};
+  try{ const gid0=(document.getElementById('attGroup')||{}).value, dt0=(document.getElementById('attDate')||{}).value; const sv=((DB.attendanceLog||{})[gid0+'|'+dt0])||{};
+    w.querySelectorAll('.attn-item').forEach(row=>{ const sl=row.querySelector('select'); if(!sl) return; const at=DB.athletes.find(x=>x.id===sl.dataset.a); if(at&&at.status==='passive'&&sv[at.id]===undefined) row.remove(); });
+    const gr=w.querySelector('.attn-grid'); if(gr&&!gr.querySelector('.attn-item')&&!gr.querySelector('.empty')) gr.innerHTML='<div class="empty">Bu grupta aktif sporcu yok</div>'; }catch(e){ console.error(e); }
   w.querySelectorAll('.attn-item').forEach(row=>{ const sel=row.querySelector('select'); if(!sel) return; let b=row.querySelector('.attq');
     if(!b){ b=document.createElement('button'); b.type='button'; b.className='attq'; b.setAttribute('aria-label','Geldi / gelmedi'); b.onclick=()=>{ sel.value=(sel.value==='Gelmedi')?'Katıldı':'Gelmedi'; sel.dispatchEvent(new Event('change',{bubbles:true})); }; row.insertBefore(b,sel); }
     const v=sel.value, pres=ATT_PRESENT.indexOf(v)>-1; b.textContent=pres?'✓':(v==='Gelmedi'?'✗':'•'); b.className='attq '+(pres?'ok':(v==='Gelmedi'?'no':'ot')); row.classList.toggle('attabs',v==='Gelmedi');
