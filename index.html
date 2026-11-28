@@ -10307,6 +10307,51 @@ function plSlotSubmit(ds,h){
     }catch(e){ console.error(e); } }; }
 (function(){ const st=document.createElement('style'); st.textContent='.slotadd{cursor:pointer;position:relative}.slotadd:hover{background:rgba(13,148,136,.08)}.slotplus{color:var(--muted);opacity:.35;font-weight:700;font-size:15px;display:block;text-align:center;line-height:1.2}.slotadd:hover .slotplus{opacity:1;color:var(--aqua,#0d9488)}'; document.head.appendChild(st); })();
 
+/* ===== blk46: kiracı seansını günlük iptal et / geri al (takvimden tek dokunuş) ===== */
+(function(){
+  const _on=cRentalOn;
+  function skipped(r,ds){ try{ return rentalSkipDates(r,ds.slice(0,7)).some(s=>s.date===ds); }catch(e){ return false; } }
+  cRentalOn=function(r,ds){ return _on(r,ds)&&!skipped(r,ds); };
+  cRentEvts=function(ds,h){
+    return cRentList().filter(r=>{ if(!_on(r,ds)) return false; const s=timeToMin(r.start), e=timeToMin(r.end); return s!==null&&e!==null&&s<(h+1)*60&&e>h*60; }).map(r=>{
+      const first=Math.floor(timeToMin(r.start)/60)===h, sk=skipped(r,ds);
+      const oc=`onclick="rentDayOpen('${escHtml(r.id)}','${ds}')"`;
+      if(sk) return `<div class="evt" style="background:#f3f4f6;color:#6b7280;border-left:3px solid #9ca3af;text-decoration:line-through;" ${oc}>🏟️ ${escHtml(r.club)}<small>${first?escHtml(r.start)+'-'+escHtml(r.end)+' · ':''}İPTAL</small></div>`;
+      return first?`<div class="evt" style="background:var(--amber-light);color:var(--amber);border-left:3px solid var(--amber);" ${oc}>🏟️ ${escHtml(r.club)}<small>${escHtml(r.start)}-${escHtml(r.end)} · ${escHtml(r.pool)}${r.lanes?' · '+escHtml(String(r.lanes))+' kulvar':''}</small></div>`
+        :`<div class="evt" style="background:var(--amber-light);color:var(--amber);border-left:3px dashed var(--amber);opacity:.8;" ${oc}>🏟️ ${escHtml(r.club)}<small>devam · ${escHtml(r.end)}'e kadar · ${escHtml(r.pool)}</small></div>`;
+    }).join('');
+  };
+  window.rentDayOpen=function(id,ds){
+    if(role!=='admin'||(window.isAccReal&&isAccReal())){ route='rentals'; render(); return; }
+    const r=rentalFind(id); if(!r) return; const ym=ds.slice(0,7), sk=skipped(r,ds);
+    let per=0; try{ per=rentalInfo(r,ym).per; }catch(e){}
+    const cur=(r.skips||[]).find(s=>s.date===ds);
+    const dname=DAYNAMES[(parseYmd(ds).getDay()+6)%7];
+    const opts=RENT_SKIP_REASONS.map(x=>`<option>${escHtml(x)}</option>`).join('');
+    openDrawerHtml(`<div class="drawer-head"><h3 style="margin:0;">Kiracı seansı</h3><button class="btn sm" onclick="closeDrawer()">Kapat</button></div><div style="padding:14px;">
+     <div style="font-weight:700;">🏟️ ${escHtml(r.club)}</div>
+     <div style="font-size:13px;color:var(--muted);margin:4px 0 12px;">${escHtml(dname)} ${escHtml(fmtDate(ds))} · ${escHtml(r.start)}-${escHtml(r.end)} · ${escHtml(r.pool)}${r.coachName?' · '+escHtml(r.coachName):''}</div>
+     ${sk?`<div class="note-banner" style="margin-bottom:10px;">Bu gün iptal edilmiş${cur&&cur.reason?': '+escHtml(cur.reason):''}${cur&&cur.note?' ('+escHtml(cur.note)+')':''}.</div>
+       <button class="btn primary" onclick="rentDaySet('${escHtml(id)}','${ds}',false)">İptali geri al</button>`
+     :`<div class="field"><label for="rd_r">İptal nedeni</label><select id="rd_r">${opts}</select></div>
+       <div class="field"><label for="rd_n">Not (isteğe bağlı)</label><input id="rd_n" maxlength="100" placeholder="ör. hoca rahatsız"></div>
+       <div style="font-size:12.5px;color:var(--muted);margin-bottom:10px;">Bu günkü seans iptal edilir, havuz o saatte boşalır${per?` ve kira tutarından seans başı ${money(per)} otomatik düşülür`:''}.</div>
+       <button class="btn danger" onclick="rentDaySet('${escHtml(id)}','${ds}',true)">Bu günkü seansı iptal et</button>`}
+     <div style="margin-top:14px;"><button class="btn sm" onclick="closeDrawer();route='rentals';render();">Havuz kiralama sayfasını aç</button></div></div>`);
+  };
+  window.rentDaySet=function(id,ds,cancel){
+    const r=rentalFind(id); if(!r) return; const ym=ds.slice(0,7);
+    const cur=rentalSkipDates(r,ym).map(s=>s.date).filter(d=>d!==ds);
+    const reason=cancel?(document.getElementById('rd_r')||{}).value:''; const note=cancel?(document.getElementById('rd_n')||{}).value:'';
+    // mevcut nedenleri koru: sadece yeni gün için neden/not yaz
+    const old=(r.skips||[]).map(s=>Object.assign({},s));
+    const res=rentalSetSkips(id,ym,cancel?cur.concat([ds]):cur,reason,note);
+    if(!res.ok){ alert((res.errors||[]).join(' ')); return; }
+    // rentalSetSkips mevcutları korur; yeni gün nedeni zaten yazıldı
+    closeDrawer(); render();
+  };
+})();
+
 /* ============ INIT ============ */
 boot();
 </script>
